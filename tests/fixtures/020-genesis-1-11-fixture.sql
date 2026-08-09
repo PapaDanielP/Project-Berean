@@ -36,6 +36,11 @@ INSERT INTO source_record (dataset_id, source_record_key, source_location, revis
 SELECT d.dataset_id, r.source_record_key, r.source_location, 'ref-1'
 FROM dataset d
 JOIN (VALUES
+        ('GEN_MT_REF', 'MT_GEN_1_1', 'Genesis 1:1'),
+        ('GEN_MT_REF', 'MT_GEN_1_2', 'Genesis 1:2'),
+        ('GEN_MT_REF', 'MT_GEN_1_3', 'Genesis 1:3'),
+        ('GEN_MT_REF', 'MT_GEN_1_4', 'Genesis 1:4'),
+        ('GEN_MT_REF', 'MT_GEN_1_5', 'Genesis 1:5'),
         ('GEN_MT_REF', 'MT_GEN_5_3', 'Genesis 5:3'),
         ('GEN_MT_REF', 'MT_GEN_5_6', 'Genesis 5:6'),
         ('GEN_MT_REF', 'MT_GEN_8_4', 'Genesis 8:4'),
@@ -50,7 +55,15 @@ FROM source_record sr;
 
 INSERT INTO entity (entity_key, entity_type_code, canonical_name) VALUES
     ('adam', 'PERSON', 'Adam'), ('seth', 'PERSON', 'Seth'), ('enosh', 'PERSON', 'Enosh'),
-    ('noah', 'PERSON', 'Noah'), ('ararat', 'PLACE', 'Ararat');
+    ('noah', 'PERSON', 'Noah'), ('ararat', 'PLACE', 'Ararat'),
+    ('gen1_god', 'CONCEPT', 'God'),
+    ('gen1_heavens', 'CONCEPT', 'heavens'),
+    ('gen1_earth', 'CONCEPT', 'earth'),
+    ('gen1_darkness', 'CONCEPT', 'darkness'),
+    ('gen1_deep', 'CONCEPT', 'deep'),
+    ('gen1_light', 'CONCEPT', 'light'),
+    ('gen1_day', 'CONCEPT', 'day'),
+    ('gen1_night', 'CONCEPT', 'night');
 
 INSERT INTO source_identity (source_id, source_identity_key, display_name)
 SELECT s.source_id, m.source_identity_key, m.display_name
@@ -68,7 +81,12 @@ JOIN source_identity si ON si.source_identity_key = n.source_identity_key;
 INSERT INTO event (event_key, event_type_code, description) VALUES
     ('seth_begetting', 'GENEALOGICAL', 'The begetting of Seth as recorded in the Genesis genealogies.'),
     ('enosh_begetting', 'GENEALOGICAL', 'The begetting of Enosh as recorded in the Genesis genealogies.'),
-    ('ark_resting', 'OTHER', 'The resting of the ark as located in the Genesis flood narrative.');
+    ('ark_resting', 'OTHER', 'The resting of the ark as located in the Genesis flood narrative.'),
+    ('gen1_1_creation_statement', 'OTHER', 'Genesis 1:1 creation statement; modeled only as a source-record event placeholder.'),
+    ('gen1_2_earth_condition', 'OTHER', 'Genesis 1:2 earth-condition statement; ambiguous details are intentionally unresolved.'),
+    ('gen1_3_light_command', 'OTHER', 'Genesis 1:3 light-command statement.'),
+    ('gen1_4_light_distinction', 'OTHER', 'Genesis 1:4 light/distinction statement.'),
+    ('gen1_5_naming_statement', 'OTHER', 'Genesis 1:5 naming statement for day and night.');
 
 INSERT INTO typed_value (value_type_code, numeric_value) VALUES
     ('YEAR', 130), ('YEAR', 230), ('YEAR', 105), ('YEAR', 205), ('YEAR', 235), ('YEAR', 435);
@@ -82,7 +100,23 @@ INSERT INTO proposition (subject_entity_id, predicate, object_event_id)
 SELECT s.entity_id, m.predicate, e.event_id
 FROM (VALUES ('adam', 'parentIn', 'seth_begetting'), ('seth', 'childIn', 'seth_begetting'),
              ('seth', 'parentIn', 'enosh_begetting'), ('enosh', 'childIn', 'enosh_begetting'),
-             ('noah', 'subjectOf', 'ark_resting')) AS m(subject_key, predicate, event_key)
+             ('noah', 'subjectOf', 'ark_resting'),
+             ('gen1_god', 'subjectOf', 'gen1_1_creation_statement'),
+             ('gen1_heavens', 'participatesIn', 'gen1_1_creation_statement'),
+             ('gen1_earth', 'participatesIn', 'gen1_1_creation_statement'),
+             ('gen1_earth', 'subjectOf', 'gen1_2_earth_condition'),
+             ('gen1_darkness', 'participatesIn', 'gen1_2_earth_condition'),
+             ('gen1_deep', 'participatesIn', 'gen1_2_earth_condition'),
+             ('gen1_god', 'subjectOf', 'gen1_3_light_command'),
+             ('gen1_light', 'participatesIn', 'gen1_3_light_command'),
+             ('gen1_god', 'subjectOf', 'gen1_4_light_distinction'),
+             ('gen1_light', 'participatesIn', 'gen1_4_light_distinction'),
+             ('gen1_darkness', 'participatesIn', 'gen1_4_light_distinction'),
+             ('gen1_god', 'subjectOf', 'gen1_5_naming_statement'),
+             ('gen1_light', 'participatesIn', 'gen1_5_naming_statement'),
+             ('gen1_darkness', 'participatesIn', 'gen1_5_naming_statement'),
+             ('gen1_day', 'participatesIn', 'gen1_5_naming_statement'),
+             ('gen1_night', 'participatesIn', 'gen1_5_naming_statement')) AS m(subject_key, predicate, event_key)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN event e ON e.event_key = m.event_key;
 INSERT INTO proposition (subject_event_id, predicate, object_entity_id)
@@ -127,7 +161,39 @@ FROM (VALUES
         ('enosh', 'childIn', 'enosh_begetting', 'CLAIM_ENOSH_CHILD_ENOSH_BEGETTING',
          'Enosh is the child participant in the begetting of Enosh.'),
         ('noah', 'subjectOf', 'ark_resting', 'CLAIM_NOAH_ARK_RESTING',
-         'Noah is the subject of the ark-resting event.')
+         'Noah is the subject of the ark-resting event.'),
+        ('gen1_god', 'subjectOf', 'gen1_1_creation_statement', 'CLAIM_MT_GEN_1_1_GOD_SUBJECT_CREATION',
+         'Genesis 1:1 presents God as the subject of the creation statement.'),
+        ('gen1_heavens', 'participatesIn', 'gen1_1_creation_statement', 'CLAIM_MT_GEN_1_1_HEAVENS_CREATION_PARTICIPANT',
+         'Genesis 1:1 presents the heavens within the creation statement.'),
+        ('gen1_earth', 'participatesIn', 'gen1_1_creation_statement', 'CLAIM_MT_GEN_1_1_EARTH_CREATION_PARTICIPANT',
+         'Genesis 1:1 presents the earth within the creation statement.'),
+        ('gen1_earth', 'subjectOf', 'gen1_2_earth_condition', 'CLAIM_MT_GEN_1_2_EARTH_CONDITION_SUBJECT',
+         'Genesis 1:2 presents the earth as the subject of a condition statement.'),
+        ('gen1_darkness', 'participatesIn', 'gen1_2_earth_condition', 'CLAIM_MT_GEN_1_2_DARKNESS_CONDITION_PARTICIPANT',
+         'Genesis 1:2 presents darkness within the earth-condition statement.'),
+        ('gen1_deep', 'participatesIn', 'gen1_2_earth_condition', 'CLAIM_MT_GEN_1_2_DEEP_CONDITION_PARTICIPANT',
+         'Genesis 1:2 presents the deep within the earth-condition statement.'),
+        ('gen1_god', 'subjectOf', 'gen1_3_light_command', 'CLAIM_MT_GEN_1_3_GOD_LIGHT_COMMAND_SUBJECT',
+         'Genesis 1:3 presents God as the subject of the light-command statement.'),
+        ('gen1_light', 'participatesIn', 'gen1_3_light_command', 'CLAIM_MT_GEN_1_3_LIGHT_COMMAND_PARTICIPANT',
+         'Genesis 1:3 presents light within the light-command statement.'),
+        ('gen1_god', 'subjectOf', 'gen1_4_light_distinction', 'CLAIM_MT_GEN_1_4_GOD_LIGHT_DISTINCTION_SUBJECT',
+         'Genesis 1:4 presents God as the subject of the light/distinction statement.'),
+        ('gen1_light', 'participatesIn', 'gen1_4_light_distinction', 'CLAIM_MT_GEN_1_4_LIGHT_DISTINCTION_PARTICIPANT',
+         'Genesis 1:4 presents light within the light/distinction statement.'),
+        ('gen1_darkness', 'participatesIn', 'gen1_4_light_distinction', 'CLAIM_MT_GEN_1_4_DARKNESS_DISTINCTION_PARTICIPANT',
+         'Genesis 1:4 presents darkness within the light/distinction statement.'),
+        ('gen1_god', 'subjectOf', 'gen1_5_naming_statement', 'CLAIM_MT_GEN_1_5_GOD_NAMING_SUBJECT',
+         'Genesis 1:5 presents God as the subject of the naming statement.'),
+        ('gen1_light', 'participatesIn', 'gen1_5_naming_statement', 'CLAIM_MT_GEN_1_5_LIGHT_NAMING_PARTICIPANT',
+         'Genesis 1:5 presents light within the naming statement.'),
+        ('gen1_darkness', 'participatesIn', 'gen1_5_naming_statement', 'CLAIM_MT_GEN_1_5_DARKNESS_NAMING_PARTICIPANT',
+         'Genesis 1:5 presents darkness within the naming statement.'),
+        ('gen1_day', 'participatesIn', 'gen1_5_naming_statement', 'CLAIM_MT_GEN_1_5_DAY_NAMING_PARTICIPANT',
+         'Genesis 1:5 presents day within the naming statement.'),
+        ('gen1_night', 'participatesIn', 'gen1_5_naming_statement', 'CLAIM_MT_GEN_1_5_NIGHT_NAMING_PARTICIPANT',
+         'Genesis 1:5 presents night within the naming statement.')
      ) AS m(subject_key, predicate, event_key, claim_key, statement)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN event e ON e.event_key = m.event_key
@@ -163,6 +229,18 @@ JOIN proposition p ON p.subject_entity_id = s.entity_id AND p.object_typed_value
 INSERT INTO evidence (evidence_key, source_record_id, observation, evidence_type_code)
 SELECT m.evidence_key, sr.source_record_id, m.observation, 'SOURCE_OBSERVATION'
 FROM (VALUES
+        ('MT_GEN_1_1', 'EV_MT_GEN_1_1_CREATION_SUBJECT',
+         'Genesis 1:1 is represented as a structural source-record boundary that identifies God as the subject of a creation statement.'),
+        ('MT_GEN_1_1', 'EV_MT_GEN_1_1_CREATION_OBJECTS',
+         'Genesis 1:1 is represented as a structural source-record boundary that identifies the heavens and the earth within the creation statement.'),
+        ('MT_GEN_1_2', 'EV_MT_GEN_1_2_EARTH_CONDITION',
+         'Genesis 1:2 is represented as a structural source-record boundary that describes earth, darkness, and the deep while leaving underdetermined details unresolved.'),
+        ('MT_GEN_1_3', 'EV_MT_GEN_1_3_LIGHT_COMMAND',
+         'Genesis 1:3 is represented as a structural source-record boundary that presents God and light within a light-command statement.'),
+        ('MT_GEN_1_4', 'EV_MT_GEN_1_4_LIGHT_DISTINCTION',
+         'Genesis 1:4 is represented as a structural source-record boundary that presents God, light, and darkness within a light/distinction statement.'),
+        ('MT_GEN_1_5', 'EV_MT_GEN_1_5_NAMING',
+         'Genesis 1:5 is represented as a structural source-record boundary that presents God, light, darkness, day, and night within a naming statement.'),
         ('MT_GEN_5_3', 'EV_MT_GEN_5_3',
          'Genesis 5:3 in the Masoretic tradition records the begetting of Seth by Adam at 130 years.'),
         ('LXX_GEN_5_3', 'EV_LXX_GEN_5_3',
@@ -186,6 +264,38 @@ JOIN citation c ON c.source_record_id = sr.source_record_id;
 INSERT INTO claim_evidence (claim_id, evidence_id, relation_type_code, notes)
 SELECT c.claim_id, e.evidence_id, m.relation_type_code, m.notes
 FROM (VALUES
+        ('CLAIM_MT_GEN_1_1_GOD_SUBJECT_CREATION', 'EV_MT_GEN_1_1_CREATION_SUBJECT', 'SUPPORTS',
+         'The verse boundary supports only the source-presented subject role, not a theological conclusion.'),
+        ('CLAIM_MT_GEN_1_1_HEAVENS_CREATION_PARTICIPANT', 'EV_MT_GEN_1_1_CREATION_OBJECTS', 'SUPPORTS',
+         'The same verse boundary supports multiple claim/proposition records.'),
+        ('CLAIM_MT_GEN_1_1_EARTH_CREATION_PARTICIPANT', 'EV_MT_GEN_1_1_CREATION_OBJECTS', 'SUPPORTS',
+         'The same verse boundary supports multiple claim/proposition records.'),
+        ('CLAIM_MT_GEN_1_2_EARTH_CONDITION_SUBJECT', 'EV_MT_GEN_1_2_EARTH_CONDITION', 'SUPPORTS',
+         'The claim preserves the condition statement without resolving ambiguous details.'),
+        ('CLAIM_MT_GEN_1_2_DARKNESS_CONDITION_PARTICIPANT', 'EV_MT_GEN_1_2_EARTH_CONDITION', 'SUPPORTS',
+         'The claim records only direct participation in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_2_DEEP_CONDITION_PARTICIPANT', 'EV_MT_GEN_1_2_EARTH_CONDITION', 'SUPPORTS',
+         'The claim records only direct participation in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_3_GOD_LIGHT_COMMAND_SUBJECT', 'EV_MT_GEN_1_3_LIGHT_COMMAND', 'SUPPORTS',
+         'The claim records the source-presented subject role.'),
+        ('CLAIM_MT_GEN_1_3_LIGHT_COMMAND_PARTICIPANT', 'EV_MT_GEN_1_3_LIGHT_COMMAND', 'SUPPORTS',
+         'The claim records light as directly present in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_4_GOD_LIGHT_DISTINCTION_SUBJECT', 'EV_MT_GEN_1_4_LIGHT_DISTINCTION', 'SUPPORTS',
+         'The claim records the source-presented subject role.'),
+        ('CLAIM_MT_GEN_1_4_LIGHT_DISTINCTION_PARTICIPANT', 'EV_MT_GEN_1_4_LIGHT_DISTINCTION', 'SUPPORTS',
+         'The claim records light as directly present in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_4_DARKNESS_DISTINCTION_PARTICIPANT', 'EV_MT_GEN_1_4_LIGHT_DISTINCTION', 'SUPPORTS',
+         'The claim records darkness as directly present in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_5_GOD_NAMING_SUBJECT', 'EV_MT_GEN_1_5_NAMING', 'SUPPORTS',
+         'The claim records the source-presented subject role.'),
+        ('CLAIM_MT_GEN_1_5_LIGHT_NAMING_PARTICIPANT', 'EV_MT_GEN_1_5_NAMING', 'SUPPORTS',
+         'The claim records light as directly present in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_5_DARKNESS_NAMING_PARTICIPANT', 'EV_MT_GEN_1_5_NAMING', 'SUPPORTS',
+         'The claim records darkness as directly present in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_5_DAY_NAMING_PARTICIPANT', 'EV_MT_GEN_1_5_NAMING', 'SUPPORTS',
+         'The claim records day as directly present in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_5_NIGHT_NAMING_PARTICIPANT', 'EV_MT_GEN_1_5_NAMING', 'SUPPORTS',
+         'The claim records night as directly present in the source-record statement.'),
         ('CLAIM_ADAM_FATHER_SETH', 'EV_MT_GEN_5_3', 'SUPPORTS', 'Both traditions record the same parentage.'),
         ('CLAIM_ADAM_FATHER_SETH', 'EV_LXX_GEN_5_3', 'SUPPORTS', 'The traditions differ on the numeral, not the parentage.'),
         ('CLAIM_SETH_FATHER_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Both traditions record the same parentage.'),

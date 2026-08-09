@@ -35,3 +35,9 @@ The dataset should not be treated as an authoritative transcription of Scripture
 Do not manufacture historical or textual claims to fill gaps.
 
 Every source-backed record should retain its source location and provenance.
+
+## Genesis 1:1–5 validation slice
+
+The executable fixture includes a conservative Genesis 1:1–5 validation slice. It uses five structural Masoretic source-record boundaries, citation locators, evidence observations, direct source claims, and existing proposition predicates to validate the provenance graph without storing source text or resolving ambiguous details.
+
+See `docs/04-data/GENESIS_1_1-5_SLICE.md` for the scope, limitations, intentionally deferred items, and validation command.

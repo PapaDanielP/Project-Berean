@@ -45,6 +45,8 @@ The script loads the schema and deterministic fixture, executes negative constra
 
 The fixture demonstrates shared evidence, multiple evidence for a claim, contrary evidence, competing claims, source-identity reconciliation, asserted event participation, and a derived chronology claim. It is transactional and resets reference-model data; use an isolated test database.
 
+`tests/validation/genesis-1-1-5-slice.sql` runs after the Genesis fixture and checks the conservative Genesis 1:1–5 slice specifically. It verifies five verse source-record boundaries, citation-compatible structural records with no stored source text, evidence-to-source provenance, claim-to-evidence provenance, multiple records attached to Genesis 1:1, and direct source claims only.
+
 ## Genesis regression
 
 Genesis 1–11 should include tests for:

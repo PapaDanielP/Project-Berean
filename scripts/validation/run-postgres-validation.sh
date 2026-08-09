@@ -17,6 +17,7 @@ run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
 
 run "$root/tests/fixtures/020-genesis-1-11-fixture.sql"
+run "$root/tests/validation/genesis-1-1-5-slice.sql"
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
