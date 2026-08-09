@@ -1,6 +1,6 @@
 # Project Berean
 
-Project Berean is a pre-beta, PostgreSQL-oriented reference data-model baseline for a provenance-aware knowledge system. It contains documentation, reference SQL, a small canonical CSV, and executable SQL fixtures; it does not provide an application, API, ingestion service, or production deployment.
+Project Berean is a pre-beta, PostgreSQL-oriented reference data-model baseline for a provenance-aware knowledge system. It contains documentation, reference SQL, a small canonical CSV, and executable PostgreSQL fixtures and validation scripts; it is not yet an application or ingestion service.
 
 The initial implementation uses biblical and historical material as a test domain. Genesis 1–11 is the first substantial validation dataset.
 
@@ -9,7 +9,8 @@ The initial implementation uses biblical and historical material as a test domai
 Berean deliberately distinguishes:
 
 - Source
-- Source Record / Dataset
+- Dataset
+- Source Record
 - Evidence
 - Claim
 - Proposition
@@ -18,11 +19,14 @@ Berean deliberately distinguishes:
 - Relationship
 - Source Entity Mapping
 - Citation / Source Location
+- Derived Knowledge
 
 The fundamental epistemic chain is:
 
 ```text
 Source
+  ↓
+Dataset
   ↓
 Source Record
   ↓
@@ -39,13 +43,15 @@ Entity / Event / Relationship
 
 Current baseline: pre-beta reference data model.
 
-The repository is intentionally structured so that the data model can be reviewed and validated before substantial expansion. See the [developer guide](docs/00-project/DEVELOPER_GUIDE.md) for setup and validation.
+The repository is intentionally structured so that the data model can be reviewed and validated before substantial expansion. See the [developer guide](docs/00-project/DEVELOPER_GUIDE.md) for setup and validation and the [remediation report](docs/07-review/REMEDIATION-REPORT.md) for implemented decisions, deferred work, and limitations.
 
 ## What is implemented
 
-Physical PostgreSQL tables cover source, dataset (the imported edition/container), source record, citation, entity, source identity, reconciliation mapping, event, event participation, typed value, proposition, claim, evidence, claim/evidence relation, claim/claim relation, and derivation. Controlled vocabularies are lookup tables.
+The PostgreSQL reference schema includes controlled vocabularies, source/dataset/source-record provenance, citations, evidence, canonical entities, source identities, reconciliation mappings, events, typed values, propositions, claims, typed Claim–Evidence associations, claim-to-claim relations, and derivation inputs.
 
-Relationships are represented by proposition predicates rather than a separate `relationship` table. Graph edges are a relational projection, not a graph database requirement. Canonical CSV loading and full ingestion workflows remain deferred.
+`event_participation` and `claim_rendering` are views. Event participation is projected from claim-asserted propositions; the proposition is the authoritative semantic representation. Relationships are represented by registered proposition predicates rather than a separate `relationship` table. Graph edges are relational projections, not a graph database requirement.
+
+The Genesis canonical CSV is a non-executable catalog. The SQL fixtures are the executable structural and stress-test data; no copyrighted or fabricated source text is included.
 
 ## Guiding rule
 
