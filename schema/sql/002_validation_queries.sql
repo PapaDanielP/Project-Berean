@@ -28,3 +28,17 @@ FROM proposition p
 WHERE ((p.subject_entity_id IS NOT NULL)::int + (p.subject_event_id IS NOT NULL)::int) <> 1
    OR ((p.object_entity_id IS NOT NULL)::int + (p.object_event_id IS NOT NULL)::int
        + (p.object_typed_value_id IS NOT NULL)::int) <> 1;
+
+-- Propositions whose predicate/term-kind combination is not registered.
+SELECT p.proposition_id
+FROM proposition p
+LEFT JOIN predicate pr ON pr.predicate_code = p.predicate
+                      AND pr.subject_kind_code = p.subject_kind_code
+                      AND pr.object_kind_code = p.object_kind_code
+WHERE pr.predicate_code IS NULL;
+
+-- Active reconciliations that are not auditable.
+SELECT esm.entity_source_mapping_id
+FROM entity_source_mapping esm
+WHERE esm.mapping_status_code = 'ACTIVE'
+  AND (esm.justification IS NULL OR btrim(esm.justification) = '');
