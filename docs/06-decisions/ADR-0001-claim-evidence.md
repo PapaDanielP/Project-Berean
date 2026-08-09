@@ -31,7 +31,8 @@ The association also needs a relationship type.
 - `SUPPORTS`
 - `CONTRADICTS`
 - `QUALIFIES`
-- `DERIVED_FROM`
+
+Derived claims are modeled with `Derivation` and `DerivationInput`, so `DERIVED_FROM` is not an evidential relation type. Claim-to-claim comparisons use the separate `ClaimRelation` table.
 
 ## Consequences
 

@@ -40,7 +40,7 @@
 - **Proposition** = structured semantic content of a claim
 - **Entity** = canonical thing/person/place/concept
 - **Event** = occurrence/process
-- **Relationship** = semantic relation among modeled objects
+- **Relationship** = a semantic proposition predicate (a projection, not a table)
 
 ## Claim/Evidence
 
@@ -70,7 +70,7 @@ Dataset
 Source
 ```
 
-Citation/source-location information belongs with the source-grounded layer.
+Citation/source-location information belongs with the source-grounded layer: `Citation` belongs to `SourceRecord` and is linked to `Evidence`. This supports multiple locators for an evidence record.
 
 ## Reconciliation
 
@@ -98,3 +98,7 @@ SourceRecord → belongsTo → Source
 ```
 
 A graph database is not required merely because the domain is graph-shaped.
+
+## Physical baseline
+
+The reference SQL physically implements the objects in the provenance chain, citation, typed values, event participation, claim relations, derivation, and their controlled vocabularies. It does not implement an application, API, ingestion pipeline, separate relationship table, generalized inference engine, or graph store.
