@@ -3,7 +3,20 @@ set -eu
 
 : "${DATABASE_URL:?Set DATABASE_URL to a PostgreSQL database URL.}"
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$root/schema/sql/001_core_schema.sql"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$root/tests/fixtures/claim-evidence-fixture.sql"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$root/tests/fixtures/negative-integrity-fixture.sql"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$root/scripts/validation/validate.sql"
+
+run() {
+    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$1"
+}
+
+run "$root/schema/sql/001_core_schema.sql"
+
+# Each fixture resets reference-model data, so validation runs once per loaded fixture.
+run "$root/tests/fixtures/010-synthetic-structural-fixture.sql"
+run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
+run "$root/scripts/validation/validate.sql"
+"$root/tests/validation/blocking-cases.sh"
+
+run "$root/tests/fixtures/020-genesis-1-11-fixture.sql"
+run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
+run "$root/scripts/validation/validate.sql"
+"$root/tests/validation/blocking-cases.sh"
