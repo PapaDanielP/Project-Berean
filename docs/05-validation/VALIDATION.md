@@ -33,6 +33,18 @@ A relationship or claim record must not be interpreted as universally true merel
 - Conflict detection
 - Regression testing
 
+## Executable reference validation
+
+With PostgreSQL 16 and an empty disposable database, set `DATABASE_URL` and run:
+
+```sh
+scripts/validation/run-postgres-validation.sh
+```
+
+The script loads the schema and deterministic fixture, executes negative constraint cases, and then runs `scripts/validation/validate.sql`. The validation emits **blocking** exceptions for unsupported non-derived claims, broken provenance, duplicate active mappings, invalid confidence, uncontrolled relations, missing required citations, invalid proposition cardinality, and incomplete derivations. It emits **warnings** for reviewable quality conditions and exits nonzero only for SQL/blocking failures.
+
+The fixture demonstrates shared evidence, multiple evidence for a claim, contrary evidence, competing claims, source-identity reconciliation, asserted event participation, and a derived chronology claim. It is transactional and resets reference-model data; use an isolated test database.
+
 ## Genesis regression
 
 Genesis 1–11 should include tests for:

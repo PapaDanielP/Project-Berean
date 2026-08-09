@@ -1,40 +1,30 @@
--- Berean integrity checks
+-- Read-only diagnostic queries. scripts/validation/validate.sql makes failures blocking.
 
--- Claims without evidence
-SELECT c.claim_id, c.claim_key
+-- Non-derived claims without evidence.
+SELECT c.claim_key
 FROM claim c
-LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
-WHERE ce.claim_id IS NULL;
+WHERE c.claim_type_code <> 'DERIVED_CLAIM'
+  AND NOT EXISTS (SELECT 1 FROM claim_evidence ce WHERE ce.claim_id = c.claim_id);
 
--- Evidence without provenance (should return zero)
-SELECT e.evidence_id, e.evidence_key
+-- Source-observation evidence without a citation.
+SELECT e.evidence_key
 FROM evidence e
-LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
-WHERE sr.source_record_id IS NULL;
+WHERE e.evidence_type_code = 'SOURCE_OBSERVATION'
+  AND NOT EXISTS (SELECT 1 FROM evidence_citation ec WHERE ec.evidence_id = e.evidence_id);
 
--- Broken source-record dataset references
-SELECT sr.source_record_id, sr.source_record_key
-FROM source_record sr
-LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
-WHERE d.dataset_id IS NULL;
+-- Defensive checks for data loaded with constraints disabled.
+SELECT esm.entity_source_mapping_id
+FROM entity_source_mapping esm
+WHERE esm.confidence IS NOT NULL AND esm.confidence NOT BETWEEN 0 AND 1;
 
--- Evidence provenance chain
-SELECT
-    e.evidence_key,
-    sr.source_record_key,
-    d.dataset_key,
-    s.source_key
-FROM evidence e
-JOIN source_record sr ON sr.source_record_id = e.source_record_id
-JOIN dataset d ON d.dataset_id = sr.dataset_id
-JOIN source s ON s.source_id = d.source_id;
+SELECT source_identity_id, entity_id
+FROM entity_source_mapping
+WHERE mapping_status_code = 'ACTIVE'
+GROUP BY source_identity_id, entity_id
+HAVING count(*) > 1;
 
--- Claims with contradictory evidence
-SELECT
-    c.claim_key,
-    ce.relation_type,
-    e.evidence_key
-FROM claim c
-JOIN claim_evidence ce ON ce.claim_id = c.claim_id
-JOIN evidence e ON e.evidence_id = ce.evidence_id
-WHERE ce.relation_type = 'CONTRADICTS';
+SELECT p.proposition_id
+FROM proposition p
+WHERE ((p.subject_entity_id IS NOT NULL)::int + (p.subject_event_id IS NOT NULL)::int) <> 1
+   OR ((p.object_entity_id IS NOT NULL)::int + (p.object_event_id IS NOT NULL)::int
+       + (p.object_typed_value_id IS NOT NULL)::int) <> 1;

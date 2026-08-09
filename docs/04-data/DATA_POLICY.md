@@ -20,6 +20,12 @@ Claims should express propositions that can be evaluated.
 
 If a claim requires calculation, interpretation, reconciliation, or assumptions beyond an explicit source statement, record that distinction.
 
+The reference schema requires a derived claim to link to a derivation containing its method, assumptions, and at least one input during validation.
+
+## Imported record revisions
+
+Treat source records as append-only imports. Record the imported content hash and revision metadata, and link a replacement record to the record it supersedes rather than mutating source text in place.
+
 ## Conflicts
 
 Conflicting claims remain representable simultaneously.

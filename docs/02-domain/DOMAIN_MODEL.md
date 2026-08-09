@@ -16,6 +16,10 @@ A reconciliation assertion connecting a source identity to a canonical entity.
 
 An occurrence or process involving entities and/or other events.
 
+## Event Participation
+
+An entity's controlled role in an event. Participation is not an unqualified fact: each physical participation row names the Claim that asserts it.
+
 ## Relationship
 
 A semantic relation such as `fatherOf`, `motherOf`, `locatedAt`, `participatesIn`, or `precedes`.
@@ -61,6 +65,14 @@ A structured representation of source material used for ingestion or analysis.
 ## Citation / Source Location
 
 A locator identifying the relevant position within a source, such as a book/chapter/verse, page, section, record ID, URL, or document offset.
+
+## Typed Value
+
+A typed proposition object for text, numbers/years, dates, or durations. Numeric values can carry lower and upper uncertainty bounds; this baseline does not encode all values as text.
+
+## Derivation
+
+The method, assumptions, and explicit claim/evidence inputs used by a derived claim. It is deliberately not a generalized rule engine.
 
 ## Key semantic rule
 
