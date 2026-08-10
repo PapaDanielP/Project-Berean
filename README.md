@@ -58,3 +58,9 @@ The Genesis canonical CSV is a non-executable catalog. The SQL fixtures are the 
 Do not treat a represented claim as automatically true.
 
 Source statements, evidence, claims, interpretations, and derived propositions must retain their provenance and epistemic distinctions.
+
+## Read-only web explorer (MVP)
+
+A first read-only web exploration layer is included in this repository. It consumes the existing PostgreSQL reference schema directly (no duplicate authoritative store) and provides search plus provenance-oriented detail views for entities, claims, propositions, evidence, events, and source chain browsing.
+
+See `docs/00-project/DEVELOPER_GUIDE.md` for setup and validation commands.

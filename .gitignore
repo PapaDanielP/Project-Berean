@@ -1,2 +1,6 @@
 # Untracked acquisition workspace for external sources that must not be redistributed.
 .acquired/
+
+# Node app artifacts
+node_modules/
+dist/

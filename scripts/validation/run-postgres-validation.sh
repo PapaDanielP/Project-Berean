@@ -29,6 +29,12 @@ run "$root/tests/validation/phase9-coverage-report.sql"
 run "$root/tests/validation/genesis-1-20-31-slice.sql"
 run "$root/tests/validation/phase10-coverage-report.sql"
 
+# Phase 11 bounded object/artifact entity slice: extends the Genesis 1-11 fixture in place with
+# the source-backed noahs_ark OBJECT entity, then adds the validation-only ark_of_covenant entity.
+run "$root/tests/fixtures/050-phase11-object-entity-fixture.sql"
+run "$root/tests/validation/phase11-object-entity-slice.sql"
+run "$root/tests/validation/phase11-coverage-report.sql"
+
 # Bounded STEP Bible acquisition: manifest integrity offline, then the imported Genesis subset.
 "$root/tests/validation/stepbible-acquisition-manifest.sh"
 run "$root/tests/fixtures/040-stepbible-genesis-source-fixture.sql"
