@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
-\echo 'Phase 9 Genesis 1-11 chapter coverage'
+\echo 'Phase 10 Genesis 1-11 chapter coverage (structural/source-backed; not semantic completeness)'
 WITH chapters AS (
     SELECT generate_series(1, 11) AS chapter
 ),
@@ -65,7 +65,7 @@ FROM chapters ch
 LEFT JOIN coverage c ON c.chapter = ch.chapter
 ORDER BY ch.chapter;
 
-\echo 'Phase 9 Genesis 1 verse coverage (1:14-19 boundary detail)'
+\echo 'Phase 10 Genesis 1 verse coverage (1:20-31 boundary detail)'
 SELECT substring(sr.source_location FROM ':([0-9]+)$')::int AS verse,
        sr.source_record_key,
        count(DISTINCT cl.claim_id) AS claims,
@@ -76,8 +76,11 @@ LEFT JOIN evidence e ON e.source_record_id = sr.source_record_id
 LEFT JOIN claim_evidence ce ON ce.evidence_id = e.evidence_id
 LEFT JOIN claim cl ON cl.claim_id = ce.claim_id
 WHERE d.dataset_key = 'GEN_MT_REF'
-  AND sr.source_record_key IN ('MT_GEN_1_14', 'MT_GEN_1_15', 'MT_GEN_1_16',
-                                'MT_GEN_1_17', 'MT_GEN_1_18', 'MT_GEN_1_19')
+  AND sr.source_record_key IN (
+      'MT_GEN_1_20', 'MT_GEN_1_21', 'MT_GEN_1_22', 'MT_GEN_1_23',
+      'MT_GEN_1_24', 'MT_GEN_1_25', 'MT_GEN_1_26', 'MT_GEN_1_27',
+      'MT_GEN_1_28', 'MT_GEN_1_29', 'MT_GEN_1_30', 'MT_GEN_1_31'
+  )
 GROUP BY sr.source_record_key, sr.source_location
 ORDER BY verse;
 
@@ -86,19 +89,21 @@ BEGIN
     IF (
         SELECT count(*)
         FROM source_record
-        WHERE source_record_key IN ('MT_GEN_1_14', 'MT_GEN_1_15', 'MT_GEN_1_16',
-                                     'MT_GEN_1_17', 'MT_GEN_1_18', 'MT_GEN_1_19')
-    ) <> 6 THEN
-        RAISE EXCEPTION 'phase9 coverage: Genesis 1:14-19 batch is absent';
+        WHERE source_record_key IN (
+            'MT_GEN_1_20', 'MT_GEN_1_21', 'MT_GEN_1_22', 'MT_GEN_1_23',
+            'MT_GEN_1_24', 'MT_GEN_1_25', 'MT_GEN_1_26', 'MT_GEN_1_27',
+            'MT_GEN_1_28', 'MT_GEN_1_29', 'MT_GEN_1_30', 'MT_GEN_1_31'
+        )
+    ) <> 12 THEN
+        RAISE EXCEPTION 'phase10 coverage: Genesis 1:20-31 batch is absent';
     END IF;
 
-    -- Regression boundary check: chapter 1 remains structurally bounded to verses 1-31.
     IF EXISTS (
         SELECT 1
         FROM source_record
         WHERE source_record_key LIKE 'MT_GEN_1\_%' ESCAPE '\'
           AND substring(source_location FROM ':([0-9]+)$')::int > 31
     ) THEN
-        RAISE EXCEPTION 'phase9 coverage: Genesis 1 structural range must remain bounded to verses 1-31';
+        RAISE EXCEPTION 'phase10 coverage: Genesis 1 structural range must remain bounded to verses 1-31';
     END IF;
 END $$;
