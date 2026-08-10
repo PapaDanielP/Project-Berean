@@ -85,6 +85,20 @@ run "$root/tests/validation/phase17-coverage-report.sql"
 "$root/tests/validation/phase17-negative-cases.sh"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 18 tests whether the existing generic architecture -- unextended, with no new
+# event_type and no new predicate -- can represent the source-backed Joshua 3:6 Ark-of-the-
+# Covenant transport/handling occurrence (Joshua's instruction to the priests, and the
+# priests' completed carrying of the ark before the people), while preserving the Phase 17
+# Exodus 25:15 standing requirement and never inferring compliance from it. The existing
+# generic OTHER event_type and subjectOf/participatesIn predicates proved sufficient; no
+# registry extension was added. Loaded last so earlier phases' bounded coverage/deferral
+# checks, including Phase 17's own, are unaffected.
+run "$root/tests/fixtures/080-phase18-ark-transport-fixture.sql"
+run "$root/tests/validation/phase18-ark-transport-slice.sql"
+run "$root/tests/validation/phase18-coverage-report.sql"
+"$root/tests/validation/phase18-negative-cases.sh"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
