@@ -99,6 +99,19 @@ run "$root/tests/validation/phase18-coverage-report.sql"
 "$root/tests/validation/phase18-negative-cases.sh"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 19 tests the source-backed 2 Samuel 6:3-7 Ark lifecycle conflict/handling/
+# consequence slice after Phase 18, using the existing generic OTHER/DEATH event types
+# and subjectOf/participatesIn predicates. It records the Ark on a new cart, Uzzah's
+# source-recorded physical interaction with the Ark, and Uzzah's death as an observed
+# consequence, while preserving Exodus 25:15 and Joshua 3:6 semantics and never
+# inferring compliance, violation, causation, or contradiction. No registry/schema
+# extension is added.
+run "$root/tests/fixtures/090-phase19-ark-lifecycle-conflict-fixture.sql"
+run "$root/tests/validation/phase19-ark-lifecycle-conflict-slice.sql"
+run "$root/tests/validation/phase19-coverage-report.sql"
+"$root/tests/validation/phase19-negative-cases.sh"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
