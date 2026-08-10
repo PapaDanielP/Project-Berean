@@ -117,11 +117,9 @@ run "$root/tests/validation/phase19-coverage-report.sql"
 "$root/tests/validation/phase19-negative-cases.sh"
 run "$root/scripts/validation/validate.sql"
 
-# Phase 24 tests whether the existing generic architecture can represent the bounded
-# 1 Kings 8 / 2 Chronicles 5 temple-placement slice for the Ark of the Covenant while
-# preserving cross-source bearer wording differences, reusing canonical Ark/poles/bearer
-# entities, and adding only one justified cross-source derivation for the shared
-# pole-visibility observation. No schema, registry, route, or repository extension is added.
+# Phase 24 builds an inspectable real-knowledge demonstration over the existing Ark/Genesis-to-Israel substrate.
+# It adds only scoped fixture data, read-only demonstrations, and validation; no schema, registry,
+# persistence, semantic-engine, evaluator, or endpoint mutation is introduced.
 run "$root/tests/fixtures/100-phase24-berean-in-action-fixture.sql"
 run "$root/tests/validation/phase24-berean-in-action-slice.sql"
 run "$root/tests/validation/phase24-coverage-report.sql"

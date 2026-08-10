@@ -445,6 +445,53 @@ describe('read-only API', () => {
     }
   });
 
+  it('explains Phase 24 temple-placement provenance and source comparison without mutation', async () => {
+    const claimId = await getClaimIdByKey('CLAIM_1KI_ARK_SUBJECT_TEMPLE_PLACEMENT');
+    const propositionId = await getPropositionIdByClaimKey('CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION');
+    const before = await snapshotPersistentTableCounts();
+    const claimResponse = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+    const propositionResponse = await request(app).get('/api/provenance/explain').query({ proposition_id: propositionId });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(claimResponse.status).toBe(200);
+    expect(propositionResponse.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(claimResponse.body.claims[0].provenance_status).toBe('SOURCE-BACKED');
+    expect(claimResponse.body.claims[0].source.some((source: { source_key: string }) => source.source_key === '1KI_MT')).toBe(true);
+    expect(claimResponse.body.claims[0].source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
+    expect(claimResponse.body.claims[0].citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
+    expect(propositionResponse.body.claims.map((claim: { claim: { claim_key: string } }) => claim.claim.claim_key)).toEqual(
+      expect.arrayContaining([
+        'CLAIM_ARK_COVENANT_CONTAINS_TESTIMONY',
+        'CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION',
+        'CLAIM_2CH_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION',
+        'CLAIM_XSRC_ARK_CONTAINS_TABLETS_TEMPLE_SHARED_DERIVED'
+      ])
+    );
+  });
+
+  it('checks the Phase 24 cross-source derived claim structurally without interpreting it as truth', async () => {
+    const derivationId = await getDerivationIdByClaimKey('CLAIM_XSRC_ARK_CONTAINS_TABLETS_TEMPLE_SHARED_DERIVED');
+    const before = await snapshotPersistentTableCounts();
+    const response = await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: derivationId });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(response.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(response.body.structurally_eligible).toBe(true);
+    expect(response.body.read_only).toBe(true);
+    expect(response.body.license_status).toBe('REQUIRES_HUMAN_METHOD_JUSTIFICATION');
+    expect(response.body.derivation.assumptions).toContain('does not infer exhaustive inventory, truth, source silence, or contradiction');
+    expect(response.body.derived_claim.claim_key).toBe('CLAIM_XSRC_ARK_CONTAINS_TABLETS_TEMPLE_SHARED_DERIVED');
+    expect(response.body.input_status.map((input: { input_claim_key: string }) => input.input_claim_key)).toEqual(
+      expect.arrayContaining([
+        'CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION',
+        'CLAIM_2CH_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION'
+      ])
+    );
+    expect(response.body.limitations).toContain('Structural eligibility is not logical entailment.');
+  });
+
   it('returns 400 for invalid eligibility input and 404 for a missing derivation', async () => {
     expect((await request(app).get('/api/derivations/check-eligibility')).status).toBe(400);
     expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: '' })).status).toBe(400);
