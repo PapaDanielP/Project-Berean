@@ -18,6 +18,8 @@ run "$root/scripts/validation/validate.sql"
 
 run "$root/tests/fixtures/020-genesis-1-11-fixture.sql"
 run "$root/tests/validation/genesis-1-1-5-slice.sql"
+run "$root/tests/validation/phase6-regression.sql"
+run "$root/tests/validation/phase6-coverage-report.sql"
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
