@@ -660,36 +660,20 @@ export class BereanRepository {
     );
     if (!derivationResult.rowCount) return null;
     const derivation = derivationResult.rows[0];
-    check('DERIVATION_EXISTS', 'PASS', 'The requested Derivation row exists.');
-    check('METHOD_PRESENT', String(derivation.method).trim() ? 'PASS' : 'FAIL',
-      String(derivation.method).trim() ? 'Method metadata is present.' : 'Method metadata is blank.');
-    check('ASSUMPTIONS_PRESENT', String(derivation.assumptions).trim() ? 'PASS' : 'FAIL',
-      String(derivation.assumptions).trim() ? 'Assumptions metadata is present.' : 'Assumptions metadata is blank.');
 
     const claimResult = await this.pool.query(
       `SELECT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement, c.notes,
-              c.derivation_id, c.proposition_id, p.predicate, p.subject_kind_code, p.object_kind_code,
-              pr.predicate_code AS registered_predicate_code
+              c.derivation_id, p.proposition_id AS target_proposition_id, p.predicate,
+              p.subject_kind_code, p.object_kind_code, pr.predicate_code AS registered_predicate_code,
+              pr.subject_kind_code AS registered_subject_kind_code,
+              pr.object_kind_code AS registered_object_kind_code
        FROM claim c
        LEFT JOIN proposition p ON p.proposition_id = c.proposition_id
        LEFT JOIN predicate pr ON pr.predicate_code = p.predicate
-           AND pr.subject_kind_code = p.subject_kind_code AND pr.object_kind_code = p.object_kind_code
        WHERE c.derivation_id = $1`,
       [derivationId]
     );
     const claim = claimResult.rows[0] ?? null;
-    check('DERIVED_CLAIM_EXISTS', claim ? 'PASS' : 'FAIL',
-      claim ? 'A Claim is linked to this Derivation.' : 'No Claim is linked to this Derivation.');
-    check('DERIVED_CLAIM_TYPE_VALID', !claim ? 'NOT_APPLICABLE' : claim.claim_type_code === 'DERIVED_CLAIM' ? 'PASS' : 'FAIL',
-      !claim ? 'No linked Claim is available to inspect.' : 'The linked Claim type was inspected.');
-    check('DERIVATION_LINK_VALID', !claim ? 'NOT_APPLICABLE' : Number(claim.derivation_id) === derivationId ? 'PASS' : 'FAIL',
-      !claim ? 'No linked Claim is available to inspect.' : 'The linked Claim derivation reference was inspected.');
-    check('TARGET_PROPOSITION_EXISTS', !claim ? 'NOT_APPLICABLE' : claim.predicate ? 'PASS' : 'FAIL',
-      !claim ? 'No linked Claim is available to inspect.' : 'The linked Claim target Proposition was inspected.');
-    check('TARGET_PREDICATE_VALID', !claim || !claim.predicate ? 'NOT_APPLICABLE' : claim.registered_predicate_code ? 'PASS' : 'FAIL',
-      !claim || !claim.predicate ? 'No target Proposition is available to inspect.' : 'The target predicate registry entry was inspected.');
-    check('TARGET_TERM_KINDS_VALID', !claim || !claim.predicate ? 'NOT_APPLICABLE' : claim.registered_predicate_code ? 'PASS' : 'FAIL',
-      !claim || !claim.predicate ? 'No target Proposition is available to inspect.' : 'The target Proposition term kinds were checked against the registry.');
 
     const inputsResult = await this.pool.query(
       `SELECT di.derivation_input_id, di.notes, di.input_claim_id, ic.claim_key AS input_claim_key,
@@ -700,8 +684,6 @@ export class BereanRepository {
        WHERE di.derivation_id = $1 ORDER BY di.derivation_input_id`,
       [derivationId]
     );
-    check('DERIVATION_INPUT_EXISTS', inputsResult.rowCount ? 'PASS' : 'FAIL',
-      inputsResult.rowCount ? 'At least one DerivationInput row exists.' : 'No DerivationInput rows exist.');
     const inputStatus = [];
 
     for (const input of inputsResult.rows) {
@@ -738,23 +720,54 @@ export class BereanRepository {
         input_kind: hasClaim ? 'CLAIM' : hasEvidence ? 'EVIDENCE' : null,
         input_claim_id: input.input_claim_id, input_claim_key: input.input_claim_key,
         input_evidence_id: input.input_evidence_id, input_evidence_key: input.input_evidence_key,
+        kind_valid: kindValid, reference_valid: referenceValid,
         provenance_structurally_complete: provenanceComplete, self_input: selfInput, notes: input.notes
       });
-      check('DERIVATION_INPUT_KIND_VALID', kindValid ? 'PASS' : 'FAIL',
-        `DerivationInput ${input.derivation_input_id} input kind was inspected.`);
-      check('DERIVATION_INPUT_REFERENCE_VALID', referenceValid ? 'PASS' : 'FAIL',
-        `DerivationInput ${input.derivation_input_id} reference was inspected.`);
-      check('INPUT_PROVENANCE_STRUCTURALLY_COMPLETE', !referenceValid ? 'NOT_APPLICABLE' : provenanceComplete ? 'PASS' : 'FAIL',
-        `DerivationInput ${input.derivation_input_id} provenance structure was inspected.`);
-      check('SELF_INPUT_ABSENT', selfInput ? 'FAIL' : 'PASS',
-        `DerivationInput ${input.derivation_input_id} self-reference was inspected.`);
     }
-    if (!inputsResult.rowCount) {
-      for (const id of ['DERIVATION_INPUT_KIND_VALID', 'DERIVATION_INPUT_REFERENCE_VALID',
-        'INPUT_PROVENANCE_STRUCTURALLY_COMPLETE', 'SELF_INPUT_ABSENT']) {
-        check(id, 'NOT_APPLICABLE', 'No DerivationInput row is available to inspect.');
-      }
-    }
+
+    const hasInputs = inputStatus.length > 0;
+    const validReferences = inputStatus.filter((input) => input.reference_valid);
+    const targetExists = Boolean(claim?.target_proposition_id);
+    const predicateValid = Boolean(claim?.registered_predicate_code);
+    const termKindsValid = predicateValid
+      && claim.subject_kind_code === claim.registered_subject_kind_code
+      && claim.object_kind_code === claim.registered_object_kind_code;
+
+    check('DERIVATION_EXISTS', 'PASS', 'The requested Derivation row exists.');
+    check('DERIVED_CLAIM_EXISTS', claim ? 'PASS' : 'FAIL',
+      claim ? 'A Claim is linked to this Derivation.' : 'No Claim is linked to this Derivation.');
+    check('DERIVED_CLAIM_TYPE_VALID', !claim ? 'NOT_APPLICABLE' : claim.claim_type_code === 'DERIVED_CLAIM' ? 'PASS' : 'FAIL',
+      !claim ? 'No linked Claim is available to inspect.' : 'The linked Claim type was inspected.');
+    check('DERIVATION_LINK_VALID', !claim ? 'NOT_APPLICABLE' : Number(claim.derivation_id) === derivationId ? 'PASS' : 'FAIL',
+      !claim ? 'No linked Claim is available to inspect.' : 'The linked Claim derivation reference was inspected.');
+    check('METHOD_PRESENT', String(derivation.method).trim() ? 'PASS' : 'FAIL',
+      String(derivation.method).trim() ? 'Method metadata is present.' : 'Method metadata is blank.');
+    check('ASSUMPTIONS_PRESENT', String(derivation.assumptions).trim() ? 'PASS' : 'FAIL',
+      String(derivation.assumptions).trim() ? 'Assumptions metadata is present.' : 'Assumptions metadata is blank.');
+    check('DERIVATION_INPUT_EXISTS', hasInputs ? 'PASS' : 'FAIL',
+      hasInputs ? 'At least one DerivationInput row exists.' : 'No DerivationInput rows exist.');
+    check('DERIVATION_INPUT_KIND_VALID', !hasInputs ? 'NOT_APPLICABLE'
+      : inputStatus.every((input) => input.kind_valid) ? 'PASS' : 'FAIL',
+    hasInputs ? 'All DerivationInput kinds were inspected.' : 'No DerivationInput row is available to inspect.');
+    check('DERIVATION_INPUT_REFERENCE_VALID', !hasInputs ? 'NOT_APPLICABLE'
+      : validReferences.length === inputStatus.length ? 'PASS' : 'FAIL',
+    hasInputs ? 'All DerivationInput references were inspected.' : 'No DerivationInput row is available to inspect.');
+    check('INPUT_PROVENANCE_STRUCTURALLY_COMPLETE', validReferences.length === 0 ? 'NOT_APPLICABLE'
+      : validReferences.every((input) => input.provenance_structurally_complete) ? 'PASS' : 'FAIL',
+    validReferences.length
+      ? 'All valid DerivationInput references were inspected through their structural provenance chains.'
+      : 'No valid DerivationInput reference is available to inspect.');
+    check('SELF_INPUT_ABSENT', !hasInputs ? 'NOT_APPLICABLE'
+      : inputStatus.every((input) => !input.self_input) ? 'PASS' : 'FAIL',
+    hasInputs ? 'All DerivationInput rows were inspected for self-reference.' : 'No DerivationInput row is available to inspect.');
+    check('TARGET_PROPOSITION_EXISTS', !claim ? 'NOT_APPLICABLE' : targetExists ? 'PASS' : 'FAIL',
+      !claim ? 'No linked Claim is available to inspect.' : 'The linked Claim target Proposition was inspected.');
+    check('TARGET_PREDICATE_VALID', !targetExists ? 'NOT_APPLICABLE' : predicateValid ? 'PASS' : 'FAIL',
+      !targetExists ? 'No target Proposition is available to inspect.' : 'The target predicate registry entry was inspected.');
+    check('TARGET_TERM_KINDS_VALID', !targetExists || !predicateValid ? 'NOT_APPLICABLE' : termKindsValid ? 'PASS' : 'FAIL',
+      !targetExists || !predicateValid
+        ? 'No registered target predicate is available for term-kind inspection.'
+        : 'The target Proposition term kinds were checked against the registry.');
 
     return {
       operation: 'CHECK_DERIVATION_ELIGIBILITY',
@@ -763,14 +776,18 @@ export class BereanRepository {
         claim_id: claim.claim_id, claim_key: claim.claim_key, claim_type_code: claim.claim_type_code,
         claim_status_code: claim.claim_status_code, statement: claim.statement, notes: claim.notes
       } : null,
-      target_proposition: claim?.predicate ? {
-        proposition_id: claim.proposition_id, predicate: claim.predicate,
+      target_proposition: claim?.target_proposition_id ? {
+        proposition_id: claim.target_proposition_id, predicate: claim.predicate,
         subject_kind_code: claim.subject_kind_code, object_kind_code: claim.object_kind_code
       } : null,
       input_status: inputStatus,
       checks,
       structurally_eligible: checks.every((entry) => entry.status !== 'FAIL'),
       license_status: 'REQUIRES_HUMAN_METHOD_JUSTIFICATION',
+      read_only: true,
+      explanation: checks.some((entry) => entry.status === 'FAIL')
+        ? 'The stored derivation has one or more structural eligibility failures.'
+        : 'The stored derivation satisfies every applicable structural eligibility check.',
       limitations: [
         'Structural eligibility is not logical entailment.',
         'Method and assumptions are returned as stored metadata without semantic interpretation.',

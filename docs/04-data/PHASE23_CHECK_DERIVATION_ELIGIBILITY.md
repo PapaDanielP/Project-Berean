@@ -20,7 +20,8 @@ structural provenance chains. It reuses the Phase 21 source-chain shape:
 
 ## Output
 
-The response contains `structurally_eligible`, `checks`, `input_status`, stored
+The response contains `structurally_eligible`, `checks` with one aggregate result for
+each stable check ID, `input_status`, `read_only`, `explanation`, `limitations`, stored
 Derivation/Claim/Proposition metadata, and:
 
 `license_status: REQUIRES_HUMAN_METHOD_JUSTIFICATION`
