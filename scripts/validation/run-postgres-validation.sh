@@ -106,6 +106,11 @@ run "$root/scripts/validation/validate.sql"
 # consequence, while preserving Exodus 25:15 and Joshua 3:6 semantics and never
 # inferring compliance, violation, causation, or contradiction. No registry/schema
 # extension is added.
+# Phase 19 tests whether the existing generic architecture can represent the bounded
+# 2 Samuel 6:3-7 Ark lifecycle conflict/handling slice -- Ark transport on a new cart,
+# Uzzah's source-recorded physical interaction with the Ark, and Uzzah's death -- without
+# inferring Exodus 25:15 violation/compliance, causation, or contradiction with Joshua 3:6.
+# No registry, schema, table, JSON payload, or ClaimRelation extension is added.
 run "$root/tests/fixtures/090-phase19-ark-lifecycle-conflict-fixture.sql"
 run "$root/tests/validation/phase19-ark-lifecycle-conflict-slice.sql"
 run "$root/tests/validation/phase19-coverage-report.sql"
