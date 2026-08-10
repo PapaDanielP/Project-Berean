@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import type { GraphEdge, GraphNode, SearchResult } from './types.js';
+import type { ExplainProvenanceInput, GraphEdge, GraphNode, SearchResult } from './types.js';
 
 const boundedLimit = (value: number | undefined, fallback: number, max: number): number => {
   if (!value || Number.isNaN(value)) return fallback;
@@ -353,6 +353,299 @@ export class BereanRepository {
     );
 
     return { claimId, traversal: result.rows };
+  }
+
+  async explainProvenance(input: ExplainProvenanceInput): Promise<Record<string, unknown> | null> {
+    const resolutionScope = input.claimId ? 'CLAIM' : 'PROPOSITION';
+    const propositionLookupId = input.propositionId ?? null;
+    const claimLookupId = input.claimId ?? null;
+    const gapSet = new Set<string>();
+    const dedupeRows = <T extends { [key: string]: unknown }>(rows: T[], key: keyof T): T[] => {
+      const seen = new Set<string>();
+      return rows.filter((row) => {
+        const value = String(row[key] ?? '');
+        if (seen.has(value)) return false;
+        seen.add(value);
+        return true;
+      });
+    };
+
+    const propositionResult = await this.pool.query(
+      `SELECT p.proposition_id, p.predicate,
+              pr.description AS predicate_description,
+              pr.subject_kind_code, pr.object_kind_code, pr.event_participation_role_code,
+              p.subject_entity_id, se.entity_key AS subject_entity_key, se.canonical_name AS subject_entity_name,
+              p.subject_event_id, sv.event_key AS subject_event_key, sv.event_type_code AS subject_event_type_code,
+              p.object_entity_id, oe.entity_key AS object_entity_key, oe.canonical_name AS object_entity_name,
+              p.object_event_id, ov.event_key AS object_event_key, ov.event_type_code AS object_event_type_code,
+              p.object_typed_value_id, tv.value_type_code, tv.text_value, tv.numeric_value, tv.date_value, tv.duration_value
+       FROM proposition p
+       JOIN predicate pr ON pr.predicate_code = p.predicate
+       LEFT JOIN entity se ON se.entity_id = p.subject_entity_id
+       LEFT JOIN event sv ON sv.event_id = p.subject_event_id
+       LEFT JOIN entity oe ON oe.entity_id = p.object_entity_id
+       LEFT JOIN event ov ON ov.event_id = p.object_event_id
+       LEFT JOIN typed_value tv ON tv.typed_value_id = p.object_typed_value_id
+       WHERE p.proposition_id = COALESCE($1, (SELECT proposition_id FROM claim WHERE claim_id = $2))`,
+      [propositionLookupId, claimLookupId]
+    );
+
+    if (!propositionResult.rowCount) return null;
+
+    const proposition = propositionResult.rows[0];
+    const claimsResult = await this.pool.query(
+      `SELECT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement, c.notes, c.derivation_id
+       FROM claim c
+       WHERE c.proposition_id = $1
+         AND ($2::bigint IS NULL OR c.claim_id = $2)
+       ORDER BY c.claim_id`,
+      [proposition.proposition_id, claimLookupId]
+    );
+
+    if (resolutionScope === 'PROPOSITION' && !claimsResult.rowCount) {
+      gapSet.add('MISSING_PROPOSITION_CLAIM');
+    }
+
+    const claims = [];
+
+    for (const claim of claimsResult.rows) {
+      const claimGaps = new Set<string>();
+      const evidenceTraversal = await this.pool.query(
+        `SELECT ce.claim_evidence_id, ce.relation_type_code, ce.notes AS claim_evidence_notes,
+                e.evidence_id, e.evidence_key, e.evidence_type_code, e.observation, e.notes AS evidence_notes,
+                ec.citation_id AS linked_citation_id,
+                ci.citation_key, ci.locator, ci.quoted_text,
+                sr.source_record_id, sr.source_record_key, sr.source_location, sr.raw_content, sr.content_hash,
+                d.dataset_id, d.dataset_key, d.name AS dataset_name,
+                s.source_id, s.source_key, s.name AS source_name, s.source_type_code
+         FROM claim c
+         LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
+         LEFT JOIN evidence e ON e.evidence_id = ce.evidence_id
+         LEFT JOIN evidence_citation ec ON ec.evidence_id = e.evidence_id
+         LEFT JOIN citation ci ON ci.citation_id = ec.citation_id
+         LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
+         LEFT JOIN source s ON s.source_id = d.source_id
+         WHERE c.claim_id = $1
+         ORDER BY e.evidence_id, ci.citation_id`,
+        [claim.claim_id]
+      );
+
+      if (!evidenceTraversal.rowCount || evidenceTraversal.rows.every((row) => row.claim_evidence_id === null)) {
+        claimGaps.add('MISSING_CLAIM_EVIDENCE');
+      }
+
+      const sourceChain = evidenceTraversal.rows
+        .filter((row) => row.evidence_id !== null)
+        .map((row) => ({
+          claim_id: claim.claim_id,
+          evidence_id: row.evidence_id,
+          citation_id: row.linked_citation_id,
+          source_record_id: row.source_record_id,
+          dataset_id: row.dataset_id,
+          source_id: row.source_id
+        }));
+
+      const supportingEvidence = dedupeRows(
+        evidenceTraversal.rows
+          .filter((row) => row.evidence_id !== null)
+          .map((row) => ({
+            evidence_id: row.evidence_id,
+            evidence_key: row.evidence_key,
+            evidence_type_code: row.evidence_type_code,
+            relation_type_code: row.relation_type_code,
+            observation: row.observation,
+            notes: row.evidence_notes
+          })),
+        'evidence_id'
+      );
+
+      const citations = dedupeRows(
+        evidenceTraversal.rows
+          .filter((row) => row.linked_citation_id !== null)
+          .map((row) => ({
+            citation_id: row.linked_citation_id,
+            citation_key: row.citation_key,
+            locator: row.locator,
+            quoted_text: row.quoted_text,
+            quoted_text_status: row.quoted_text === null ? 'NOT_STORED_BY_POLICY' : 'STORED'
+          })),
+        'citation_id'
+      );
+
+      const sourceRecords = dedupeRows(
+        evidenceTraversal.rows
+          .filter((row) => row.source_record_id !== null)
+          .map((row) => ({
+            source_record_id: row.source_record_id,
+            source_record_key: row.source_record_key,
+            source_location: row.source_location,
+            raw_content: row.raw_content,
+            content_hash: row.content_hash,
+            raw_content_status: row.raw_content === null ? 'NOT_STORED_BY_POLICY' : 'STORED'
+          })),
+        'source_record_id'
+      );
+
+      const datasets = dedupeRows(
+        evidenceTraversal.rows
+          .filter((row) => row.dataset_id !== null)
+          .map((row) => ({
+            dataset_id: row.dataset_id,
+            dataset_key: row.dataset_key,
+            dataset_name: row.dataset_name
+          })),
+        'dataset_id'
+      );
+
+      const sources = dedupeRows(
+        evidenceTraversal.rows
+          .filter((row) => row.source_id !== null)
+          .map((row) => ({
+            source_id: row.source_id,
+            source_key: row.source_key,
+            source_name: row.source_name,
+            source_type_code: row.source_type_code
+          })),
+        'source_id'
+      );
+
+      for (const row of evidenceTraversal.rows.filter((entry) => entry.evidence_id !== null)) {
+        if (row.linked_citation_id === null) claimGaps.add('MISSING_CITATION');
+        if (row.source_record_id === null) claimGaps.add('MISSING_SOURCE_RECORD');
+        if (row.dataset_id === null) claimGaps.add('MISSING_DATASET');
+        if (row.source_id === null) claimGaps.add('MISSING_SOURCE');
+      }
+
+      const projectedRelationshipsResult = await this.pool.query(
+        `SELECT ep.asserting_claim_id, ep.role_code, ev.event_id, ev.event_key, ev.event_type_code,
+                en.entity_id, en.entity_key, en.canonical_name
+         FROM event_participation ep
+         JOIN event ev ON ev.event_id = ep.event_id
+         JOIN entity en ON en.entity_id = ep.entity_id
+         WHERE ep.asserting_claim_id = $1
+         ORDER BY ev.event_id, en.entity_id`,
+        [claim.claim_id]
+      );
+
+      if (proposition.event_participation_role_code && !projectedRelationshipsResult.rowCount) {
+        claimGaps.add('MISSING_PROJECTED_RELATIONSHIP');
+      }
+
+      let derivation: Record<string, unknown> | null = null;
+      let derivationInputs: Record<string, unknown>[] = [];
+
+      if (claim.claim_type_code === 'DERIVED_CLAIM') {
+        if (!claim.derivation_id) {
+          claimGaps.add('MISSING_DERIVATION');
+        } else {
+          const derivationResult = await this.pool.query(
+            `SELECT derivation_id, method, assumptions, created_at
+             FROM derivation
+             WHERE derivation_id = $1`,
+            [claim.derivation_id]
+          );
+          derivation = derivationResult.rows[0] ?? null;
+          if (!derivation) {
+            claimGaps.add('MISSING_DERIVATION');
+          }
+
+          const inputsResult = await this.pool.query(
+            `SELECT di.derivation_input_id, di.notes,
+                    di.input_claim_id, ic.claim_key AS input_claim_key,
+                    di.input_evidence_id, ie.evidence_key AS input_evidence_key
+             FROM derivation_input di
+             LEFT JOIN claim ic ON ic.claim_id = di.input_claim_id
+             LEFT JOIN evidence ie ON ie.evidence_id = di.input_evidence_id
+             WHERE di.derivation_id = $1
+             ORDER BY di.derivation_input_id`,
+            [claim.derivation_id]
+          );
+          derivationInputs = inputsResult.rows;
+
+          if (!inputsResult.rowCount) {
+            claimGaps.add('MISSING_DERIVATION_INPUT');
+          }
+
+          for (const inputRow of inputsResult.rows) {
+            const hasClaimInput = inputRow.input_claim_id !== null;
+            const hasEvidenceInput = inputRow.input_evidence_id !== null;
+            if (hasClaimInput === hasEvidenceInput) {
+              claimGaps.add('INVALID_DERIVATION_INPUT');
+            }
+            if (inputRow.input_claim_id === claim.claim_id) {
+              claimGaps.add('SELF_INPUT_DERIVATION');
+            }
+            if (hasClaimInput && inputRow.input_claim_key === null) {
+              claimGaps.add('INVALID_DERIVATION_INPUT');
+            }
+            if (hasEvidenceInput && inputRow.input_evidence_key === null) {
+              claimGaps.add('INVALID_DERIVATION_INPUT');
+            }
+          }
+        }
+      }
+
+      const structuralGaps = Array.from(claimGaps);
+      for (const gap of structuralGaps) gapSet.add(gap);
+
+      const provenanceStatus =
+        claim.claim_type_code === 'DIRECT_SOURCE_CLAIM'
+          ? structuralGaps.length
+            ? 'SOURCE-BACKED_WITH_GAPS'
+            : 'SOURCE-BACKED'
+          : claim.claim_type_code === 'DERIVED_CLAIM'
+            ? structuralGaps.length
+              ? 'DERIVED_WITH_GAPS'
+              : 'DERIVED'
+            : structuralGaps.length
+              ? 'CLAIM_WITH_GAPS'
+              : 'NOT DERIVED';
+
+      claims.push({
+        claim,
+        proposition,
+        claim_type: claim.claim_type_code,
+        claim_status: claim.claim_status_code,
+        provenance_status: provenanceStatus,
+        source_chain: sourceChain,
+        supporting_evidence: supportingEvidence,
+        citations,
+        source_records: sourceRecords,
+        datasets,
+        source: sources,
+        derivation,
+        derivation_inputs: derivationInputs,
+        projected_relationships: projectedRelationshipsResult.rows,
+        structural_gaps: structuralGaps,
+        explanation:
+          structuralGaps.length === 0
+            ? 'Deterministic provenance traversal is structurally complete for this claim.'
+            : `Deterministic traversal found structural gaps: ${structuralGaps.join(', ')}.`
+      });
+    }
+
+    const structuralGaps = Array.from(gapSet);
+
+    return {
+      operation: 'EXPLAIN_PROVENANCE',
+      input: { claim_id: claimLookupId, proposition_id: propositionLookupId },
+      resolution_scope: resolutionScope,
+      read_only: true,
+      proposition,
+      claims,
+      provenance_status: structuralGaps.length ? 'INCOMPLETE' : 'COMPLETE',
+      structural_gaps: structuralGaps,
+      explanation:
+        structuralGaps.length === 0
+          ? 'Read-only deterministic traversal resolved the selected claim/proposition provenance chain.'
+          : `Read-only deterministic traversal resolved the selected artifact and reported structural gaps: ${structuralGaps.join(', ')}.`,
+      limitations: [
+        'Evaluation is structural and deterministic only.',
+        'No truth, contradiction, compliance, causation, theology, modal semantics, or generalized inference is assigned.',
+        'NULL raw_content and NULL quoted_text are reported as not stored by policy.'
+      ]
+    };
   }
 
   async getGenesisCoverage(): Promise<Record<string, unknown>> {
