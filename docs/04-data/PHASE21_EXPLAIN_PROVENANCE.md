@@ -1,5 +1,14 @@
 # Phase 21 — `EXPLAIN_PROVENANCE` (read-only, deterministic)
 
+**PHASE 21 STATUS: ACCEPTED**<br>
+**ARCHITECTURAL STATUS: NO SCHEMA CHANGE JUSTIFIED**<br>
+**OPERATION: GET /api/provenance/explain**<br>
+**MODE: READ-ONLY**<br>
+**SEMANTIC INFERENCE: NONE**<br>
+**PERSISTENCE: NONE**<br>
+**EVALUATION-IS-NOT-KNOWLEDGE: PRESERVED**<br>
+**PHASE 19 REGRESSION: PASSING**
+
 Phase 21 implements the smallest bounded operation justified by `docs/04-data/PHASE20_CAPABILITY_SPECIFICATION.md`: a read-only provenance explanation endpoint.
 
 ## Route
@@ -58,5 +67,22 @@ No truth assignment, contradiction/compliance/causation/theological/modal infere
 - source chain traversal;
 - event-participation projection explanation;
 - structurally valid derived claim inputs;
-- missing and self-input derivation edge cases;
+- missing, missing-metadata, and self-input derivation edge cases;
+- an unasserted proposition;
 - invalid request and nonexistent artifact handling.
+
+The request-validation coverage explicitly verifies `claim_id=0`, negative `claim_id`,
+`proposition_id=0`, and negative `proposition_id` retain the existing `400` behavior.
+A successful explanation is also verified not to change the row counts of any public
+persistent table, including controlled-vocabulary registry tables.
+
+## Verification limitations
+
+`MISSING_SOURCE_RECORD`, `MISSING_DATASET`, and `MISSING_SOURCE` cannot be produced
+through valid temporary setup because the respective source-chain foreign keys are
+`NOT NULL`. `INVALID_DERIVATION_INPUT` cannot be produced because each derivation input
+must contain exactly one valid foreign-keyed claim or evidence reference. Likewise,
+`MISSING_PROJECTED_RELATIONSHIP` cannot be produced: `event_participation` is a view
+that deterministically projects every asserting claim whose registered predicate has an
+event-participation role. These corruption states were not runtime-verified, and no
+constraints, registries, or production behavior were changed to manufacture them.

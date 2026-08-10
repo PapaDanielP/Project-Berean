@@ -37,6 +37,23 @@ const getPropositionIdByClaimKey = async (claimKey: string): Promise<number> => 
   return Number(result.rows[0].proposition_id);
 };
 
+const snapshotPersistentTableCounts = async (): Promise<Record<string, number>> => {
+  const tables = await pool.query(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+     ORDER BY table_name`
+  );
+  const counts = await Promise.all(
+    tables.rows.map(async ({ table_name }: { table_name: string }) => {
+      if (!/^[a-z_]+$/.test(table_name)) throw new Error(`Unexpected table name: ${table_name}`);
+      const result = await pool.query(`SELECT COUNT(*)::int AS count FROM "${table_name}"`);
+      return [table_name, Number(result.rows[0].count)] as const;
+    })
+  );
+  return Object.fromEntries(counts);
+};
+
 beforeAll(async () => {
   await runSqlFile('schema/sql/001_core_schema.sql');
   await runSqlFile('tests/fixtures/020-genesis-1-11-fixture.sql');
@@ -101,8 +118,11 @@ describe('read-only API', () => {
 
   it('explains complete direct claim provenance', async () => {
     const claimId = await getClaimIdByKey('CLAIM_MT_ADAM_FATHER_SETH');
+    const before = await snapshotPersistentTableCounts();
     const response = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+    const after = await snapshotPersistentTableCounts();
     expect(response.status).toBe(200);
+    expect(after).toEqual(before);
     expect(response.body.operation).toBe('EXPLAIN_PROVENANCE');
     expect(response.body.resolution_scope).toBe('CLAIM');
     expect(response.body.claims).toHaveLength(1);
@@ -113,6 +133,8 @@ describe('read-only API', () => {
     expect(response.body.claims[0].citations.length).toBeGreaterThan(0);
     expect(response.body.claims[0].source_records.length).toBeGreaterThan(0);
     expect(response.body.claims[0].source.length).toBeGreaterThan(0);
+    expect(response.body.claims[0].citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
+    expect(response.body.claims[0].source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
   });
 
   it('explains provenance by proposition id and returns all proposition claims', async () => {
@@ -220,6 +242,50 @@ describe('read-only API', () => {
     }
   });
 
+  it('reports missing derivation for derived claims without derivation metadata', async () => {
+    const propositionId = await getPropositionIdByClaimKey('CLAIM_MT_ADAM_FATHER_SETH');
+    const insertedClaim = await pool.query(
+      `INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
+       VALUES ('PHASE21_DERIVED_NO_DERIVATION', $1, 'DERIVED_CLAIM', 'phase21 derived no derivation')
+       RETURNING claim_id`,
+      [propositionId]
+    );
+    const claimId = Number(insertedClaim.rows[0].claim_id);
+    try {
+      const response = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+      expect(response.status).toBe(200);
+      expect(response.body.claims[0].structural_gaps).toContain('MISSING_DERIVATION');
+    } finally {
+      await pool.query(`DELETE FROM claim WHERE claim_id = $1`, [claimId]);
+    }
+  });
+
+  it('reports missing proposition claim for an unasserted proposition', async () => {
+    const entities = await pool.query(
+      `SELECT entity_id
+       FROM entity
+       WHERE entity_type_code = 'PERSON'
+       ORDER BY entity_id
+       LIMIT 2`
+    );
+    if (entities.rowCount !== 2) throw new Error('Fixture must contain two person entities');
+    const insertedProposition = await pool.query(
+      `INSERT INTO proposition (subject_entity_id, predicate, object_entity_id)
+       VALUES ($1, 'fatherOf', $2)
+       RETURNING proposition_id`,
+      [entities.rows[0].entity_id, entities.rows[1].entity_id]
+    );
+    const propositionId = Number(insertedProposition.rows[0].proposition_id);
+    try {
+      const response = await request(app).get('/api/provenance/explain').query({ proposition_id: propositionId });
+      expect(response.status).toBe(200);
+      expect(response.body.claims).toEqual([]);
+      expect(response.body.structural_gaps).toContain('MISSING_PROPOSITION_CLAIM');
+    } finally {
+      await pool.query(`DELETE FROM proposition WHERE proposition_id = $1`, [propositionId]);
+    }
+  });
+
   it('reports self-input derivation for derived claims', async () => {
     const propositionId = await getPropositionIdByClaimKey('CLAIM_MT_ADAM_FATHER_SETH');
     const insertedDerivation = await pool.query(
@@ -258,6 +324,14 @@ describe('read-only API', () => {
     expect(missing.status).toBe(400);
     const invalid = await request(app).get('/api/provenance/explain').query({ claim_id: 'abc' });
     expect(invalid.status).toBe(400);
+    const zeroClaim = await request(app).get('/api/provenance/explain').query({ claim_id: 0 });
+    expect(zeroClaim.status).toBe(400);
+    const negativeClaim = await request(app).get('/api/provenance/explain').query({ claim_id: -1 });
+    expect(negativeClaim.status).toBe(400);
+    const zeroProposition = await request(app).get('/api/provenance/explain').query({ proposition_id: 0 });
+    expect(zeroProposition.status).toBe(400);
+    const negativeProposition = await request(app).get('/api/provenance/explain').query({ proposition_id: -1 });
+    expect(negativeProposition.status).toBe(400);
     const nonexistentClaim = await request(app).get('/api/provenance/explain').query({ claim_id: 999999999 });
     expect(nonexistentClaim.status).toBe(404);
     const nonexistentProposition = await request(app).get('/api/provenance/explain').query({ proposition_id: 999999999 });
