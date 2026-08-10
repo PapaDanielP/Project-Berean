@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
-\echo 'Phase 8 Genesis 1-11 chapter coverage'
+\echo 'Phase 9 Genesis 1-11 chapter coverage'
 WITH chapters AS (
     SELECT generate_series(1, 11) AS chapter
 ),
@@ -65,7 +65,7 @@ FROM chapters ch
 LEFT JOIN coverage c ON c.chapter = ch.chapter
 ORDER BY ch.chapter;
 
-\echo 'Phase 8 Genesis 1 verse coverage (1:10-13 boundary detail)'
+\echo 'Phase 9 Genesis 1 verse coverage (1:14-19 boundary detail)'
 SELECT substring(sr.source_location FROM ':([0-9]+)$')::int AS verse,
        sr.source_record_key,
        count(DISTINCT cl.claim_id) AS claims,
@@ -76,7 +76,8 @@ LEFT JOIN evidence e ON e.source_record_id = sr.source_record_id
 LEFT JOIN claim_evidence ce ON ce.evidence_id = e.evidence_id
 LEFT JOIN claim cl ON cl.claim_id = ce.claim_id
 WHERE d.dataset_key = 'GEN_MT_REF'
-  AND sr.source_record_key IN ('MT_GEN_1_10', 'MT_GEN_1_11', 'MT_GEN_1_12', 'MT_GEN_1_13')
+  AND sr.source_record_key IN ('MT_GEN_1_14', 'MT_GEN_1_15', 'MT_GEN_1_16',
+                                'MT_GEN_1_17', 'MT_GEN_1_18', 'MT_GEN_1_19')
 GROUP BY sr.source_record_key, sr.source_location
 ORDER BY verse;
 
@@ -85,21 +86,19 @@ BEGIN
     IF (
         SELECT count(*)
         FROM source_record
-        WHERE source_record_key IN ('MT_GEN_1_10', 'MT_GEN_1_11', 'MT_GEN_1_12', 'MT_GEN_1_13')
-    ) <> 4 THEN
-        RAISE EXCEPTION 'phase8 coverage: Genesis 1:10-13 batch is absent';
+        WHERE source_record_key IN ('MT_GEN_1_14', 'MT_GEN_1_15', 'MT_GEN_1_16',
+                                     'MT_GEN_1_17', 'MT_GEN_1_18', 'MT_GEN_1_19')
+    ) <> 6 THEN
+        RAISE EXCEPTION 'phase9 coverage: Genesis 1:14-19 batch is absent';
     END IF;
 
     -- Genesis 1:20-31 must remain explicitly deferred; chapter 1 must not be reported complete.
-    -- (Genesis 1:14-19 was deferred as of Phase 8 and is populated by the later Phase 9 batch;
-    -- this boundary check is updated accordingly so this regression check tracks the current
-    -- deferred boundary rather than asserting a since-superseded Phase 8 snapshot.)
     IF EXISTS (
         SELECT 1
         FROM source_record
         WHERE source_record_key LIKE 'MT_GEN_1\_%' ESCAPE '\'
           AND substring(source_location FROM ':([0-9]+)$')::int >= 20
     ) THEN
-        RAISE EXCEPTION 'phase8 coverage: Genesis 1:20-31 must remain deferred for this batch';
+        RAISE EXCEPTION 'phase9 coverage: Genesis 1:20-31 must remain deferred for this batch';
     END IF;
 END $$;
