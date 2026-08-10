@@ -176,15 +176,17 @@ BEGIN
         RAISE EXCEPTION 'Genesis 1:1-13 batch was altered by the Phase 9 extension';
     END IF;
 
-    -- Genesis 1:20-31 remains explicitly deferred; this batch does not populate them.
+    -- Genesis chapters 2-4, 6-7, and 9-11 must remain explicitly deferred. (Genesis 1:20-31
+    -- was deferred as of Phase 9 and is populated by the later Phase 10 batch; this boundary
+    -- check is updated accordingly so this regression check tracks the current deferred
+    -- boundary rather than asserting a since-superseded Phase 9 snapshot.)
     IF EXISTS (
         SELECT 1
         FROM source_record sr
         JOIN dataset d ON d.dataset_id = sr.dataset_id
         WHERE d.dataset_key = 'GEN_MT_REF'
-          AND sr.source_record_key LIKE 'MT_GEN_1\_%' ESCAPE '\'
-          AND substring(sr.source_location FROM ':([0-9]+)$')::int >= 20
+          AND substring(sr.source_location FROM '^Genesis ([0-9]+):')::int IN (2, 3, 4, 6, 7, 9, 10, 11)
     ) THEN
-        RAISE EXCEPTION 'Genesis 1:20-31 must remain deferred for this batch';
+        RAISE EXCEPTION 'Genesis chapters 2-4, 6-7, and 9-11 must remain deferred for this batch';
     END IF;
 END $$;

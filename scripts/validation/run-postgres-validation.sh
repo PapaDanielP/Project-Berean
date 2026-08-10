@@ -26,6 +26,8 @@ run "$root/tests/validation/genesis-1-10-13-slice.sql"
 run "$root/tests/validation/phase8-coverage-report.sql"
 run "$root/tests/validation/genesis-1-14-19-slice.sql"
 run "$root/tests/validation/phase9-coverage-report.sql"
+run "$root/tests/validation/genesis-1-20-31-slice.sql"
+run "$root/tests/validation/phase10-coverage-report.sql"
 
 # Bounded STEP Bible acquisition: manifest integrity offline, then the imported Genesis subset.
 "$root/tests/validation/stepbible-acquisition-manifest.sh"

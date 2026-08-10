@@ -44,3 +44,4 @@ See `docs/04-data/GENESIS_1_1-5_SLICE.md` for the scope, limitations, intentiona
 See `docs/04-data/PHASE7_REPORT.md` for the Phase 7 source-availability assessment and chapter coverage matrix.
 See `docs/04-data/PHASE8_REPORT.md` for the Phase 8 Genesis 1:10–13 extension, validation results, and remaining deferrals.
 See `docs/04-data/PHASE9_REPORT.md` for the Phase 9 Genesis 1:14–19 extension, validation results, and remaining deferrals.
+See `docs/04-data/PHASE10_REPORT.md` for the Phase 10 Genesis 1:20–31 extension, validation results, and remaining deferrals.
