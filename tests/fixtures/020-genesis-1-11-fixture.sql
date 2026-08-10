@@ -7,6 +7,11 @@
 -- divergence as its competing-claim case rather than inventing a disagreement.
 --
 -- The fixture is transactional and resets only reference-model data, so it is rerunnable.
+--
+-- Phase 13 extends the genealogical line one locator, to Genesis 5:9, so that persistent PERSON
+-- entities and their relationships are populated from source records rather than inferred. The
+-- existing `enosh` entity is reused across Genesis 5:6 and 5:9; only `kenan` is new. No
+-- event-to-event relation and no chronology derivation is added for the Genesis 5:9 begetting.
 BEGIN;
 TRUNCATE source, entity, event, typed_value, derivation RESTART IDENTITY CASCADE;
 
@@ -69,9 +74,11 @@ JOIN (VALUES
         ('GEN_MT_REF', 'MT_GEN_1_31', 'Genesis 1:31'),
         ('GEN_MT_REF', 'MT_GEN_5_3', 'Genesis 5:3'),
         ('GEN_MT_REF', 'MT_GEN_5_6', 'Genesis 5:6'),
+        ('GEN_MT_REF', 'MT_GEN_5_9', 'Genesis 5:9'),
         ('GEN_MT_REF', 'MT_GEN_8_4', 'Genesis 8:4'),
         ('GEN_LXX_REF', 'LXX_GEN_5_3', 'Genesis 5:3'),
-        ('GEN_LXX_REF', 'LXX_GEN_5_6', 'Genesis 5:6')
+        ('GEN_LXX_REF', 'LXX_GEN_5_6', 'Genesis 5:6'),
+        ('GEN_LXX_REF', 'LXX_GEN_5_9', 'Genesis 5:9')
      ) AS r(dataset_key, source_record_key, source_location)
   ON r.dataset_key = d.dataset_key;
 
@@ -81,6 +88,7 @@ FROM source_record sr;
 
 INSERT INTO entity (entity_key, entity_type_code, canonical_name) VALUES
     ('adam', 'PERSON', 'Adam'), ('seth', 'PERSON', 'Seth'), ('enosh', 'PERSON', 'Enosh'),
+    ('kenan', 'PERSON', 'Kenan'),
     ('noah', 'PERSON', 'Noah'), ('ararat', 'PLACE', 'Ararat'),
     ('gen1_god', 'CONCEPT', 'God'),
     ('gen1_heavens', 'CONCEPT', 'heavens'),
@@ -112,7 +120,9 @@ INSERT INTO source_identity (source_id, source_identity_key, display_name)
 SELECT s.source_id, m.source_identity_key, m.display_name
 FROM (VALUES
         ('GEN_MT', 'mt-adam', 'Adam'), ('GEN_MT', 'mt-seth', 'Seth'),
+        ('GEN_MT', 'mt-enosh', 'Enosh'), ('GEN_MT', 'mt-kenan', 'Kenan'),
         ('GEN_LXX', 'lxx-adam', 'Adam'), ('GEN_LXX', 'lxx-seth', 'Seth'),
+        ('GEN_LXX', 'lxx-enosh', 'Enosh'), ('GEN_LXX', 'lxx-kenan', 'Kenan'),
         ('GEN_MT', 'mt-ark', 'the ark')
      ) AS m(source_key, source_identity_key, display_name)
 JOIN source s ON s.source_key = m.source_key;
@@ -125,6 +135,7 @@ JOIN source_identity si ON si.source_identity_key = n.source_identity_key;
 INSERT INTO event (event_key, event_type_code, description) VALUES
     ('seth_begetting', 'GENEALOGICAL', 'The begetting of Seth as recorded in the Genesis genealogies.'),
     ('enosh_begetting', 'GENEALOGICAL', 'The begetting of Enosh as recorded in the Genesis genealogies.'),
+    ('kenan_begetting', 'GENEALOGICAL', 'The begetting of Kenan as recorded in the Genesis genealogies.'),
     ('ark_resting', 'OTHER', 'The resting of the ark as located in the Genesis flood narrative.'),
     ('gen1_1_creation_statement', 'OTHER', 'Genesis 1:1 creation statement; modeled only as a source-record event placeholder.'),
     ('gen1_2_earth_condition', 'OTHER', 'Genesis 1:2 earth-condition statement; ambiguous details are intentionally unresolved.'),
@@ -153,17 +164,20 @@ INSERT INTO event (event_key, event_type_code, description) VALUES
     ('gen1_27_mankind_creation_statement', 'OTHER', 'Genesis 1:27 mankind-creation statement; image, likeness, and male/female language is intentionally excluded.');
 
 INSERT INTO typed_value (value_type_code, numeric_value) VALUES
-    ('YEAR', 130), ('YEAR', 230), ('YEAR', 105), ('YEAR', 205), ('YEAR', 235), ('YEAR', 435);
+    ('YEAR', 130), ('YEAR', 230), ('YEAR', 105), ('YEAR', 205), ('YEAR', 235), ('YEAR', 435),
+    ('YEAR', 90), ('YEAR', 190);
 
 INSERT INTO proposition (subject_entity_id, predicate, object_entity_id)
 SELECT s.entity_id, m.predicate, o.entity_id
-FROM (VALUES ('adam', 'fatherOf', 'seth'), ('seth', 'fatherOf', 'enosh')) AS m(subject_key, predicate, object_key)
+FROM (VALUES ('adam', 'fatherOf', 'seth'), ('seth', 'fatherOf', 'enosh'),
+             ('enosh', 'fatherOf', 'kenan')) AS m(subject_key, predicate, object_key)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN entity o ON o.entity_key = m.object_key;
 INSERT INTO proposition (subject_entity_id, predicate, object_event_id)
 SELECT s.entity_id, m.predicate, e.event_id
 FROM (VALUES ('adam', 'parentIn', 'seth_begetting'), ('seth', 'childIn', 'seth_begetting'),
              ('seth', 'parentIn', 'enosh_begetting'), ('enosh', 'childIn', 'enosh_begetting'),
+             ('enosh', 'parentIn', 'kenan_begetting'), ('kenan', 'childIn', 'kenan_begetting'),
              ('noah', 'subjectOf', 'ark_resting'),
              ('noahs_ark', 'participatesIn', 'ark_resting'),
              ('gen1_god', 'subjectOf', 'gen1_1_creation_statement'),
@@ -244,7 +258,8 @@ FROM event a CROSS JOIN event b
 WHERE a.event_key = 'seth_begetting' AND b.event_key = 'enosh_begetting';
 INSERT INTO proposition (subject_entity_id, predicate, object_typed_value_id)
 SELECT s.entity_id, 'ageAtFatherhoodYears', t.typed_value_id
-FROM (VALUES ('adam', 130), ('adam', 230), ('seth', 105), ('seth', 205)) AS m(subject_key, years)
+FROM (VALUES ('adam', 130), ('adam', 230), ('seth', 105), ('seth', 205),
+             ('enosh', 90), ('enosh', 190)) AS m(subject_key, years)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN typed_value t ON t.numeric_value = m.years;
 INSERT INTO proposition (subject_event_id, predicate, object_typed_value_id)
@@ -262,7 +277,12 @@ UNION ALL
 SELECT 'CLAIM_SETH_FATHER_ENOSH', p.proposition_id, 'DIRECT_SOURCE_CLAIM',
        'Genesis 5:6 records Enosh as begotten by Seth.'
 FROM proposition p JOIN entity s ON s.entity_id = p.subject_entity_id
-WHERE p.predicate = 'fatherOf' AND s.entity_key = 'seth';
+WHERE p.predicate = 'fatherOf' AND s.entity_key = 'seth'
+UNION ALL
+SELECT 'CLAIM_ENOSH_FATHER_KENAN', p.proposition_id, 'DIRECT_SOURCE_CLAIM',
+       'Genesis 5:9 records Kenan as begotten by Enosh.'
+FROM proposition p JOIN entity s ON s.entity_id = p.subject_entity_id
+WHERE p.predicate = 'fatherOf' AND s.entity_key = 'enosh';
 
 -- Independent source claims may share one normalized proposition when the
 -- semantic assertion is the same and only source provenance differs.
@@ -276,7 +296,11 @@ FROM (VALUES
         ('seth', 'fatherOf', 'enosh', 'CLAIM_MT_SETH_FATHER_ENOSH',
          'The Masoretic tradition records Enosh as begotten by Seth.'),
         ('seth', 'fatherOf', 'enosh', 'CLAIM_LXX_SETH_FATHER_ENOSH',
-         'The Septuagint tradition records Enosh as begotten by Seth.')
+         'The Septuagint tradition records Enosh as begotten by Seth.'),
+        ('enosh', 'fatherOf', 'kenan', 'CLAIM_MT_ENOSH_FATHER_KENAN',
+         'The Masoretic tradition records Kenan as begotten by Enosh.'),
+        ('enosh', 'fatherOf', 'kenan', 'CLAIM_LXX_ENOSH_FATHER_KENAN',
+         'The Septuagint tradition records Kenan as begotten by Enosh.')
      ) AS m(subject_key, predicate, object_key, claim_key, statement)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN entity o ON o.entity_key = m.object_key
@@ -295,6 +319,10 @@ FROM (VALUES
          'Seth is the parent participant in the begetting of Enosh.'),
         ('enosh', 'childIn', 'enosh_begetting', 'CLAIM_ENOSH_CHILD_ENOSH_BEGETTING',
          'Enosh is the child participant in the begetting of Enosh.'),
+        ('enosh', 'parentIn', 'kenan_begetting', 'CLAIM_ENOSH_PARENT_KENAN_BEGETTING',
+         'Enosh is the parent participant in the begetting of Kenan.'),
+        ('kenan', 'childIn', 'kenan_begetting', 'CLAIM_KENAN_CHILD_KENAN_BEGETTING',
+         'Kenan is the child participant in the begetting of Kenan.'),
         ('noah', 'subjectOf', 'ark_resting', 'CLAIM_NOAH_ARK_RESTING',
          'Noah is the subject of the ark-resting event.'),
         ('noahs_ark', 'participatesIn', 'ark_resting', 'CLAIM_MT_GEN_8_4_ARK_PARTICIPANT',
@@ -457,7 +485,11 @@ FROM (VALUES
         ('seth', 105, 'CLAIM_MT_SETH_AGE_AT_ENOSH',
          'The Masoretic tradition records Seth as 105 years old at the begetting of Enosh.'),
         ('seth', 205, 'CLAIM_LXX_SETH_AGE_AT_ENOSH',
-         'The Septuagint tradition records Seth as 205 years old at the begetting of Enosh.')
+         'The Septuagint tradition records Seth as 205 years old at the begetting of Enosh.'),
+        ('enosh', 90, 'CLAIM_MT_ENOSH_AGE_AT_KENAN',
+         'The Masoretic tradition records Enosh as 90 years old at the begetting of Kenan.'),
+        ('enosh', 190, 'CLAIM_LXX_ENOSH_AGE_AT_KENAN',
+         'The Septuagint tradition records Enosh as 190 years old at the begetting of Kenan.')
      ) AS m(subject_key, years, claim_key, statement)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN typed_value t ON t.numeric_value = m.years
@@ -547,6 +579,10 @@ FROM (VALUES
          'Genesis 5:6 in the Masoretic tradition records the begetting of Enosh by Seth at 105 years.'),
         ('LXX_GEN_5_6', 'EV_LXX_GEN_5_6',
          'Genesis 5:6 in the Septuagint tradition records the begetting of Enosh by Seth at 205 years.'),
+        ('MT_GEN_5_9', 'EV_MT_GEN_5_9',
+         'Genesis 5:9 in the Masoretic tradition records the begetting of Kenan by Enosh at 90 years.'),
+        ('LXX_GEN_5_9', 'EV_LXX_GEN_5_9',
+         'Genesis 5:9 in the Septuagint tradition records the begetting of Kenan by Enosh at 190 years.'),
         ('MT_GEN_8_4', 'EV_MT_GEN_8_4',
          'Genesis 8:4 records the ark as resting on the mountains of Ararat.')
      ) AS m(source_record_key, evidence_key, observation)
@@ -698,14 +734,20 @@ FROM (VALUES
         ('CLAIM_ADAM_FATHER_SETH', 'EV_LXX_GEN_5_3', 'SUPPORTS', 'The traditions differ on the numeral, not the parentage.'),
         ('CLAIM_SETH_FATHER_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Both traditions record the same parentage.'),
         ('CLAIM_SETH_FATHER_ENOSH', 'EV_LXX_GEN_5_6', 'SUPPORTS', 'The traditions differ on the numeral, not the parentage.'),
+        ('CLAIM_ENOSH_FATHER_KENAN', 'EV_MT_GEN_5_9', 'SUPPORTS', 'Both traditions record the same parentage.'),
+        ('CLAIM_ENOSH_FATHER_KENAN', 'EV_LXX_GEN_5_9', 'SUPPORTS', 'The traditions differ on the numeral, not the parentage.'),
         ('CLAIM_MT_ADAM_FATHER_SETH', 'EV_MT_GEN_5_3', 'SUPPORTS', 'The Masoretic record supports this source-specific parentage claim.'),
         ('CLAIM_LXX_ADAM_FATHER_SETH', 'EV_LXX_GEN_5_3', 'SUPPORTS', 'The Septuagint record supports this source-specific parentage claim.'),
         ('CLAIM_MT_SETH_FATHER_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'The Masoretic record supports this source-specific parentage claim.'),
         ('CLAIM_LXX_SETH_FATHER_ENOSH', 'EV_LXX_GEN_5_6', 'SUPPORTS', 'The Septuagint record supports this source-specific parentage claim.'),
+        ('CLAIM_MT_ENOSH_FATHER_KENAN', 'EV_MT_GEN_5_9', 'SUPPORTS', 'The Masoretic record supports this source-specific parentage claim.'),
+        ('CLAIM_LXX_ENOSH_FATHER_KENAN', 'EV_LXX_GEN_5_9', 'SUPPORTS', 'The Septuagint record supports this source-specific parentage claim.'),
         ('CLAIM_ADAM_PARENT_SETH_BEGETTING', 'EV_MT_GEN_5_3', 'SUPPORTS', 'Participation is recorded in the same verse.'),
         ('CLAIM_SETH_CHILD_SETH_BEGETTING', 'EV_MT_GEN_5_3', 'SUPPORTS', 'Participation is recorded in the same verse.'),
         ('CLAIM_SETH_PARENT_ENOSH_BEGETTING', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Participation is recorded in the same verse.'),
         ('CLAIM_ENOSH_CHILD_ENOSH_BEGETTING', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Participation is recorded in the same verse.'),
+        ('CLAIM_ENOSH_PARENT_KENAN_BEGETTING', 'EV_MT_GEN_5_9', 'SUPPORTS', 'Participation is recorded in the same verse.'),
+        ('CLAIM_KENAN_CHILD_KENAN_BEGETTING', 'EV_MT_GEN_5_9', 'SUPPORTS', 'Participation is recorded in the same verse.'),
         ('CLAIM_NOAH_ARK_RESTING', 'EV_MT_GEN_8_4', 'SUPPORTS', 'The narrative names Noah as the subject.'),
         ('CLAIM_MT_GEN_8_4_ARK_PARTICIPANT', 'EV_MT_GEN_8_4', 'SUPPORTS', 'The verse names the ark as the resting subject.'),
         ('CLAIM_ARK_RESTING_ARARAT', 'EV_MT_GEN_8_4', 'SUPPORTS', 'The verse gives the location.'),
@@ -719,7 +761,11 @@ FROM (VALUES
         ('CLAIM_MT_SETH_AGE_AT_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'The Masoretic numeral is 105.'),
         ('CLAIM_MT_SETH_AGE_AT_ENOSH', 'EV_LXX_GEN_5_6', 'CONTRADICTS', 'The Septuagint numeral is 205.'),
         ('CLAIM_LXX_SETH_AGE_AT_ENOSH', 'EV_LXX_GEN_5_6', 'SUPPORTS', 'The Septuagint numeral is 205.'),
-        ('CLAIM_LXX_SETH_AGE_AT_ENOSH', 'EV_MT_GEN_5_6', 'CONTRADICTS', 'The Masoretic numeral is 105.')
+        ('CLAIM_LXX_SETH_AGE_AT_ENOSH', 'EV_MT_GEN_5_6', 'CONTRADICTS', 'The Masoretic numeral is 105.'),
+        ('CLAIM_MT_ENOSH_AGE_AT_KENAN', 'EV_MT_GEN_5_9', 'SUPPORTS', 'The Masoretic numeral is 90.'),
+        ('CLAIM_MT_ENOSH_AGE_AT_KENAN', 'EV_LXX_GEN_5_9', 'CONTRADICTS', 'The Septuagint numeral is 190.'),
+        ('CLAIM_LXX_ENOSH_AGE_AT_KENAN', 'EV_LXX_GEN_5_9', 'SUPPORTS', 'The Septuagint numeral is 190.'),
+        ('CLAIM_LXX_ENOSH_AGE_AT_KENAN', 'EV_MT_GEN_5_9', 'CONTRADICTS', 'The Masoretic numeral is 90.')
      ) AS m(claim_key, evidence_key, relation_type_code, notes)
 JOIN claim c ON c.claim_key = m.claim_key
 JOIN evidence e ON e.evidence_key = m.evidence_key;
@@ -730,7 +776,9 @@ FROM (VALUES
         ('CLAIM_LXX_ADAM_AGE_AT_SETH', 'CLAIM_MT_ADAM_AGE_AT_SETH',
          'The traditions record different ages for Adam at the begetting of Seth.'),
         ('CLAIM_LXX_SETH_AGE_AT_ENOSH', 'CLAIM_MT_SETH_AGE_AT_ENOSH',
-         'The traditions record different ages for Seth at the begetting of Enosh.')
+         'The traditions record different ages for Seth at the begetting of Enosh.'),
+        ('CLAIM_LXX_ENOSH_AGE_AT_KENAN', 'CLAIM_MT_ENOSH_AGE_AT_KENAN',
+         'The traditions record different ages for Enosh at the begetting of Kenan.')
      ) AS m(claim_key, related_claim_key, notes)
 JOIN claim a ON a.claim_key = m.claim_key
 JOIN claim b ON b.claim_key = m.related_claim_key;
@@ -814,6 +862,10 @@ FROM (VALUES
         ('mt-seth', 'seth', 0.9900, 'The Masoretic genealogy identifies this figure at Genesis 5:3.', 'EV_MT_GEN_5_3'),
         ('lxx-adam', 'adam', 0.9500, 'The Septuagint genealogy identifies the same genealogical position.', 'EV_LXX_GEN_5_3'),
         ('lxx-seth', 'seth', 0.9500, 'The Septuagint genealogy identifies the same genealogical position.', 'EV_LXX_GEN_5_3'),
+        ('mt-enosh', 'enosh', 0.9900, 'The Masoretic genealogy identifies this figure as the father at Genesis 5:9.', 'EV_MT_GEN_5_9'),
+        ('mt-kenan', 'kenan', 0.9900, 'The Masoretic genealogy identifies this figure as the child at Genesis 5:9.', 'EV_MT_GEN_5_9'),
+        ('lxx-enosh', 'enosh', 0.9500, 'The Septuagint genealogy identifies the same genealogical position at Genesis 5:9.', 'EV_LXX_GEN_5_9'),
+        ('lxx-kenan', 'kenan', 0.9500, 'The Septuagint genealogy identifies the same genealogical position at Genesis 5:9.', 'EV_LXX_GEN_5_9'),
         ('mt-ark', 'noahs_ark', 0.9900, 'Genesis 8:4 names the ark as the resting subject at this genealogical position.', 'EV_MT_GEN_8_4')
      ) AS m(source_identity_key, entity_key, confidence, justification, evidence_key)
 JOIN source_identity si ON si.source_identity_key = m.source_identity_key
