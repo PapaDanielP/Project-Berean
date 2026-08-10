@@ -45,6 +45,11 @@ run "$root/tests/validation/phase12-coverage-report.sql"
 run "$root/tests/validation/genesis-5-9-slice.sql"
 run "$root/tests/validation/phase13-coverage-report.sql"
 
+# Phase 14 validates the persistent object/artifact invariant against the already source-backed
+# Genesis 8:4 Noah's Ark slice without adding object-specific architecture or fabricated material.
+run "$root/tests/validation/genesis-artifact-slice.sql"
+run "$root/tests/validation/phase14-coverage-report.sql"
+
 # Bounded STEP Bible acquisition: manifest integrity offline, then the imported Genesis subset.
 "$root/tests/validation/stepbible-acquisition-manifest.sh"
 run "$root/tests/fixtures/040-stepbible-genesis-source-fixture.sql"
