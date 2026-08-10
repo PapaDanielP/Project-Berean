@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
-\echo 'Phase 10 Genesis 1-11 chapter coverage (structural/source-backed; not semantic completeness)'
+\echo 'Phase 10 Genesis 1-11 chapter coverage'
 WITH chapters AS (
     SELECT generate_series(1, 11) AS chapter
 ),
@@ -69,18 +69,19 @@ ORDER BY ch.chapter;
 SELECT substring(sr.source_location FROM ':([0-9]+)$')::int AS verse,
        sr.source_record_key,
        count(DISTINCT cl.claim_id) AS claims,
-       bool_and(sr.raw_content IS NULL AND sr.content_hash IS NULL) AS text_and_hash_excluded
+       bool_and(sr.raw_content IS NULL AND sr.content_hash IS NULL) AS text_and_hash_excluded,
+       CASE WHEN count(DISTINCT cl.claim_id) > 0 THEN 'REPRESENTED'
+            ELSE 'STRUCTURAL ONLY (semantics intentionally under-modeled)'
+       END AS semantic_note
 FROM source_record sr
 JOIN dataset d ON d.dataset_id = sr.dataset_id
 LEFT JOIN evidence e ON e.source_record_id = sr.source_record_id
 LEFT JOIN claim_evidence ce ON ce.evidence_id = e.evidence_id
 LEFT JOIN claim cl ON cl.claim_id = ce.claim_id
 WHERE d.dataset_key = 'GEN_MT_REF'
-  AND sr.source_record_key IN (
-      'MT_GEN_1_20', 'MT_GEN_1_21', 'MT_GEN_1_22', 'MT_GEN_1_23',
-      'MT_GEN_1_24', 'MT_GEN_1_25', 'MT_GEN_1_26', 'MT_GEN_1_27',
-      'MT_GEN_1_28', 'MT_GEN_1_29', 'MT_GEN_1_30', 'MT_GEN_1_31'
-  )
+  AND sr.source_record_key IN ('MT_GEN_1_20', 'MT_GEN_1_21', 'MT_GEN_1_22', 'MT_GEN_1_23',
+                                'MT_GEN_1_24', 'MT_GEN_1_25', 'MT_GEN_1_26', 'MT_GEN_1_27',
+                                'MT_GEN_1_28', 'MT_GEN_1_29', 'MT_GEN_1_30', 'MT_GEN_1_31')
 GROUP BY sr.source_record_key, sr.source_location
 ORDER BY verse;
 
@@ -89,21 +90,48 @@ BEGIN
     IF (
         SELECT count(*)
         FROM source_record
-        WHERE source_record_key IN (
-            'MT_GEN_1_20', 'MT_GEN_1_21', 'MT_GEN_1_22', 'MT_GEN_1_23',
-            'MT_GEN_1_24', 'MT_GEN_1_25', 'MT_GEN_1_26', 'MT_GEN_1_27',
-            'MT_GEN_1_28', 'MT_GEN_1_29', 'MT_GEN_1_30', 'MT_GEN_1_31'
-        )
+        WHERE source_record_key IN ('MT_GEN_1_20', 'MT_GEN_1_21', 'MT_GEN_1_22', 'MT_GEN_1_23',
+                                     'MT_GEN_1_24', 'MT_GEN_1_25', 'MT_GEN_1_26', 'MT_GEN_1_27',
+                                     'MT_GEN_1_28', 'MT_GEN_1_29', 'MT_GEN_1_30', 'MT_GEN_1_31')
     ) <> 12 THEN
         RAISE EXCEPTION 'phase10 coverage: Genesis 1:20-31 batch is absent';
     END IF;
 
+    -- Chapter 1 has all 31 structural locators, but structural presence is not semantic
+    -- completeness: six of the twelve new verses (blessing/multiplication, fifth/sixth-day
+    -- boundary, dominion, food-provision, and evaluative statements) are intentionally
+    -- unclaimed and must not be reported as populated.
+    IF (
+        SELECT count(*)
+        FROM source_record sr
+        JOIN dataset d ON d.dataset_id = sr.dataset_id
+        WHERE d.dataset_key = 'GEN_MT_REF'
+          AND sr.source_record_key LIKE 'MT_GEN_1\_%' ESCAPE '\'
+    ) <> 31 THEN
+        RAISE EXCEPTION 'phase10 coverage: Genesis chapter 1 must have exactly 31 structural source records';
+    END IF;
     IF EXISTS (
         SELECT 1
-        FROM source_record
-        WHERE source_record_key LIKE 'MT_GEN_1\_%' ESCAPE '\'
-          AND substring(source_location FROM ':([0-9]+)$')::int > 31
+        FROM source_record sr
+        JOIN dataset d ON d.dataset_id = sr.dataset_id
+        JOIN evidence e ON e.source_record_id = sr.source_record_id
+        JOIN claim_evidence ce ON ce.evidence_id = e.evidence_id
+        WHERE d.dataset_key = 'GEN_MT_REF'
+          AND sr.source_record_key IN ('MT_GEN_1_22', 'MT_GEN_1_23', 'MT_GEN_1_28', 'MT_GEN_1_29',
+                                        'MT_GEN_1_30', 'MT_GEN_1_31')
     ) THEN
-        RAISE EXCEPTION 'phase10 coverage: Genesis 1 structural range must remain bounded to verses 1-31';
+        RAISE EXCEPTION 'phase10 coverage: intentionally under-modeled Genesis 1 verses must not have a claim';
+    END IF;
+
+    -- Genesis chapters 2-4, 6-7, and 9-11 must remain explicitly deferred; Genesis is not
+    -- reported as complete.
+    IF EXISTS (
+        SELECT 1
+        FROM source_record sr
+        JOIN dataset d ON d.dataset_id = sr.dataset_id
+        WHERE d.dataset_key = 'GEN_MT_REF'
+          AND substring(sr.source_location FROM '^Genesis ([0-9]+):')::int IN (2, 3, 4, 6, 7, 9, 10, 11)
+    ) THEN
+        RAISE EXCEPTION 'phase10 coverage: Genesis chapters 2-4, 6-7, and 9-11 must remain deferred for this batch';
     END IF;
 END $$;

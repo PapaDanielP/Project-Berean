@@ -90,13 +90,17 @@ BEGIN
         RAISE EXCEPTION 'phase8 coverage: Genesis 1:10-13 batch is absent';
     END IF;
 
-    -- Regression boundary check: chapter 1 remains structurally bounded to verses 1-31.
+    -- Genesis chapters 2-4, 6-7, and 9-11 must remain explicitly deferred; chapter 1 is now
+    -- fully structurally represented by the later Phase 10 batch, so the boundary check moves
+    -- from within chapter 1 to the chapter-level deferral, tracking the current deferred
+    -- boundary rather than asserting a since-superseded Phase 8 snapshot.
     IF EXISTS (
         SELECT 1
-        FROM source_record
-        WHERE source_record_key LIKE 'MT_GEN_1\_%' ESCAPE '\'
-          AND substring(source_location FROM ':([0-9]+)$')::int > 31
+        FROM source_record sr
+        JOIN dataset d ON d.dataset_id = sr.dataset_id
+        WHERE d.dataset_key = 'GEN_MT_REF'
+          AND substring(sr.source_location FROM '^Genesis ([0-9]+):')::int IN (2, 3, 4, 6, 7, 9, 10, 11)
     ) THEN
-        RAISE EXCEPTION 'phase8 coverage: Genesis 1 structural range must remain bounded to verses 1-31';
+        RAISE EXCEPTION 'phase8 coverage: Genesis chapters 2-4, 6-7, and 9-11 must remain deferred for this batch';
     END IF;
 END $$;
