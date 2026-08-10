@@ -45,6 +45,10 @@ JOIN (VALUES
         ('GEN_MT_REF', 'MT_GEN_1_7', 'Genesis 1:7'),
         ('GEN_MT_REF', 'MT_GEN_1_8', 'Genesis 1:8'),
         ('GEN_MT_REF', 'MT_GEN_1_9', 'Genesis 1:9'),
+        ('GEN_MT_REF', 'MT_GEN_1_10', 'Genesis 1:10'),
+        ('GEN_MT_REF', 'MT_GEN_1_11', 'Genesis 1:11'),
+        ('GEN_MT_REF', 'MT_GEN_1_12', 'Genesis 1:12'),
+        ('GEN_MT_REF', 'MT_GEN_1_13', 'Genesis 1:13'),
         ('GEN_MT_REF', 'MT_GEN_5_3', 'Genesis 5:3'),
         ('GEN_MT_REF', 'MT_GEN_5_6', 'Genesis 5:6'),
         ('GEN_MT_REF', 'MT_GEN_8_4', 'Genesis 8:4'),
@@ -71,7 +75,9 @@ INSERT INTO entity (entity_key, entity_type_code, canonical_name) VALUES
     ('gen1_waters', 'CONCEPT', 'waters'),
     ('gen1_expanse', 'CONCEPT', 'expanse'),
     ('gen1_sky', 'CONCEPT', 'sky'),
-    ('gen1_dry_land', 'CONCEPT', 'dry land');
+    ('gen1_dry_land', 'CONCEPT', 'dry land'),
+    ('gen1_seas', 'CONCEPT', 'seas'),
+    ('gen1_vegetation', 'CONCEPT', 'vegetation');
 
 INSERT INTO source_identity (source_id, source_identity_key, display_name)
 SELECT s.source_id, m.source_identity_key, m.display_name
@@ -98,7 +104,11 @@ INSERT INTO event (event_key, event_type_code, description) VALUES
     ('gen1_6_expanse_statement', 'OTHER', 'Genesis 1:6 expanse statement.'),
     ('gen1_7_waters_statement', 'OTHER', 'Genesis 1:7 waters statement.'),
     ('gen1_8_sky_naming_statement', 'OTHER', 'Genesis 1:8 sky-naming statement.'),
-    ('gen1_9_dry_land_statement', 'OTHER', 'Genesis 1:9 dry-land statement.');
+    ('gen1_9_dry_land_statement', 'OTHER', 'Genesis 1:9 dry-land statement.'),
+    ('gen1_10_naming_statement', 'OTHER', 'Genesis 1:10 naming statement for dry land and seas.'),
+    ('gen1_11_vegetation_command_statement', 'OTHER', 'Genesis 1:11 vegetation-command statement.'),
+    ('gen1_12_vegetation_statement', 'OTHER', 'Genesis 1:12 vegetation statement.'),
+    ('gen1_13_day_boundary_statement', 'OTHER', 'Genesis 1:13 day-boundary statement; ordinal day count is intentionally unresolved.');
 
 INSERT INTO typed_value (value_type_code, numeric_value) VALUES
     ('YEAR', 130), ('YEAR', 230), ('YEAR', 105), ('YEAR', 205), ('YEAR', 235), ('YEAR', 435);
@@ -136,7 +146,15 @@ FROM (VALUES ('adam', 'parentIn', 'seth_begetting'), ('seth', 'childIn', 'seth_b
              ('gen1_god', 'subjectOf', 'gen1_8_sky_naming_statement'),
              ('gen1_sky', 'participatesIn', 'gen1_8_sky_naming_statement'),
              ('gen1_god', 'subjectOf', 'gen1_9_dry_land_statement'),
-             ('gen1_dry_land', 'participatesIn', 'gen1_9_dry_land_statement')) AS m(subject_key, predicate, event_key)
+             ('gen1_dry_land', 'participatesIn', 'gen1_9_dry_land_statement'),
+             ('gen1_god', 'subjectOf', 'gen1_10_naming_statement'),
+             ('gen1_dry_land', 'participatesIn', 'gen1_10_naming_statement'),
+             ('gen1_seas', 'participatesIn', 'gen1_10_naming_statement'),
+             ('gen1_god', 'subjectOf', 'gen1_11_vegetation_command_statement'),
+             ('gen1_vegetation', 'participatesIn', 'gen1_11_vegetation_command_statement'),
+             ('gen1_earth', 'subjectOf', 'gen1_12_vegetation_statement'),
+             ('gen1_vegetation', 'participatesIn', 'gen1_12_vegetation_statement'),
+             ('gen1_day', 'subjectOf', 'gen1_13_day_boundary_statement')) AS m(subject_key, predicate, event_key)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN event e ON e.event_key = m.event_key;
 INSERT INTO proposition (subject_event_id, predicate, object_entity_id)
@@ -249,7 +267,23 @@ FROM (VALUES
         ('gen1_god', 'subjectOf', 'gen1_9_dry_land_statement', 'CLAIM_MT_GEN_1_9_GOD_DRY_LAND_SUBJECT',
          'Genesis 1:9 presents God as the subject of a dry-land statement.'),
         ('gen1_dry_land', 'participatesIn', 'gen1_9_dry_land_statement', 'CLAIM_MT_GEN_1_9_DRY_LAND_PARTICIPANT',
-         'Genesis 1:9 presents dry land within the dry-land statement.')
+         'Genesis 1:9 presents dry land within the dry-land statement.'),
+        ('gen1_god', 'subjectOf', 'gen1_10_naming_statement', 'CLAIM_MT_GEN_1_10_GOD_NAMING_SUBJECT',
+         'Genesis 1:10 presents God as the subject of a naming statement.'),
+        ('gen1_dry_land', 'participatesIn', 'gen1_10_naming_statement', 'CLAIM_MT_GEN_1_10_DRY_LAND_NAMING_PARTICIPANT',
+         'Genesis 1:10 presents dry land within the naming statement. The specific name given is intentionally unresolved.'),
+        ('gen1_seas', 'participatesIn', 'gen1_10_naming_statement', 'CLAIM_MT_GEN_1_10_SEAS_NAMING_PARTICIPANT',
+         'Genesis 1:10 presents seas within the naming statement.'),
+        ('gen1_god', 'subjectOf', 'gen1_11_vegetation_command_statement', 'CLAIM_MT_GEN_1_11_GOD_VEGETATION_COMMAND_SUBJECT',
+         'Genesis 1:11 presents God as the subject of a vegetation-command statement.'),
+        ('gen1_vegetation', 'participatesIn', 'gen1_11_vegetation_command_statement', 'CLAIM_MT_GEN_1_11_VEGETATION_COMMAND_PARTICIPANT',
+         'Genesis 1:11 presents vegetation within the vegetation-command statement.'),
+        ('gen1_earth', 'subjectOf', 'gen1_12_vegetation_statement', 'CLAIM_MT_GEN_1_12_EARTH_VEGETATION_SUBJECT',
+         'Genesis 1:12 presents the earth as the subject of a vegetation statement.'),
+        ('gen1_vegetation', 'participatesIn', 'gen1_12_vegetation_statement', 'CLAIM_MT_GEN_1_12_VEGETATION_PARTICIPANT',
+         'Genesis 1:12 presents vegetation within the vegetation statement.'),
+        ('gen1_day', 'subjectOf', 'gen1_13_day_boundary_statement', 'CLAIM_MT_GEN_1_13_DAY_BOUNDARY_SUBJECT',
+         'Genesis 1:13 presents day as the subject of a day-boundary statement. The ordinal day count is intentionally unresolved.')
      ) AS m(subject_key, predicate, event_key, claim_key, statement)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN event e ON e.event_key = m.event_key
@@ -314,6 +348,14 @@ FROM (VALUES
          'Genesis 1:8 is represented as a structural source-record boundary that presents God and sky within a naming statement.'),
         ('MT_GEN_1_9', 'EV_MT_GEN_1_9_DRY_LAND',
          'Genesis 1:9 is represented as a structural source-record boundary that presents God and dry land within a dry-land statement.'),
+        ('MT_GEN_1_10', 'EV_MT_GEN_1_10_NAMING',
+         'Genesis 1:10 is represented as a structural source-record boundary that presents God, dry land, and seas within a naming statement. The specific names and the evaluative statement are intentionally excluded.'),
+        ('MT_GEN_1_11', 'EV_MT_GEN_1_11_VEGETATION_COMMAND',
+         'Genesis 1:11 is represented as a structural source-record boundary that presents God and vegetation within a vegetation-command statement.'),
+        ('MT_GEN_1_12', 'EV_MT_GEN_1_12_VEGETATION',
+         'Genesis 1:12 is represented as a structural source-record boundary that presents the earth and vegetation within a vegetation statement. The evaluative statement is intentionally excluded.'),
+        ('MT_GEN_1_13', 'EV_MT_GEN_1_13_DAY_BOUNDARY',
+         'Genesis 1:13 is represented as a structural source-record boundary that presents day within a day-boundary statement. The ordinal day count is intentionally excluded.'),
         ('MT_GEN_5_3', 'EV_MT_GEN_5_3',
          'Genesis 5:3 in the Masoretic tradition records the begetting of Seth by Adam at 130 years.'),
         ('LXX_GEN_5_3', 'EV_LXX_GEN_5_3',
@@ -385,6 +427,22 @@ FROM (VALUES
          'The claim records the source-presented subject role.'),
         ('CLAIM_MT_GEN_1_9_DRY_LAND_PARTICIPANT', 'EV_MT_GEN_1_9_DRY_LAND', 'SUPPORTS',
          'The claim records dry land as directly present in the source-record statement.'),
+        ('CLAIM_MT_GEN_1_10_GOD_NAMING_SUBJECT', 'EV_MT_GEN_1_10_NAMING', 'SUPPORTS',
+         'The claim records the source-presented subject role.'),
+        ('CLAIM_MT_GEN_1_10_DRY_LAND_NAMING_PARTICIPANT', 'EV_MT_GEN_1_10_NAMING', 'SUPPORTS',
+         'The claim records dry land as directly present in the naming statement without asserting the specific name given.'),
+        ('CLAIM_MT_GEN_1_10_SEAS_NAMING_PARTICIPANT', 'EV_MT_GEN_1_10_NAMING', 'SUPPORTS',
+         'The claim records seas as directly present in the naming statement.'),
+        ('CLAIM_MT_GEN_1_11_GOD_VEGETATION_COMMAND_SUBJECT', 'EV_MT_GEN_1_11_VEGETATION_COMMAND', 'SUPPORTS',
+         'The claim records the source-presented subject role.'),
+        ('CLAIM_MT_GEN_1_11_VEGETATION_COMMAND_PARTICIPANT', 'EV_MT_GEN_1_11_VEGETATION_COMMAND', 'SUPPORTS',
+         'The claim records vegetation as directly present in the vegetation-command statement.'),
+        ('CLAIM_MT_GEN_1_12_EARTH_VEGETATION_SUBJECT', 'EV_MT_GEN_1_12_VEGETATION', 'SUPPORTS',
+         'The claim records the source-presented subject role.'),
+        ('CLAIM_MT_GEN_1_12_VEGETATION_PARTICIPANT', 'EV_MT_GEN_1_12_VEGETATION', 'SUPPORTS',
+         'The claim records vegetation as directly present in the vegetation statement.'),
+        ('CLAIM_MT_GEN_1_13_DAY_BOUNDARY_SUBJECT', 'EV_MT_GEN_1_13_DAY_BOUNDARY', 'SUPPORTS',
+         'The claim records the source-presented subject role without asserting the ordinal day count.'),
         ('CLAIM_ADAM_FATHER_SETH', 'EV_MT_GEN_5_3', 'SUPPORTS', 'Both traditions record the same parentage.'),
         ('CLAIM_ADAM_FATHER_SETH', 'EV_LXX_GEN_5_3', 'SUPPORTS', 'The traditions differ on the numeral, not the parentage.'),
         ('CLAIM_SETH_FATHER_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Both traditions record the same parentage.'),

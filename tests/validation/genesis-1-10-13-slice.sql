@@ -1,0 +1,134 @@
+\set ON_ERROR_STOP on
+
+DO $$
+BEGIN
+    -- Four new Masoretic structural source records for Genesis 1:10-13.
+    IF (
+        SELECT count(*)
+        FROM source_record sr
+        JOIN dataset d ON d.dataset_id = sr.dataset_id
+        WHERE d.dataset_key = 'GEN_MT_REF'
+          AND sr.source_record_key IN ('MT_GEN_1_10', 'MT_GEN_1_11', 'MT_GEN_1_12', 'MT_GEN_1_13')
+    ) <> 4 THEN
+        RAISE EXCEPTION 'Genesis 1:10-13 batch must have four Masoretic source records';
+    END IF;
+
+    -- Each new source record uses the existing GEN_MT_REF dataset under the existing GEN_MT source.
+    IF (
+        SELECT count(*)
+        FROM source_record sr
+        JOIN dataset d ON d.dataset_id = sr.dataset_id
+        JOIN source s ON s.source_id = d.source_id
+        WHERE sr.source_record_key IN ('MT_GEN_1_10', 'MT_GEN_1_11', 'MT_GEN_1_12', 'MT_GEN_1_13')
+          AND d.dataset_key = 'GEN_MT_REF'
+          AND s.source_key = 'GEN_MT'
+    ) <> 4 THEN
+        RAISE EXCEPTION 'Genesis 1:10-13 batch source records must reference the existing GEN_MT source and GEN_MT_REF dataset';
+    END IF;
+
+    -- Structural provenance is complete, no text/hash is introduced, and citations point at the
+    -- correct source records.
+    IF EXISTS (
+        SELECT 1
+        FROM source_record sr
+        LEFT JOIN citation ci ON ci.source_record_id = sr.source_record_id
+        LEFT JOIN evidence e ON e.source_record_id = sr.source_record_id
+        WHERE sr.source_record_key IN ('MT_GEN_1_10', 'MT_GEN_1_11', 'MT_GEN_1_12', 'MT_GEN_1_13')
+          AND (sr.raw_content IS NOT NULL OR sr.content_hash IS NOT NULL OR ci.quoted_text IS NOT NULL
+               OR ci.citation_id IS NULL OR ci.locator <> sr.source_location OR e.evidence_id IS NULL)
+    ) THEN
+        RAISE EXCEPTION 'Genesis 1:10-13 batch has incomplete structural provenance, undistributed text, or a mismatched citation locator';
+    END IF;
+
+    -- Every new evidence item traces to a citation and, through it, to the correct source record.
+    IF EXISTS (
+        SELECT 1
+        FROM evidence e
+        JOIN source_record sr ON sr.source_record_id = e.source_record_id
+        WHERE sr.source_record_key IN ('MT_GEN_1_10', 'MT_GEN_1_11', 'MT_GEN_1_12', 'MT_GEN_1_13')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM evidence_citation ec
+              JOIN citation ci ON ci.citation_id = ec.citation_id
+              WHERE ec.evidence_id = e.evidence_id
+                AND ci.source_record_id = sr.source_record_id
+          )
+    ) THEN
+        RAISE EXCEPTION 'Genesis 1:10-13 evidence lacks a citation to its own source record';
+    END IF;
+
+    -- Every new direct claim has ClaimEvidence support and an underlying proposition.
+    IF EXISTS (
+        SELECT 1
+        FROM source_record sr
+        WHERE sr.source_record_key IN ('MT_GEN_1_10', 'MT_GEN_1_11', 'MT_GEN_1_12', 'MT_GEN_1_13')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM evidence e
+              JOIN claim_evidence ce ON ce.evidence_id = e.evidence_id
+              JOIN claim c ON c.claim_id = ce.claim_id
+              JOIN proposition p ON p.proposition_id = c.proposition_id
+              WHERE e.source_record_id = sr.source_record_id
+                AND ce.relation_type_code = 'SUPPORTS'
+                AND c.claim_type_code = 'DIRECT_SOURCE_CLAIM'
+          )
+    ) THEN
+        RAISE EXCEPTION 'Genesis 1:10-13 source record lacks a direct supported claim with a proposition';
+    END IF;
+
+    -- Only the existing controlled predicates (subjectOf, participatesIn) are used by the new
+    -- Genesis 1:10-13 propositions; no new predicate is introduced by this batch.
+    IF EXISTS (
+        SELECT 1
+        FROM proposition p
+        JOIN event ev ON ev.event_id = p.object_event_id
+        WHERE ev.event_key IN ('gen1_10_naming_statement', 'gen1_11_vegetation_command_statement',
+                                'gen1_12_vegetation_statement', 'gen1_13_day_boundary_statement')
+          AND p.predicate NOT IN ('subjectOf', 'participatesIn')
+    ) THEN
+        RAISE EXCEPTION 'Genesis 1:10-13 batch introduces an unsupported predicate';
+    END IF;
+
+    -- No claim_relation rows (uncontrolled claim relations) are introduced for the new claims.
+    IF EXISTS (
+        SELECT 1
+        FROM claim_relation cr
+        JOIN claim c ON c.claim_id = cr.claim_id OR c.claim_id = cr.related_claim_id
+        WHERE c.claim_key IN (
+              'CLAIM_MT_GEN_1_10_GOD_NAMING_SUBJECT', 'CLAIM_MT_GEN_1_10_DRY_LAND_NAMING_PARTICIPANT',
+              'CLAIM_MT_GEN_1_10_SEAS_NAMING_PARTICIPANT',
+              'CLAIM_MT_GEN_1_11_GOD_VEGETATION_COMMAND_SUBJECT', 'CLAIM_MT_GEN_1_11_VEGETATION_COMMAND_PARTICIPANT',
+              'CLAIM_MT_GEN_1_12_EARTH_VEGETATION_SUBJECT', 'CLAIM_MT_GEN_1_12_VEGETATION_PARTICIPANT',
+              'CLAIM_MT_GEN_1_13_DAY_BOUNDARY_SUBJECT'
+          )
+    ) THEN
+        RAISE EXCEPTION 'Genesis 1:10-13 batch introduces an uncontrolled claim relation';
+    END IF;
+
+    -- Event participation for the new statements is projection-based (event_participation view),
+    -- not a separate authoritative table.
+    IF NOT EXISTS (
+        SELECT 1
+        FROM event_participation ep
+        JOIN event ev ON ev.event_id = ep.event_id
+        JOIN entity en ON en.entity_id = ep.entity_id
+        WHERE ev.event_key = 'gen1_10_naming_statement'
+          AND en.entity_key = 'gen1_seas'
+    ) THEN
+        RAISE EXCEPTION 'Genesis 1:10-13 batch: event participation projection is missing the seas participant';
+    END IF;
+
+    -- Genesis 1:1-9 record counts remain exactly as established by the Phase 7 batch.
+    IF (
+        SELECT count(*)
+        FROM source_record sr
+        JOIN dataset d ON d.dataset_id = sr.dataset_id
+        WHERE d.dataset_key = 'GEN_MT_REF'
+          AND sr.source_record_key IN (
+              'MT_GEN_1_1', 'MT_GEN_1_2', 'MT_GEN_1_3', 'MT_GEN_1_4', 'MT_GEN_1_5',
+              'MT_GEN_1_6', 'MT_GEN_1_7', 'MT_GEN_1_8', 'MT_GEN_1_9'
+          )
+    ) <> 9 THEN
+        RAISE EXCEPTION 'Genesis 1:1-9 batch was altered by the Phase 8 extension';
+    END IF;
+END $$;
