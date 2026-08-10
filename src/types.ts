@@ -30,3 +30,8 @@ export interface GraphEdge {
   relation: string;
   claimId?: number;
 }
+
+export interface ExplainProvenanceInput {
+  claimId?: number;
+  propositionId?: number;
+}

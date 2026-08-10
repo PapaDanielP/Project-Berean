@@ -8,6 +8,12 @@ const toInt = (value: string): number | null => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const toStrictInt = (value: unknown): number | null => {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 const homeHtml = `<!doctype html>
 <html lang="en">
 <head>
@@ -194,6 +200,36 @@ export const createApp = (databaseUrl: string): express.Express => {
       }
       const provenance = await repository.getClaimProvenance(claimId);
       res.json(provenance);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/provenance/explain', async (req, res, next) => {
+    try {
+      const claimIdRaw = req.query.claim_id;
+      const propositionIdRaw = req.query.proposition_id;
+      const claimId = claimIdRaw === undefined ? null : toStrictInt(String(claimIdRaw));
+      const propositionId = propositionIdRaw === undefined ? null : toStrictInt(String(propositionIdRaw));
+      const hasClaim = claimIdRaw !== undefined;
+      const hasProposition = propositionIdRaw !== undefined;
+
+      if ((hasClaim && hasProposition) || (!hasClaim && !hasProposition)) {
+        res.status(400).json({ error: 'exactly one of claim_id or proposition_id is required' });
+        return;
+      }
+
+      if ((hasClaim && !claimId) || (hasProposition && !propositionId)) {
+        res.status(400).json({ error: 'claim_id and proposition_id must be positive integers' });
+        return;
+      }
+
+      const explanation = await repository.explainProvenance({ claimId: claimId ?? undefined, propositionId: propositionId ?? undefined });
+      if (!explanation) {
+        res.status(404).json({ error: hasClaim ? 'claim not found' : 'proposition not found' });
+        return;
+      }
+      res.json(explanation);
     } catch (error) {
       next(error);
     }
