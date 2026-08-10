@@ -179,12 +179,21 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Genesis 1:20-31 batch must not introduce dominion/blessing/kind/species/male-female entities';
     END IF;
+    -- This batch (Phase 10) itself introduces no predicate. The allow-list below also permits
+    -- the predicates Phase 16 later registers (builderIn, lengthCubits, widthCubits,
+    -- heightCubits, madeOfMaterial, overlaidWithMaterial, hasComponent, containsContent); the
+    -- registry is populated in schema/sql/001_core_schema.sql ahead of any fixture, so this
+    -- check only guards against an undocumented predicate, not against the registry growing
+    -- across later phases.
     IF EXISTS (
         SELECT 1
         FROM predicate
         WHERE predicate_code NOT IN ('fatherOf', 'motherOf', 'siblingOf', 'locatedAt', 'occursAt',
                                       'precedes', 'participatesIn', 'subjectOf', 'parentIn', 'childIn',
-                                      'ageAtDeathYears', 'ageAtFatherhoodYears', 'yearsFromCreation')
+                                      'ageAtDeathYears', 'ageAtFatherhoodYears', 'yearsFromCreation',
+                                      'builderIn', 'lengthCubits', 'widthCubits', 'heightCubits',
+                                      'madeOfMaterial', 'overlaidWithMaterial', 'hasComponent',
+                                      'containsContent')
     ) THEN
         RAISE EXCEPTION 'Genesis 1:20-31 batch must not introduce a new predicate';
     END IF;
