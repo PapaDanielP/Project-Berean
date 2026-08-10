@@ -117,6 +117,16 @@ run "$root/tests/validation/phase19-coverage-report.sql"
 "$root/tests/validation/phase19-negative-cases.sh"
 run "$root/scripts/validation/validate.sql"
 
+ # Phase 24 builds a reproducible Ark/Genesis knowledge-construction demonstration using
+ # existing architecture only. It extends the accepted Phase 19 slice with source-backed
+ # Ark content attestations from 1 Kings 8:9 and Hebrews 9:4, preserves source differences
+ # without automatic contradiction/compliance inference, and validates provenance and
+ # derivation-readiness demonstrations without adding schema/registry/persistence behavior.
+ run "$root/tests/fixtures/100-phase24-berean-in-action-fixture.sql"
+ run "$root/tests/validation/phase24-berean-in-action-slice.sql"
+ run "$root/tests/validation/phase24-coverage-report.sql"
+ run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
