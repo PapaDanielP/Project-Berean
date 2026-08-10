@@ -45,3 +45,4 @@ See `docs/04-data/PHASE7_REPORT.md` for the Phase 7 source-availability assessme
 See `docs/04-data/PHASE8_REPORT.md` for the Phase 8 Genesis 1:10–13 extension, validation results, and remaining deferrals.
 See `docs/04-data/PHASE9_REPORT.md` for the Phase 9 Genesis 1:14–19 extension, validation results, and remaining deferrals.
 See `docs/04-data/PHASE10_REPORT.md` for the Phase 10 Genesis 1:20–31 extension, validation results, and semantic exclusions.
+See `docs/04-data/PHASE11_REPORT.md` for the Phase 11 object/artifact entity slice (`noahs_ark`, sourced from the existing Genesis 8:4 record, and the validation-only `ark_of_covenant`), which demonstrates that tangible objects are represented with the existing Entity model rather than a new Thing/Artifact table.

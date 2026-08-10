@@ -106,13 +106,15 @@ INSERT INTO entity (entity_key, entity_type_code, canonical_name) VALUES
     ('gen1_land_creatures', 'CONCEPT', 'land creatures'),
     ('gen1_humankind', 'CONCEPT', 'humankind'),
     ('gen1_green_plants', 'CONCEPT', 'green plants'),
-    ('gen1_all_made', 'CONCEPT', 'all made');
+    ('gen1_all_made', 'CONCEPT', 'all made'),
+    ('noahs_ark', 'OBJECT', 'Noah''s Ark');
 
 INSERT INTO source_identity (source_id, source_identity_key, display_name)
 SELECT s.source_id, m.source_identity_key, m.display_name
 FROM (VALUES
         ('GEN_MT', 'mt-adam', 'Adam'), ('GEN_MT', 'mt-seth', 'Seth'),
-        ('GEN_LXX', 'lxx-adam', 'Adam'), ('GEN_LXX', 'lxx-seth', 'Seth')
+        ('GEN_LXX', 'lxx-adam', 'Adam'), ('GEN_LXX', 'lxx-seth', 'Seth'),
+        ('GEN_MT', 'mt-ark', 'the ark')
      ) AS m(source_key, source_identity_key, display_name)
 JOIN source s ON s.source_key = m.source_key;
 INSERT INTO source_identity_alternate_name (source_identity_id, alternate_name)
@@ -170,6 +172,7 @@ SELECT s.entity_id, m.predicate, e.event_id
 FROM (VALUES ('adam', 'parentIn', 'seth_begetting'), ('seth', 'childIn', 'seth_begetting'),
              ('seth', 'parentIn', 'enosh_begetting'), ('enosh', 'childIn', 'enosh_begetting'),
              ('noah', 'subjectOf', 'ark_resting'),
+             ('noahs_ark', 'participatesIn', 'ark_resting'),
              ('gen1_god', 'subjectOf', 'gen1_1_creation_statement'),
              ('gen1_heavens', 'participatesIn', 'gen1_1_creation_statement'),
              ('gen1_earth', 'participatesIn', 'gen1_1_creation_statement'),
@@ -314,6 +317,8 @@ FROM (VALUES
          'Enosh is the child participant in the begetting of Enosh.'),
         ('noah', 'subjectOf', 'ark_resting', 'CLAIM_NOAH_ARK_RESTING',
          'Noah is the subject of the ark-resting event.'),
+        ('noahs_ark', 'participatesIn', 'ark_resting', 'CLAIM_MT_GEN_8_4_ARK_PARTICIPANT',
+         'Genesis 8:4 presents the ark as a participant in the ark-resting event.'),
         ('gen1_god', 'subjectOf', 'gen1_1_creation_statement', 'CLAIM_MT_GEN_1_1_GOD_SUBJECT_CREATION',
          'Genesis 1:1 presents God as the subject of the creation statement.'),
         ('gen1_heavens', 'participatesIn', 'gen1_1_creation_statement', 'CLAIM_MT_GEN_1_1_HEAVENS_CREATION_PARTICIPANT',
@@ -774,6 +779,7 @@ FROM (VALUES
         ('CLAIM_SETH_PARENT_ENOSH_BEGETTING', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Participation is recorded in the same verse.'),
         ('CLAIM_ENOSH_CHILD_ENOSH_BEGETTING', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Participation is recorded in the same verse.'),
         ('CLAIM_NOAH_ARK_RESTING', 'EV_MT_GEN_8_4', 'SUPPORTS', 'The narrative names Noah as the subject.'),
+        ('CLAIM_MT_GEN_8_4_ARK_PARTICIPANT', 'EV_MT_GEN_8_4', 'SUPPORTS', 'The verse names the ark as the resting subject.'),
         ('CLAIM_ARK_RESTING_ARARAT', 'EV_MT_GEN_8_4', 'SUPPORTS', 'The verse gives the location.'),
         ('CLAIM_SETH_BEFORE_ENOSH', 'EV_MT_GEN_5_3', 'SUPPORTS', 'The genealogy orders the two begettings.'),
         ('CLAIM_SETH_BEFORE_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'The genealogy orders the two begettings.'),
@@ -879,7 +885,8 @@ FROM (VALUES
         ('mt-adam', 'adam', 0.9900, 'The Masoretic genealogy identifies this figure at Genesis 5:3.', 'EV_MT_GEN_5_3'),
         ('mt-seth', 'seth', 0.9900, 'The Masoretic genealogy identifies this figure at Genesis 5:3.', 'EV_MT_GEN_5_3'),
         ('lxx-adam', 'adam', 0.9500, 'The Septuagint genealogy identifies the same genealogical position.', 'EV_LXX_GEN_5_3'),
-        ('lxx-seth', 'seth', 0.9500, 'The Septuagint genealogy identifies the same genealogical position.', 'EV_LXX_GEN_5_3')
+        ('lxx-seth', 'seth', 0.9500, 'The Septuagint genealogy identifies the same genealogical position.', 'EV_LXX_GEN_5_3'),
+        ('mt-ark', 'noahs_ark', 0.9900, 'Genesis 8:4 names the ark as the resting subject at this genealogical position.', 'EV_MT_GEN_8_4')
      ) AS m(source_identity_key, entity_key, confidence, justification, evidence_key)
 JOIN source_identity si ON si.source_identity_key = m.source_identity_key
 JOIN entity en ON en.entity_key = m.entity_key
