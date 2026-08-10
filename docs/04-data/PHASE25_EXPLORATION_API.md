@@ -163,11 +163,12 @@ fixtures, the Ark events and their source-backed claims, including:
 - Exodus instruction, construction, and contents-placement material;
 - Joshua 3:6 transport instruction and priestly carrying;
 - 2 Samuel 6:3 new-cart transport and the 2 Samuel 6:6 handling occurrence;
-- 1 Samuel 4:4, 4:11, 5:1, 5:2, 7:1, and 7:2 capture, movement, and custody material.
+- Ark-content material from Exodus 40:20, 1 Kings 8:9, and Hebrews 9:4, which is asserted
+  about the entity without an event and is returned under `entity_claims_without_event`.
 
 Each claim exposes its evidence, citation locator, source record, dataset, and source, and
 each event exposes its projected participation (for example `ark_of_covenant` as `SUBJECT`
-and `philistines` as `PARTICIPANT` in `ark_covenant_moved_to_ashdod_1sam5`).
+and `uzzah` and `new_cart_2sam6` as `PARTICIPANT` in `ark_covenant_transport_new_cart_2sam6`).
 
 `GET /api/exploration/timeline?entity_id=<id>` behaves identically for the same entity.
 
@@ -177,8 +178,8 @@ and `philistines` as `PARTICIPANT` in `ark_covenant_moved_to_ashdod_1sam5`).
   material connected only through other entities is reached by exploring those entities.
 - No temporal ordering is available for material whose source stores no date, so most Ark
   events are ordered by stable identifier.
-- Durations recorded only in evidence text (for example the twenty years of 1 Samuel 7:2)
-  remain evidence text, because no duration predicate is registered.
+- Material recorded only in evidence text remains evidence text, because no predicate is
+  registered for it.
 - No truth, falsity, contradiction, sufficiency, entailment, causation, compliance,
   violation, theological meaning, or source-silence conclusion is produced.
 - The operation is query-scoped and ephemeral; nothing it assembles is persisted.

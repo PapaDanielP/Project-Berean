@@ -477,34 +477,6 @@ describe('read-only API', () => {
     expect(nonexistentProposition.status).toBe(404);
   });
 
-  it('explores the Phase 24 Ark lifecycle slice without mutating persistent data', async () => {
-    const claimId = await getClaimIdByKey('CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5');
-    const derivationId = await getDerivationIdByClaimKey('CLAIM_MT_ENOSH_YEAR_DERIVED');
-    const before = await snapshotPersistentTableCounts();
-
-    const provenance = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
-    const eventSearch = await request(app).get('/api/search').query({ q: 'ark_covenant_moved_to_ashdod_1sam5', limit: 5 });
-    const eventResult = eventSearch.body.results.find((r: { type: string }) => r.type === 'event');
-    const eventDetail = await request(app).get(`/api/events/${eventResult.id}`);
-    const eligibility = await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: derivationId });
-    const after = await snapshotPersistentTableCounts();
-
-    expect(provenance.status).toBe(200);
-    expect(provenance.body.claims[0].provenance_status).toBe('SOURCE-BACKED');
-    expect(provenance.body.claims[0].source[0].source_key).toBe('1SA_MT');
-    expect(provenance.body.claims[0].citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
-    expect(provenance.body.claims[0].source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
-    expect(eventDetail.status).toBe(200);
-    expect(eventDetail.body.event.event_key).toBe('ark_covenant_moved_to_ashdod_1sam5');
-    expect(eventDetail.body.participation.map((row: { entity_key: string }) => row.entity_key)).toEqual(
-      expect.arrayContaining(['ark_of_covenant', 'philistines'])
-    );
-    expect(eligibility.status).toBe(200);
-    expect(eligibility.body.operation).toBe('CHECK_DERIVATION_ELIGIBILITY');
-    expect(eligibility.body.read_only).toBe(true);
-    expect(after).toEqual(before);
-  });
-
   it('returns 400 for invalid exploration timeline input and 404 for a nonexistent entity', async () => {
     expect((await request(app).get('/api/exploration/timeline')).status).toBe(400);
     expect(
@@ -557,15 +529,13 @@ describe('read-only API', () => {
     const eventKeys = response.body.timeline.map((entry: { event: { event_key: string } }) => entry.event.event_key);
     expect(eventKeys).toEqual(
       expect.arrayContaining([
-        'ark_covenant_brought_from_shiloh_1sam4',
-        'ark_covenant_captured_1sam4',
-        'ark_covenant_moved_to_ashdod_1sam5',
-        'ark_covenant_set_in_house_dagon_1sam5',
-        'ark_covenant_brought_to_abinadab_house_1sam7',
-        'ark_covenant_care_eleazar_1sam7',
-        'ark_covenant_stay_kiriath_jearim_1sam7',
+        'ark_covenant_instruction',
+        'ark_covenant_construction',
+        'ark_covenant_contents_placement',
+        'ark_covenant_transport_instruction_jordan',
         'ark_covenant_transport_jordan',
-        'ark_covenant_transport_new_cart_2sam6'
+        'ark_covenant_transport_new_cart_2sam6',
+        'ark_covenant_physical_interaction_uzzah_2sam6'
       ])
     );
     expect(new Set(eventKeys).size).toBe(eventKeys.length);
@@ -575,30 +545,31 @@ describe('read-only API', () => {
       )
     ).toBe(true);
 
-    const ashdod = response.body.timeline.find(
-      (entry: { event: { event_key: string } }) => entry.event.event_key === 'ark_covenant_moved_to_ashdod_1sam5'
+    const newCartTransport = response.body.timeline.find(
+      (entry: { event: { event_key: string } }) => entry.event.event_key === 'ark_covenant_transport_new_cart_2sam6'
     );
-    const arkClaim = ashdod.claims.find(
-      (entry: { claim: { claim_key: string } }) => entry.claim.claim_key === 'CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5'
+    const arkClaim = newCartTransport.claims.find(
+      (entry: { claim: { claim_key: string } }) =>
+        entry.claim.claim_key === 'CLAIM_ARK_COVENANT_SUBJECT_TRANSPORT_NEW_CART_2SAM6'
     );
     expect(arkClaim.record_type).toBe('STORED_CLAIM');
     expect(arkClaim.claim.statement_role).toBe('DISPLAY_METADATA_ONLY');
     expect(arkClaim.proposition.authority).toBe('AUTHORITATIVE_STRUCTURED_CONTENT');
     expect(arkClaim.proposition.predicate).toBe('subjectOf');
     expect(arkClaim.predicate.event_participation_role_code).toBe('SUBJECT');
-    expect(arkClaim.provenance.supporting_evidence[0].evidence_key).toBe('EV_MT_1SA_5_1');
+    expect(arkClaim.provenance.supporting_evidence[0].evidence_key).toBe('EV_MT_2SA_6_3');
     expect(arkClaim.provenance.supporting_evidence[0].relation_type_code).toBe('SUPPORTS');
-    expect(arkClaim.provenance.citations[0].locator).toBe('1 Samuel 5:1');
+    expect(arkClaim.provenance.citations[0].locator).toBe('2 Samuel 6:3');
     expect(arkClaim.provenance.citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
-    expect(arkClaim.provenance.source_records[0].source_record_key).toBe('MT_1SA_5_1');
+    expect(arkClaim.provenance.source_records[0].source_record_key).toBe('MT_2SA_6_3');
     expect(arkClaim.provenance.source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
-    expect(arkClaim.provenance.datasets[0].dataset_key).toBe('1SA_MT_REF');
-    expect(arkClaim.provenance.sources[0].source_key).toBe('1SA_MT');
+    expect(arkClaim.provenance.datasets[0].dataset_key).toBe('2SA_MT_REF');
+    expect(arkClaim.provenance.sources[0].source_key).toBe('2SA_MT');
     expect(arkClaim.projected_relationships[0].projection).toBe('PROJECTED_FROM_CLAIM_ASSERTED_PROPOSITION');
 
-    const participants = ashdod.projected_event_participation;
+    const participants = newCartTransport.projected_event_participation;
     expect(participants.map((row: { entity_key: string }) => row.entity_key)).toEqual(
-      expect.arrayContaining(['ark_of_covenant', 'philistines'])
+      expect.arrayContaining(['ark_of_covenant', 'uzzah', 'new_cart_2sam6'])
     );
     expect(participants.every((row: { projection: string }) => row.projection === 'PROJECTED_FROM_CLAIM_ASSERTED_PROPOSITION')).toBe(true);
     expect(participants.every((row: { asserting_claim_key: string }) => typeof row.asserting_claim_key === 'string')).toBe(true);
@@ -609,12 +580,13 @@ describe('read-only API', () => {
       .map((citation: { locator: string }) => citation.locator);
     expect(locators).toEqual(
       expect.arrayContaining([
-        '1 Samuel 4:4',
-        '1 Samuel 4:11',
-        '1 Samuel 5:1',
-        '1 Samuel 5:2',
-        '1 Samuel 7:1',
-        '1 Samuel 7:2'
+        'Exodus 25:10',
+        'Exodus 37:1',
+        'Exodus 40:20',
+        'Deuteronomy 10:3',
+        'Joshua 3:6',
+        '2 Samuel 6:3',
+        '2 Samuel 6:6'
       ])
     );
 
@@ -622,12 +594,12 @@ describe('read-only API', () => {
     expect(response.body.entity_source_mappings.length).toBeGreaterThan(0);
   });
 
-  it('keeps Joshua 3, 1 Samuel 5, and 2 Samuel 6 descriptions distinct and unclassified', async () => {
+  it('keeps Joshua 3, 2 Samuel 6, and Hebrews 9 descriptions distinct and unclassified', async () => {
     const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'ark_of_covenant' });
     expect(response.status).toBe(200);
 
     const sourceKeys = response.body.source_comparison.sources.map((source: { source_key: string }) => source.source_key);
-    expect(sourceKeys).toEqual(expect.arrayContaining(['JOS_MT', '1SA_MT', '2SA_MT']));
+    expect(sourceKeys).toEqual(expect.arrayContaining(['JOS_MT', '2SA_MT', 'HEB_GNT']));
     expect(response.body.source_comparison.comparison_status).toBe('DIFFERING_SOURCE_DESCRIPTION');
     expect(response.body.source_comparison.distinct_source_count).toBeGreaterThan(1);
 
@@ -638,8 +610,8 @@ describe('read-only API', () => {
       ])
     );
     expect(locatorsBySource.JOS_MT).toContain('Joshua 3:6');
-    expect(locatorsBySource['1SA_MT']).toContain('1 Samuel 5:1');
     expect(locatorsBySource['2SA_MT']).toContain('2 Samuel 6:3');
+    expect(locatorsBySource.HEB_GNT).toContain('Hebrews 9:4');
 
     const descriptionTypes = response.body.source_comparison.sources.flatMap(
       (source: { descriptions: { record_type: string }[] }) => source.descriptions.map((description) => description.record_type)
