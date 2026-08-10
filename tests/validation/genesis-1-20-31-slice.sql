@@ -154,7 +154,7 @@ BEGIN
         JOIN event ev ON ev.event_id = ep.event_id
         JOIN entity en ON en.entity_id = ep.entity_id
         WHERE ev.event_key = 'gen1_27_mankind_creation_statement'
-          AND en.entity_key = 'gen1_mankind'
+          AND en.entity_key = 'gen1_humankind'
     ) THEN
         RAISE EXCEPTION 'Genesis 1:20-31 batch: event participation projection is missing the mankind participant';
     END IF;

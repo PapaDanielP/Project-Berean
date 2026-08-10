@@ -229,9 +229,9 @@ FROM (VALUES ('adam', 'parentIn', 'seth_begetting'), ('seth', 'childIn', 'seth_b
              ('gen1_god', 'subjectOf', 'gen1_25_land_creatures_statement'),
              ('gen1_land_creatures', 'participatesIn', 'gen1_25_land_creatures_statement'),
              ('gen1_god', 'subjectOf', 'gen1_26_mankind_command_statement'),
-             ('gen1_mankind', 'participatesIn', 'gen1_26_mankind_command_statement'),
+             ('gen1_humankind', 'participatesIn', 'gen1_26_mankind_command_statement'),
              ('gen1_god', 'subjectOf', 'gen1_27_mankind_creation_statement'),
-             ('gen1_mankind', 'participatesIn', 'gen1_27_mankind_creation_statement')) AS m(subject_key, predicate, event_key)
+             ('gen1_humankind', 'participatesIn', 'gen1_27_mankind_creation_statement')) AS m(subject_key, predicate, event_key)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN event e ON e.event_key = m.event_key;
 INSERT INTO proposition (subject_event_id, predicate, object_entity_id)
@@ -425,11 +425,11 @@ FROM (VALUES
          'Genesis 1:25 presents land creatures within the land-creatures statement.'),
         ('gen1_god', 'subjectOf', 'gen1_26_mankind_command_statement', 'CLAIM_MT_GEN_1_26_GOD_MANKIND_COMMAND_SUBJECT',
          'Genesis 1:26 presents God as the subject of a mankind-command statement. Image, likeness, and dominion language is intentionally excluded.'),
-        ('gen1_mankind', 'participatesIn', 'gen1_26_mankind_command_statement', 'CLAIM_MT_GEN_1_26_MANKIND_COMMAND_PARTICIPANT',
+        ('gen1_humankind', 'participatesIn', 'gen1_26_mankind_command_statement', 'CLAIM_MT_GEN_1_26_MANKIND_COMMAND_PARTICIPANT',
          'Genesis 1:26 presents mankind within the mankind-command statement.'),
         ('gen1_god', 'subjectOf', 'gen1_27_mankind_creation_statement', 'CLAIM_MT_GEN_1_27_GOD_MANKIND_CREATION_SUBJECT',
          'Genesis 1:27 presents God as the subject of a mankind-creation statement. Image, likeness, and male/female language is intentionally excluded.'),
-        ('gen1_mankind', 'participatesIn', 'gen1_27_mankind_creation_statement', 'CLAIM_MT_GEN_1_27_MANKIND_CREATION_PARTICIPANT',
+        ('gen1_humankind', 'participatesIn', 'gen1_27_mankind_creation_statement', 'CLAIM_MT_GEN_1_27_MANKIND_CREATION_PARTICIPANT',
          'Genesis 1:27 presents mankind within the mankind-creation statement.')
      ) AS m(subject_key, predicate, event_key, claim_key, statement)
 JOIN entity s ON s.entity_key = m.subject_key

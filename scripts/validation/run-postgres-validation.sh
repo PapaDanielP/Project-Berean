@@ -35,6 +35,11 @@ run "$root/tests/fixtures/050-phase11-object-entity-fixture.sql"
 run "$root/tests/validation/phase11-object-entity-slice.sql"
 run "$root/tests/validation/phase11-coverage-report.sql"
 
+# Phase 12 preserves the existing Genesis 1:22-23 structural source observations while
+# explicitly validating their deliberately unmodeled semantic boundary.
+run "$root/tests/validation/genesis-1-22-23-slice.sql"
+run "$root/tests/validation/phase12-coverage-report.sql"
+
 # Bounded STEP Bible acquisition: manifest integrity offline, then the imported Genesis subset.
 "$root/tests/validation/stepbible-acquisition-manifest.sh"
 run "$root/tests/fixtures/040-stepbible-genesis-source-fixture.sql"
