@@ -70,8 +70,8 @@ const snapshotPersistentTableCounts = async (): Promise<Record<string, number>> 
 beforeAll(async () => {
   await runSqlFile('schema/sql/001_core_schema.sql');
   await runSqlFile('tests/fixtures/020-genesis-1-11-fixture.sql');
-  await runSqlFile('tests/fixtures/040-stepbible-genesis-source-fixture.sql');
   await runSqlFile('tests/fixtures/050-phase11-object-entity-fixture.sql');
+  await runSqlFile('tests/fixtures/040-stepbible-genesis-source-fixture.sql');
   await runSqlFile('tests/fixtures/060-phase16-artifact-construction-fixture.sql');
   await runSqlFile('tests/fixtures/070-phase17-standing-requirement-fixture.sql');
   await runSqlFile('tests/fixtures/080-phase18-ark-transport-fixture.sql');
