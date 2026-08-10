@@ -149,6 +149,26 @@ SELECT 'CLAIM_SETH_FATHER_ENOSH', p.proposition_id, 'DIRECT_SOURCE_CLAIM',
 FROM proposition p JOIN entity s ON s.entity_id = p.subject_entity_id
 WHERE p.predicate = 'fatherOf' AND s.entity_key = 'seth';
 
+-- Independent source claims may share one normalized proposition when the
+-- semantic assertion is the same and only source provenance differs.
+INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
+SELECT m.claim_key, p.proposition_id, 'DIRECT_SOURCE_CLAIM', m.statement
+FROM (VALUES
+        ('adam', 'fatherOf', 'seth', 'CLAIM_MT_ADAM_FATHER_SETH',
+         'The Masoretic tradition records Seth as begotten by Adam.'),
+        ('adam', 'fatherOf', 'seth', 'CLAIM_LXX_ADAM_FATHER_SETH',
+         'The Septuagint tradition records Seth as begotten by Adam.'),
+        ('seth', 'fatherOf', 'enosh', 'CLAIM_MT_SETH_FATHER_ENOSH',
+         'The Masoretic tradition records Enosh as begotten by Seth.'),
+        ('seth', 'fatherOf', 'enosh', 'CLAIM_LXX_SETH_FATHER_ENOSH',
+         'The Septuagint tradition records Enosh as begotten by Seth.')
+     ) AS m(subject_key, predicate, object_key, claim_key, statement)
+JOIN entity s ON s.entity_key = m.subject_key
+JOIN entity o ON o.entity_key = m.object_key
+JOIN proposition p ON p.subject_entity_id = s.entity_id
+                  AND p.object_entity_id = o.entity_id
+                  AND p.predicate = m.predicate;
+
 INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
 SELECT m.claim_key, p.proposition_id, 'DIRECT_SOURCE_CLAIM', m.statement
 FROM (VALUES
@@ -226,6 +246,15 @@ JOIN entity s ON s.entity_key = m.subject_key
 JOIN typed_value t ON t.numeric_value = m.years
 JOIN proposition p ON p.subject_entity_id = s.entity_id AND p.object_typed_value_id = t.typed_value_id;
 
+INSERT INTO claim (claim_key, proposition_id, claim_type_code, claim_status_code, statement, notes)
+SELECT 'CLAIM_MT_ADAM_AGE_AT_SETH_DRAFT', p.proposition_id, 'DIRECT_SOURCE_CLAIM', 'SUPERSEDED',
+       'Draft curation claim for the Masoretic Adam-at-Seth numeral later superseded without deletion.',
+       'Preserved to demonstrate Claim SUPERSEDES lifecycle without changing source evidence.'
+FROM proposition p
+JOIN entity s ON s.entity_id = p.subject_entity_id
+JOIN typed_value t ON t.typed_value_id = p.object_typed_value_id
+WHERE s.entity_key = 'adam' AND p.predicate = 'ageAtFatherhoodYears' AND t.numeric_value = 130;
+
 INSERT INTO evidence (evidence_key, source_record_id, observation, evidence_type_code)
 SELECT m.evidence_key, sr.source_record_id, m.observation, 'SOURCE_OBSERVATION'
 FROM (VALUES
@@ -300,6 +329,10 @@ FROM (VALUES
         ('CLAIM_ADAM_FATHER_SETH', 'EV_LXX_GEN_5_3', 'SUPPORTS', 'The traditions differ on the numeral, not the parentage.'),
         ('CLAIM_SETH_FATHER_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Both traditions record the same parentage.'),
         ('CLAIM_SETH_FATHER_ENOSH', 'EV_LXX_GEN_5_6', 'SUPPORTS', 'The traditions differ on the numeral, not the parentage.'),
+        ('CLAIM_MT_ADAM_FATHER_SETH', 'EV_MT_GEN_5_3', 'SUPPORTS', 'The Masoretic record supports this source-specific parentage claim.'),
+        ('CLAIM_LXX_ADAM_FATHER_SETH', 'EV_LXX_GEN_5_3', 'SUPPORTS', 'The Septuagint record supports this source-specific parentage claim.'),
+        ('CLAIM_MT_SETH_FATHER_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'The Masoretic record supports this source-specific parentage claim.'),
+        ('CLAIM_LXX_SETH_FATHER_ENOSH', 'EV_LXX_GEN_5_6', 'SUPPORTS', 'The Septuagint record supports this source-specific parentage claim.'),
         ('CLAIM_ADAM_PARENT_SETH_BEGETTING', 'EV_MT_GEN_5_3', 'SUPPORTS', 'Participation is recorded in the same verse.'),
         ('CLAIM_SETH_CHILD_SETH_BEGETTING', 'EV_MT_GEN_5_3', 'SUPPORTS', 'Participation is recorded in the same verse.'),
         ('CLAIM_SETH_PARENT_ENOSH_BEGETTING', 'EV_MT_GEN_5_6', 'SUPPORTS', 'Participation is recorded in the same verse.'),
@@ -309,6 +342,7 @@ FROM (VALUES
         ('CLAIM_SETH_BEFORE_ENOSH', 'EV_MT_GEN_5_3', 'SUPPORTS', 'The genealogy orders the two begettings.'),
         ('CLAIM_SETH_BEFORE_ENOSH', 'EV_MT_GEN_5_6', 'SUPPORTS', 'The genealogy orders the two begettings.'),
         ('CLAIM_MT_ADAM_AGE_AT_SETH', 'EV_MT_GEN_5_3', 'SUPPORTS', 'The Masoretic numeral is 130.'),
+        ('CLAIM_MT_ADAM_AGE_AT_SETH_DRAFT', 'EV_MT_GEN_5_3', 'SUPPORTS', 'The draft claim used the same source-backed Masoretic numeral.'),
         ('CLAIM_MT_ADAM_AGE_AT_SETH', 'EV_LXX_GEN_5_3', 'CONTRADICTS', 'The Septuagint numeral is 230.'),
         ('CLAIM_LXX_ADAM_AGE_AT_SETH', 'EV_LXX_GEN_5_3', 'SUPPORTS', 'The Septuagint numeral is 230.'),
         ('CLAIM_LXX_ADAM_AGE_AT_SETH', 'EV_MT_GEN_5_3', 'CONTRADICTS', 'The Masoretic numeral is 130.'),
@@ -367,6 +401,39 @@ SELECT a.claim_id, b.claim_id, 'CONTRADICTS',
        'The derived chronologies disagree because their source numerals disagree.'
 FROM claim a CROSS JOIN claim b
 WHERE a.claim_key = 'CLAIM_LXX_ENOSH_YEAR_DERIVED' AND b.claim_key = 'CLAIM_MT_ENOSH_YEAR_DERIVED';
+
+INSERT INTO derivation (method, assumptions)
+VALUES ('Cross-source comparison of normalized parentage propositions',
+        'Masoretic and Septuagint claims are compared only for the shared Adam-fatherOf-Seth proposition; differing age numerals remain separate competing claims.');
+
+INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement, derivation_id)
+SELECT 'CLAIM_XSRC_ADAM_FATHER_SETH_SHARED_DERIVED', p.proposition_id, 'DERIVED_CLAIM',
+       'The selected Masoretic and Septuagint records share the normalized proposition that Adam is father of Seth.',
+       d.derivation_id
+FROM proposition p
+JOIN entity s ON s.entity_id = p.subject_entity_id
+JOIN entity o ON o.entity_id = p.object_entity_id
+CROSS JOIN derivation d
+WHERE p.predicate = 'fatherOf'
+  AND s.entity_key = 'adam'
+  AND o.entity_key = 'seth'
+  AND d.method = 'Cross-source comparison of normalized parentage propositions';
+
+INSERT INTO derivation_input (derivation_id, input_claim_id, notes)
+SELECT d.derivation_id, c.claim_id, m.notes
+FROM (VALUES
+        ('CLAIM_MT_ADAM_FATHER_SETH', 'Masoretic direct source claim for the shared proposition.'),
+        ('CLAIM_LXX_ADAM_FATHER_SETH', 'Septuagint direct source claim for the shared proposition.')
+     ) AS m(claim_key, notes)
+JOIN derivation d ON d.method = 'Cross-source comparison of normalized parentage propositions'
+JOIN claim c ON c.claim_key = m.claim_key;
+
+INSERT INTO claim_relation (claim_id, related_claim_id, relation_type_code, notes)
+SELECT a.claim_id, b.claim_id, 'SUPERSEDES',
+       'The active curated claim supersedes the preserved draft claim without deleting its provenance.'
+FROM claim a CROSS JOIN claim b
+WHERE a.claim_key = 'CLAIM_MT_ADAM_AGE_AT_SETH'
+  AND b.claim_key = 'CLAIM_MT_ADAM_AGE_AT_SETH_DRAFT';
 
 -- Reconciliation: source-specific identities remain distinct from the canonical entity.
 INSERT INTO entity_source_mapping (source_identity_id, entity_id, mapping_status_code, confidence,
