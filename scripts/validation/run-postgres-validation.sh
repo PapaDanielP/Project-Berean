@@ -40,6 +40,11 @@ run "$root/tests/validation/phase11-coverage-report.sql"
 run "$root/tests/validation/genesis-1-22-23-slice.sql"
 run "$root/tests/validation/phase12-coverage-report.sql"
 
+# Phase 13 advances the genealogical line one locator, to Genesis 5:9, populating the persistent
+# PERSON entities and their source-recorded relationship with complete provenance.
+run "$root/tests/validation/genesis-5-9-slice.sql"
+run "$root/tests/validation/phase13-coverage-report.sql"
+
 # Bounded STEP Bible acquisition: manifest integrity offline, then the imported Genesis subset.
 "$root/tests/validation/stepbible-acquisition-manifest.sh"
 run "$root/tests/fixtures/040-stepbible-genesis-source-fixture.sql"
