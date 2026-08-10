@@ -51,11 +51,36 @@ license:
     record_source_differences: true
 
 acquisition:
-  status: pending
-  acquisition_method: pinned_upstream_repository
+  status: acquired_not_redistributed
+  acquisition_method: pinned_raw_file_download
   acquisition_revision: b86d26cdb1f51729e73b5b4eb7f7ccadc5dfba39
-  source_text_inspected: false
-  imported_files: []
+  acquired_on: "2026-08-10"
+  source_text_inspected: true
+  acquisition_manifest: data/external/stepbible/ACQUISITION_MANIFEST.yaml
+  acquisition_script: scripts/acquisition/fetch-stepbible.sh
+  inspection_results: data/external/stepbible/INSPECTION.md
+  redistributed_files: []
+  acquired_files:
+    - >-
+      Translators Amalgamated OT+NT/TAHOT Gen-Deu - Translators Amalgamated Hebrew OT - STEPBible.org CC BY.txt
+  file_level_redistribution_restriction: >-
+    The acquired file's own notice asks downstream users not to redistribute the data
+    themselves and to refer others to github.com/STEPBible. Berean preserves that stricter
+    file-level condition, so no upstream payload is stored in this repository.
+
+status:
+  permission_and_license_verified: true
+  acquired: true
+  inspected: true
+  imported: partial
+  imported_scope: >-
+    One Genesis source record (locator Gen.1.1) is imported into the reference model as
+    provenance metadata only: source, dataset, source record, citation, evidence, claim
+    evidence, and claims that reuse existing Genesis 1:1 propositions. No upstream text or
+    payload is imported.
+  pending: >-
+    All other upstream files and all other Genesis locators remain unacquired,
+    file-level-license-unverified, and unimported.
 
 berean_import_policy:
   source_backed_assertions_allowed_after_acquisition: true
