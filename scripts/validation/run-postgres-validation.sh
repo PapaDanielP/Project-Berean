@@ -72,6 +72,19 @@ run "$root/tests/validation/phase16-coverage-report.sql"
 "$root/tests/validation/phase16-artifact-negative-cases.sh"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 17 tests whether the existing generic architecture can represent the source-backed
+# Exodus 25:15 standing requirement that the poles remain in the rings of the Ark of the
+# Covenant and are not withdrawn, without misrepresenting it as a completed event, transport,
+# construction, or compliance inference. Phase 16 documented this as an unresolved semantic
+# precision gap; Phase 17 resolves it with the smallest reusable generic extension (one
+# event_type, one predicate; no participation role, no new table). Loaded last so earlier
+# phases' bounded coverage/deferral checks, including Phase 16's own, are unaffected.
+run "$root/tests/fixtures/070-phase17-standing-requirement-fixture.sql"
+run "$root/tests/validation/phase17-standing-requirement-slice.sql"
+run "$root/tests/validation/phase17-coverage-report.sql"
+"$root/tests/validation/phase17-negative-cases.sh"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
