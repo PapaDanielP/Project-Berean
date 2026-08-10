@@ -23,6 +23,8 @@
 
 This license metadata describes the upstream source and does not change Berean's provenance or population policy. Any future use, adaptation, transformation, or downstream adapted database must retain attribution, license information, and an indication of modifications, and must comply with applicable ShareAlike requirements.
 
+The project maintainer verified on 2026-08-10 that Berean may use this source with attribution, including copying, redistribution, adaptation, and commercial use subject to attribution, modification indication, preserved license notices, and compatible ShareAlike terms for adapted databases. This verification is permission metadata only; it does not mean the upstream repository has been acquired, source text has been inspected, hashes have been recorded, or data has been imported.
+
 ## Berean import policy
 
 This declaration creates no canonical Berean assertions. The upstream repository contains structured knowledge-graph data, but those records are not direct Berean source assertions merely because they are structured.

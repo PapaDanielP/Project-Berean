@@ -1,52 +1,63 @@
+manifest_version: 2
+
 source:
   name: Theographic Bible Metadata
   repository: robertrouse/theographic-bible-metadata
+  repository_url: https://github.com/robertrouse/theographic-bible-metadata
   branch: master
   pinned_commit: cfb1c485d4da6fb63a69cb3b7f5b0752792f46bc
-  pin_date: "2026-08-10"
-  pin_date_note: Berean inspection/pin date; distinct from the upstream commit timestamp of 2026-04-21.
-  description: a knowledge graph of biblical people, places, periods, and passages.
-declaration:
-  status: metadata-only
-  upstream_repository_vendored: false
-  canonical_berean_assertions_created: false
+  source_type: structured_bible_knowledge_graph
+  edition_label: Theographic Bible Metadata at pinned commit
+
+attribution:
+  required: true
+  preferred_text: >-
+    Theographic Bible Metadata by Robert Rouse.
+  copyright_holder: Robert Rouse
+  project_name: Theographic Bible Metadata
+  project_url: https://github.com/robertrouse/theographic-bible-metadata
+  attribution_placement:
+    - source_metadata
+    - dataset_metadata
+    - distributed_data_notice
+    - documentation
+
 license:
+  verification_status: verified
+  verified_on: "2026-08-10"
+  verified_by: project_maintainer
   identifier: CC-BY-SA-4.0
   name: Creative Commons Attribution-ShareAlike 4.0 International
-  attribution_required: true
-  share_alike_required: true
-  modification_indication_required: true
-inventory:
-  inspected_top_level_areas:
-    - CSV
-    - JSON
-    - api
-    - docs
-    - geo
-    - neo4j
-  representative_json_files:
-    - books.json
-    - chapters.json
-    - easton.json
-    - events.json
-    - people.json
-    - peopleGroups.json
-    - places.json
-    - verses.json
-  representative_csv_files:
-    - Books.csv
-    - Chapters.csv
-    - Easton.csv
-    - Events.csv
-    - People.csv
-    - PeopleGroups.csv
-    - Places.csv
-    - Verses.csv
-    - WordIndex.csv
-import_policy:
-  source_specific_provenance_required: true
-  preserve_license_and_attribution_requirements: true
-  source_material_distinct_from_canonical_records: true
+  permissions_confirmed:
+    copy: true
+    redistribute: true
+    adapt: true
+    commercial_use: true
+  obligations:
+    attribution: true
+    indicate_modifications: true
+    preserve_license_notice: true
+    license_adapted_database_under_compatible_terms: true
+    share_alike: true
+  modification_notice: >-
+    Berean modifications consist of source-specific ingestion, normalization,
+    provenance linking, and any documented transformations. These changes must
+    be identified in import metadata and distribution documentation.
+  notes:
+    - >-
+      Imported Theographic records remain source-specific data and do not become
+      canonical Berean assertions without explicit provenance modeling.
+
+acquisition:
+  status: pending
+  acquisition_method: pinned_upstream_repository
+  acquisition_revision: cfb1c485d4da6fb63a69cb3b7f5b0752792f46bc
+  source_text_inspected: false
+  imported_files: []
+
+berean_import_policy:
+  source_backed_assertions_allowed_after_acquisition: true
+  raw_source_distinct_from_canonical_records: true
   required_workflow:
     - Source
     - Dataset
@@ -56,6 +67,6 @@ import_policy:
     - Proposition
     - Claim
     - ClaimEvidence
-    - Entity/Event relationships
-    - optional Derivation
+    - Entity_or_Event_relationships
+    - optional_Derivation
     - validation

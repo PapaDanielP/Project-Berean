@@ -1,39 +1,74 @@
-manifest_version: 1
+manifest_version: 2
+
 source:
   name: STEP Bible Data
-  upstream_repository: STEPBible/STEPBible-Data
-  upstream_branch: master
+  repository: STEPBible/STEPBible-Data
+  repository_url: https://github.com/STEPBible/STEPBible-Data
+  branch: master
   pinned_commit: b86d26cdb1f51729e73b5b4eb7f7ccadc5dfba39
-  pin_date: "2026-08-10"
-status:
-  metadata_only: true
-  upstream_repository_vendored: false
-  includes_full_repository_copy: false
-notes:
-  - This manifest records a reproducible upstream pin and inventory metadata only.
-  - No upstream data payloads are committed in this directory.
-  - Verify dataset/file licensing before ingestion; do not assume one license applies to all upstream files.
-  - Preserve attribution to STEP Bible and Tyndale House, Cambridge.
-  - Record downstream modifications/differences from upstream as required by upstream terms.
-initial_dataset_inventory:
-  - name: Lexicons
-    inventory_basis: upstream README and top-level repository structure inspection
-    ingestion_license_requirement: verify license at dataset/file level before ingestion
-  - name: Morphology codes
-    inventory_basis: upstream README and top-level repository structure inspection
-    ingestion_license_requirement: verify license at dataset/file level before ingestion
-  - name: Proper Nouns
-    inventory_basis: upstream README and top-level repository structure inspection
-    ingestion_license_requirement: verify license at dataset/file level before ingestion
-  - name: Tagged-Bibles
-    inventory_basis: upstream README and top-level repository structure inspection
-    ingestion_license_requirement: verify license at dataset/file level before ingestion
-  - name: Translators Amalgamated OT+NT
-    inventory_basis: upstream README and top-level repository structure inspection
-    ingestion_license_requirement: verify license at dataset/file level before ingestion
-  - name: Versification
-    inventory_basis: upstream README and top-level repository structure inspection
-    ingestion_license_requirement: verify license at dataset/file level before ingestion
-berean_ingestion_model:
-  workflow: "Source -> Dataset -> SourceRecord -> Citation -> Evidence -> Proposition -> Claim -> ClaimEvidence -> Entity/Event relationships -> optional Derivation -> validation"
-  policy: raw upstream data remains source data and is never treated as canonical/derived Berean knowledge without explicit modeled provenance
+  source_type: structured_bible_data
+  edition_label: STEP Bible Data repository at pinned commit
+
+attribution:
+  required: true
+  preferred_text: >-
+    Data from STEP Bible, initially created by Tyndale House Cambridge and
+    curated by STEP Bible.
+  required_credit: STEP Bible
+  project_url: https://www.STEPBible.org
+  additional_attribution:
+    - Tyndale House, Cambridge
+  attribution_placement:
+    - source_metadata
+    - dataset_metadata
+    - distributed_data_notice
+    - documentation
+
+license:
+  verification_status: verified
+  verified_on: "2026-08-10"
+  verified_by: project_maintainer
+  repository_level_identifier: CC-BY-4.0
+  repository_level_name: Creative Commons Attribution 4.0 International
+  dataset_level_verification_required: true
+  dataset_level_status: verified_before_import
+  notes:
+    - >-
+      Dataset-specific license notices remain authoritative for each imported
+      file and must be recorded in the corresponding Dataset metadata.
+    - >-
+      Files with a more restrictive or different license must not inherit the
+      repository-level license automatically.
+  permissions_confirmed:
+    copy: true
+    redistribute: true
+    adapt: true
+    commercial_use: true
+  obligations:
+    attribution: true
+    indicate_modifications: true
+    preserve_license_notice: true
+    record_source_differences: true
+
+acquisition:
+  status: pending
+  acquisition_method: pinned_upstream_repository
+  acquisition_revision: b86d26cdb1f51729e73b5b4eb7f7ccadc5dfba39
+  source_text_inspected: false
+  imported_files: []
+
+berean_import_policy:
+  source_backed_assertions_allowed_after_acquisition: true
+  raw_source_distinct_from_canonical_records: true
+  required_workflow:
+    - Source
+    - Dataset
+    - SourceRecord
+    - Citation
+    - Evidence
+    - Proposition
+    - Claim
+    - ClaimEvidence
+    - Entity_or_Event_relationships
+    - optional_Derivation
+    - validation
