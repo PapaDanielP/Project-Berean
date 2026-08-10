@@ -139,6 +139,17 @@ echo '--- Phase 26 coverage inventory AFTER ingestion ---'
 run "$root/tests/validation/phase26-coverage-report.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 27 substantially expands the existing Genesis reference-point corpus through chapter 50.
+# It reuses GEN_MT / GEN_MT_REF and accepted Genesis entities, adds no registry or schema rows, and
+# runs the same inventory before and after ingestion to expose measured deltas.
+echo '--- Phase 27 Genesis 1-50 coverage BEFORE ingestion ---'
+run "$root/tests/validation/phase27-genesis-coverage-report.sql"
+run "$root/tests/fixtures/120-phase27-genesis-1-50-fixture.sql"
+run "$root/tests/validation/phase27-genesis-validation.sql"
+echo '--- Phase 27 Genesis 1-50 coverage AFTER ingestion ---'
+run "$root/tests/validation/phase27-genesis-coverage-report.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"

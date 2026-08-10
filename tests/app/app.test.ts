@@ -78,6 +78,7 @@ beforeAll(async () => {
   await runSqlFile('tests/fixtures/090-phase19-ark-lifecycle-conflict-fixture.sql');
   await runSqlFile('tests/fixtures/100-phase24-berean-in-action-fixture.sql');
   await runSqlFile('tests/fixtures/110-phase26-biblical-entity-coverage-fixture.sql');
+  await runSqlFile('tests/fixtures/120-phase27-genesis-1-50-fixture.sql');
 });
 
 describe('read-only API', () => {
@@ -721,7 +722,7 @@ describe('phase 26 biblical entity coverage', () => {
   });
 
   it('reports NO_ENTITY_FOUND for an unmodeled subject', async () => {
-    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'melchizedek' });
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'dagon' });
     expect(response.status).toBe(404);
     expect(response.body.coverage_status).toBe('NO_ENTITY_FOUND');
   });
@@ -757,5 +758,42 @@ describe('phase 26 biblical entity coverage', () => {
     }
     const after = await snapshotPersistentTableCounts();
     expect(after).toEqual(before);
+  });
+});
+
+describe('phase 27 Genesis 1-50 corpus', () => {
+  it('explores required people and a major location through complete GEN_MT provenance', async () => {
+    for (const entityKey of ['adam', 'noah', 'abraham', 'sarah', 'isaac', 'jacob', 'joseph', 'egypt']) {
+      const response = await request(app).get('/api/exploration/timeline').query({ entity_key: entityKey });
+      expect(response.status).toBe(200);
+      expect(response.body.coverage.provenance_status).toBe('COMPLETE_SOURCE_CHAIN');
+      expect(response.body.coverage.claim_count).toBeGreaterThan(0);
+      expect(response.body.source_comparison.sources.map((source: { source_key: string }) => source.source_key)).toContain('GEN_MT');
+    }
+  });
+
+  it('projects a multi-participant event from source-backed claim propositions', async () => {
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'noah' });
+    expect(response.status).toBe(200);
+    const revelation = response.body.timeline.find((entry: { event: { event_key: string } }) =>
+      entry.event.event_key === 'noah_sons_genealogy'
+    );
+    expect(revelation).toBeTruthy();
+    expect(revelation.projected_event_participation.map((row: { entity_key: string }) => row.entity_key)).toEqual(
+      expect.arrayContaining(['noah', 'shem', 'ham', 'japheth'])
+    );
+    for (const claimEntry of revelation.claims) {
+      expect(claimEntry.provenance.provenance_status).toBe('SOURCE-BACKED');
+      expect(claimEntry.provenance.source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
+      expect(claimEntry.provenance.citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
+    }
+  });
+
+  it('keeps exploration read-only across the expanded corpus', async () => {
+    const before = await snapshotPersistentTableCounts();
+    for (const entityKey of ['abraham', 'sarah', 'isaac', 'jacob', 'joseph', 'egypt']) {
+      expect((await request(app).get('/api/exploration/timeline').query({ entity_key: entityKey })).status).toBe(200);
+    }
+    expect(await snapshotPersistentTableCounts()).toEqual(before);
   });
 });
