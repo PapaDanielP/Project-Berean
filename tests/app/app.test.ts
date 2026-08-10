@@ -331,29 +331,45 @@ describe('read-only API', () => {
   });
 
   it('checks an accepted derivation structurally without interpreting its method', async () => {
+    const expectedCheckIds = [
+      'DERIVATION_EXISTS',
+      'DERIVED_CLAIM_EXISTS',
+      'DERIVED_CLAIM_TYPE_VALID',
+      'DERIVATION_LINK_VALID',
+      'METHOD_PRESENT',
+      'ASSUMPTIONS_PRESENT',
+      'DERIVATION_INPUT_EXISTS',
+      'DERIVATION_INPUT_KIND_VALID',
+      'DERIVATION_INPUT_REFERENCE_VALID',
+      'INPUT_PROVENANCE_STRUCTURALLY_COMPLETE',
+      'SELF_INPUT_ABSENT',
+      'TARGET_PROPOSITION_EXISTS',
+      'TARGET_PREDICATE_VALID',
+      'TARGET_TERM_KINDS_VALID'
+    ];
     const derivationId = await getDerivationIdByClaimKey('CLAIM_MT_ENOSH_YEAR_DERIVED');
     const before = await snapshotPersistentTableCounts();
     const response = await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: derivationId });
     const after = await snapshotPersistentTableCounts();
-    const checkStatus = (id: string): string[] =>
-      response.body.checks.filter((check: { id: string }) => check.id === id).map((check: { status: string }) => check.status);
 
     expect(response.status).toBe(200);
     expect(after).toEqual(before);
     expect(response.body.operation).toBe('CHECK_DERIVATION_ELIGIBILITY');
     expect(response.body.structurally_eligible).toBe(true);
     expect(response.body.license_status).toBe('REQUIRES_HUMAN_METHOD_JUSTIFICATION');
+    expect(response.body.read_only).toBe(true);
+    expect(response.body.explanation).toContain('structural eligibility');
     expect(response.body.derivation.method).toContain('Cumulative addition');
     expect(response.body.input_status.length).toBeGreaterThan(0);
-    expect(checkStatus('DERIVATION_EXISTS')).toEqual(['PASS']);
-    expect(checkStatus('INPUT_PROVENANCE_STRUCTURALLY_COMPLETE')).not.toContain('FAIL');
+    expect(response.body.checks.map((check: { id: string }) => check.id)).toEqual(expectedCheckIds);
+    expect(response.body.checks.every((check: { status: string }) => check.status === 'PASS')).toBe(true);
     expect(response.body.limitations).toContain('Structural eligibility is not logical entailment.');
   });
 
   it('reports missing linkage and inputs for structurally incomplete temporary derivations', async () => {
     const unlinked = await pool.query(
       `INSERT INTO derivation (method, assumptions)
-       VALUES ('stored semantic assertion is not interpreted', 'temporary assumptions')
+       VALUES ('The inputs entail the conclusion', 'All premises are necessarily valid')
        RETURNING derivation_id`
     );
     const unlinkedDerivationId = Number(unlinked.rows[0].derivation_id);
@@ -381,8 +397,10 @@ describe('read-only API', () => {
       const inputCheck = linkedResponse.body.checks.find((check: { id: string }) => check.id === 'DERIVATION_INPUT_EXISTS');
 
       expect(unlinkedResponse.status).toBe(200);
-      expect(unlinkedResponse.body.derivation.method).toBe('stored semantic assertion is not interpreted');
+      expect(unlinkedResponse.body.derivation.method).toBe('The inputs entail the conclusion');
+      expect(unlinkedResponse.body.derivation.assumptions).toBe('All premises are necessarily valid');
       expect(unlinkedCheck.status).toBe('FAIL');
+      expect(unlinkedResponse.body.explanation).toContain('structural eligibility failures');
       expect(linkedResponse.status).toBe(200);
       expect(linkedResponse.body.structurally_eligible).toBe(false);
       expect(inputCheck.status).toBe('FAIL');
@@ -423,9 +441,12 @@ describe('read-only API', () => {
 
   it('returns 400 for invalid eligibility input and 404 for a missing derivation', async () => {
     expect((await request(app).get('/api/derivations/check-eligibility')).status).toBe(400);
+    expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: '' })).status).toBe(400);
     expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: 'abc' })).status).toBe(400);
+    expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: '1.5' })).status).toBe(400);
     expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: 0 })).status).toBe(400);
     expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: -1 })).status).toBe(400);
+    expect((await request(app).get('/api/derivations/check-eligibility?derivation_id=1&derivation_id=2')).status).toBe(400);
     expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: 999999999 })).status).toBe(404);
   });
 
