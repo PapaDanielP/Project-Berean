@@ -1,0 +1,61 @@
+source:
+  name: Theographic Bible Metadata
+  repository: robertrouse/theographic-bible-metadata
+  branch: master
+  pinned_commit: cfb1c485d4da6fb63a69cb3b7f5b0752792f46bc
+  pin_date: "2026-08-10"
+  pin_date_note: Berean inspection/pin date; distinct from the upstream commit timestamp of 2026-04-21.
+  description: a knowledge graph of biblical people, places, periods, and passages.
+declaration:
+  status: metadata-only
+  upstream_repository_vendored: false
+  canonical_berean_assertions_created: false
+license:
+  identifier: CC-BY-SA-4.0
+  name: Creative Commons Attribution-ShareAlike 4.0 International
+  attribution_required: true
+  share_alike_required: true
+  modification_indication_required: true
+inventory:
+  inspected_top_level_areas:
+    - CSV
+    - JSON
+    - api
+    - docs
+    - geo
+    - neo4j
+  representative_json_files:
+    - books.json
+    - chapters.json
+    - easton.json
+    - events.json
+    - people.json
+    - peopleGroups.json
+    - places.json
+    - verses.json
+  representative_csv_files:
+    - Books.csv
+    - Chapters.csv
+    - Easton.csv
+    - Events.csv
+    - People.csv
+    - PeopleGroups.csv
+    - Places.csv
+    - Verses.csv
+    - WordIndex.csv
+import_policy:
+  source_specific_provenance_required: true
+  preserve_license_and_attribution_requirements: true
+  source_material_distinct_from_canonical_records: true
+  required_workflow:
+    - Source
+    - Dataset
+    - SourceRecord
+    - Citation
+    - Evidence
+    - Proposition
+    - Claim
+    - ClaimEvidence
+    - Entity/Event relationships
+    - optional Derivation
+    - validation
