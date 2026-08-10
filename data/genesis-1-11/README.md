@@ -42,3 +42,4 @@ The executable fixture includes conservative Genesis 1:1–5 and Genesis 1:6–9
 
 See `docs/04-data/GENESIS_1_1-5_SLICE.md` for the scope, limitations, intentionally deferred items, and validation command.
 See `docs/04-data/PHASE7_REPORT.md` for the Phase 7 source-availability assessment and chapter coverage matrix.
+See `docs/04-data/PHASE8_REPORT.md` for the Phase 8 Genesis 1:10–13 extension, validation results, and remaining deferrals.
