@@ -29,3 +29,44 @@ Citation is first-class: a citation belongs to a source record, and evidence can
 Keep claims, evidence, source identities, and canonical entities distinct. Do not overwrite competing claims. Add controlled vocabulary values deliberately with their meaning.
 
 Contributors must have the right to submit code and data. Do not commit copyrighted source text or data without a distribution-compatible license and provenance. Record the source, edition, licensing status, acquisition method, locator format, and transformations for any distributed source data.
+
+## Read-only web explorer (MVP)
+
+This repository now includes a small read-only web application layer that consumes the existing PostgreSQL reference schema without changing model semantics.
+
+### Environment
+
+```sh
+export DATABASE_URL='postgresql://localhost:55432/berean_reference'
+export PORT=3000 # optional
+```
+
+### Install
+
+```sh
+npm install
+```
+
+### Run authoritative model validation (separate, required)
+
+```sh
+scripts/validation/run-postgres-validation.sh
+```
+
+### Run application checks
+
+```sh
+npm run test
+npm run typecheck
+npm run lint
+npm run build
+```
+
+### Start the web app
+
+```sh
+npm run dev
+# open http://localhost:3000
+```
+
+The app is read-only and exposes no write endpoints.

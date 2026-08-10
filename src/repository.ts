@@ -1,0 +1,544 @@
+import type { Pool } from 'pg';
+import type { GraphEdge, GraphNode, SearchResult } from './types.js';
+
+const boundedLimit = (value: number | undefined, fallback: number, max: number): number => {
+  if (!value || Number.isNaN(value)) return fallback;
+  return Math.max(1, Math.min(max, value));
+};
+
+export class BereanRepository {
+  constructor(private readonly pool: Pool) {}
+
+  async search(q: string, limit?: number): Promise<SearchResult[]> {
+    const safeLimit = boundedLimit(limit, 20, 50);
+    const term = `%${q}%`;
+    const { rows } = await this.pool.query(
+      `
+      WITH search_results AS (
+        SELECT 'entity'::text AS type, entity_id AS id, entity_key AS key,
+               canonical_name AS label, entity_type_code AS detail
+        FROM entity
+        WHERE entity_key ILIKE $1 OR canonical_name ILIKE $1
+        UNION ALL
+        SELECT 'event', event_id, event_key, event_key, event_type_code
+        FROM event
+        WHERE event_key ILIKE $1 OR COALESCE(description, '') ILIKE $1
+        UNION ALL
+        SELECT 'claim', claim_id, claim_key, claim_key, claim_type_code
+        FROM claim
+        WHERE claim_key ILIKE $1 OR COALESCE(statement, '') ILIKE $1
+        UNION ALL
+        SELECT 'proposition', proposition_id, proposition_id::text,
+               predicate || ' proposition', predicate
+        FROM proposition
+        WHERE predicate ILIKE $1
+        UNION ALL
+        SELECT 'evidence', evidence_id, evidence_key, evidence_key, evidence_type_code
+        FROM evidence
+        WHERE evidence_key ILIKE $1 OR COALESCE(observation, '') ILIKE $1
+        UNION ALL
+        SELECT 'source', source_id, source_key, name, source_type_code
+        FROM source
+        WHERE source_key ILIKE $1 OR name ILIKE $1
+        UNION ALL
+        SELECT 'dataset', dataset_id, dataset_key, name, edition_label
+        FROM dataset
+        WHERE dataset_key ILIKE $1 OR name ILIKE $1 OR COALESCE(version, '') ILIKE $1
+        UNION ALL
+        SELECT 'source_record', source_record_id, source_record_key, source_location, source_location
+        FROM source_record
+        WHERE source_record_key ILIKE $1 OR COALESCE(source_location, '') ILIKE $1
+        UNION ALL
+        SELECT 'citation', citation_id, citation_key, locator, locator
+        FROM citation
+        WHERE citation_key ILIKE $1 OR locator ILIKE $1
+        UNION ALL
+        SELECT 'source_identity', source_identity_id, source_identity_key, display_name, display_name
+        FROM source_identity
+        WHERE source_identity_key ILIKE $1 OR display_name ILIKE $1
+      )
+      SELECT type, id, key, label, detail
+      FROM search_results
+      ORDER BY type, key
+      LIMIT $2
+      `,
+      [term, safeLimit]
+    );
+
+    return rows;
+  }
+
+  async getEntity(entityId: number): Promise<Record<string, unknown> | null> {
+    const entityResult = await this.pool.query(
+      `SELECT entity_id, entity_key, entity_type_code, canonical_name, description
+       FROM entity WHERE entity_id = $1`,
+      [entityId]
+    );
+    if (!entityResult.rowCount) return null;
+
+    const [mappings, claims, events, relatedEntities] = await Promise.all([
+      this.pool.query(
+        `SELECT esm.entity_source_mapping_id, esm.mapping_status_code, esm.confidence, esm.justification,
+                esm.notes, si.source_identity_id, si.source_identity_key, si.display_name,
+                s.source_id, s.source_key, s.name AS source_name
+         FROM entity_source_mapping esm
+         JOIN source_identity si ON si.source_identity_id = esm.source_identity_id
+         JOIN source s ON s.source_id = si.source_id
+         WHERE esm.entity_id = $1
+         ORDER BY esm.entity_source_mapping_id`,
+        [entityId]
+      ),
+      this.pool.query(
+        `SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code,
+                c.statement, c.proposition_id
+         FROM claim c
+         JOIN proposition p ON p.proposition_id = c.proposition_id
+         WHERE p.subject_entity_id = $1 OR p.object_entity_id = $1
+         ORDER BY c.claim_id`,
+        [entityId]
+      ),
+      this.pool.query(
+        `SELECT ep.event_id, ev.event_key, ev.event_type_code, ep.role_code, ep.asserting_claim_id
+         FROM event_participation ep
+         JOIN event ev ON ev.event_id = ep.event_id
+         WHERE ep.entity_id = $1
+         ORDER BY ep.event_id, ep.role_code`,
+        [entityId]
+      ),
+      this.pool.query(
+        `SELECT DISTINCT other.entity_id, other.entity_key, other.canonical_name,
+                p.predicate, c.claim_id, c.claim_key
+         FROM proposition p
+         JOIN claim c ON c.proposition_id = p.proposition_id
+         JOIN entity other ON other.entity_id =
+              CASE WHEN p.subject_entity_id = $1 THEN p.object_entity_id
+                   WHEN p.object_entity_id = $1 THEN p.subject_entity_id END
+         WHERE p.subject_entity_id = $1 OR p.object_entity_id = $1
+         ORDER BY other.entity_id`,
+        [entityId]
+      )
+    ]);
+
+    return {
+      entity: entityResult.rows[0],
+      sourceMappings: mappings.rows,
+      claims: claims.rows,
+      events: events.rows,
+      relatedEntities: relatedEntities.rows
+    };
+  }
+
+  async getClaim(claimId: number): Promise<Record<string, unknown> | null> {
+    const claimResult = await this.pool.query(
+      `SELECT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
+              c.notes, c.derivation_id, c.proposition_id, cr.rendered_proposition
+       FROM claim c
+       LEFT JOIN claim_rendering cr ON cr.claim_id = c.claim_id
+       WHERE c.claim_id = $1`,
+      [claimId]
+    );
+    if (!claimResult.rowCount) return null;
+
+    const claim = claimResult.rows[0];
+    const propositionId = claim.proposition_id as number;
+
+    const [proposition, evidence, relations, derivation, derivationInputs] = await Promise.all([
+      this.pool.query(
+        `SELECT p.proposition_id, p.predicate,
+                p.subject_entity_id, se.canonical_name AS subject_entity_name,
+                p.subject_event_id, sv.event_key AS subject_event_key,
+                p.object_entity_id, oe.canonical_name AS object_entity_name,
+                p.object_event_id, ov.event_key AS object_event_key,
+                p.object_typed_value_id, tv.value_type_code, tv.text_value, tv.numeric_value,
+                tv.date_value, tv.duration_value
+         FROM proposition p
+         LEFT JOIN entity se ON se.entity_id = p.subject_entity_id
+         LEFT JOIN event sv ON sv.event_id = p.subject_event_id
+         LEFT JOIN entity oe ON oe.entity_id = p.object_entity_id
+         LEFT JOIN event ov ON ov.event_id = p.object_event_id
+         LEFT JOIN typed_value tv ON tv.typed_value_id = p.object_typed_value_id
+         WHERE p.proposition_id = $1`,
+        [propositionId]
+      ),
+      this.pool.query(
+        `SELECT ce.relation_type_code, ce.notes AS relation_notes,
+                e.evidence_id, e.evidence_key, e.evidence_type_code, e.observation,
+                sr.source_record_id, sr.source_record_key, sr.source_location,
+                d.dataset_id, d.dataset_key, d.name AS dataset_name,
+                s.source_id, s.source_key, s.name AS source_name,
+                c.citation_id, c.citation_key, c.locator, c.quoted_text
+         FROM claim_evidence ce
+         JOIN evidence e ON e.evidence_id = ce.evidence_id
+         JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         JOIN dataset d ON d.dataset_id = sr.dataset_id
+         JOIN source s ON s.source_id = d.source_id
+         LEFT JOIN evidence_citation ec ON ec.evidence_id = e.evidence_id
+         LEFT JOIN citation c ON c.citation_id = ec.citation_id
+         WHERE ce.claim_id = $1
+         ORDER BY e.evidence_id, c.citation_id`,
+        [claimId]
+      ),
+      this.pool.query(
+        `SELECT cr.claim_relation_id, cr.relation_type_code, cr.notes,
+                cr.related_claim_id, rc.claim_key AS related_claim_key,
+                cr.claim_id, c.claim_key
+         FROM claim_relation cr
+         JOIN claim c ON c.claim_id = cr.claim_id
+         JOIN claim rc ON rc.claim_id = cr.related_claim_id
+         WHERE cr.claim_id = $1 OR cr.related_claim_id = $1
+         ORDER BY cr.claim_relation_id`,
+        [claimId]
+      ),
+      this.pool.query(
+        `SELECT derivation_id, method, assumptions, created_at
+         FROM derivation WHERE derivation_id = $1`,
+        [claim.derivation_id]
+      ),
+      this.pool.query(
+        `SELECT di.derivation_input_id, di.notes,
+                di.input_claim_id, ic.claim_key AS input_claim_key,
+                di.input_evidence_id, ie.evidence_key AS input_evidence_key
+         FROM derivation_input di
+         LEFT JOIN claim ic ON ic.claim_id = di.input_claim_id
+         LEFT JOIN evidence ie ON ie.evidence_id = di.input_evidence_id
+         WHERE di.derivation_id = $1
+         ORDER BY di.derivation_input_id`,
+        [claim.derivation_id]
+      )
+    ]);
+
+    return {
+      claim,
+      proposition: proposition.rows[0] ?? null,
+      evidence: evidence.rows,
+      claimRelations: relations.rows,
+      derivation: derivation.rows[0] ?? null,
+      derivationInputs: derivationInputs.rows
+    };
+  }
+
+  async getProposition(propositionId: number): Promise<Record<string, unknown> | null> {
+    const proposition = await this.pool.query(
+      `SELECT p.proposition_id, p.predicate,
+              p.subject_entity_id, se.entity_key AS subject_entity_key, se.canonical_name AS subject_entity_name,
+              p.subject_event_id, sv.event_key AS subject_event_key,
+              p.object_entity_id, oe.entity_key AS object_entity_key, oe.canonical_name AS object_entity_name,
+              p.object_event_id, ov.event_key AS object_event_key,
+              p.object_typed_value_id, tv.value_type_code, tv.text_value, tv.numeric_value, tv.date_value
+       FROM proposition p
+       LEFT JOIN entity se ON se.entity_id = p.subject_entity_id
+       LEFT JOIN event sv ON sv.event_id = p.subject_event_id
+       LEFT JOIN entity oe ON oe.entity_id = p.object_entity_id
+       LEFT JOIN event ov ON ov.event_id = p.object_event_id
+       LEFT JOIN typed_value tv ON tv.typed_value_id = p.object_typed_value_id
+       WHERE p.proposition_id = $1`,
+      [propositionId]
+    );
+    if (!proposition.rowCount) return null;
+
+    const claims = await this.pool.query(
+      `SELECT claim_id, claim_key, claim_type_code, claim_status_code, statement
+       FROM claim
+       WHERE proposition_id = $1
+       ORDER BY claim_id`,
+      [propositionId]
+    );
+
+    return { proposition: proposition.rows[0], claims: claims.rows };
+  }
+
+  async getEvent(eventId: number): Promise<Record<string, unknown> | null> {
+    const event = await this.pool.query(
+      `SELECT event_id, event_key, event_type_code, description FROM event WHERE event_id = $1`,
+      [eventId]
+    );
+    if (!event.rowCount) return null;
+
+    const [participation, claims] = await Promise.all([
+      this.pool.query(
+        `SELECT ep.role_code, ep.asserting_claim_id, en.entity_id, en.entity_key, en.canonical_name,
+                c.claim_key, c.claim_type_code
+         FROM event_participation ep
+         JOIN entity en ON en.entity_id = ep.entity_id
+         JOIN claim c ON c.claim_id = ep.asserting_claim_id
+         WHERE ep.event_id = $1
+         ORDER BY ep.role_code, en.canonical_name`,
+        [eventId]
+      ),
+      this.pool.query(
+        `SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement
+         FROM claim c
+         JOIN proposition p ON p.proposition_id = c.proposition_id
+         WHERE p.subject_event_id = $1 OR p.object_event_id = $1
+         ORDER BY c.claim_id`,
+        [eventId]
+      )
+    ]);
+
+    return {
+      event: event.rows[0],
+      participation: participation.rows,
+      claims: claims.rows
+    };
+  }
+
+  async listSources(): Promise<Record<string, unknown>[]> {
+    const result = await this.pool.query(
+      `SELECT s.source_id, s.source_key, s.name, s.source_type_code,
+              count(DISTINCT d.dataset_id)::int AS dataset_count,
+              count(DISTINCT sr.source_record_id)::int AS source_record_count
+       FROM source s
+       LEFT JOIN dataset d ON d.source_id = s.source_id
+       LEFT JOIN source_record sr ON sr.dataset_id = d.dataset_id
+       GROUP BY s.source_id
+       ORDER BY s.source_key`
+    );
+    return result.rows;
+  }
+
+  async getSource(sourceId: number): Promise<Record<string, unknown> | null> {
+    const source = await this.pool.query(
+      `SELECT source_id, source_key, name, source_type_code, description
+       FROM source WHERE source_id = $1`,
+      [sourceId]
+    );
+    if (!source.rowCount) return null;
+
+    const datasets = await this.pool.query(
+      `SELECT d.dataset_id, d.dataset_key, d.name, d.edition_label, d.version,
+              d.license_status, d.acquisition_method, d.transformation_notes,
+              count(sr.source_record_id)::int AS source_record_count
+       FROM dataset d
+       LEFT JOIN source_record sr ON sr.dataset_id = d.dataset_id
+       WHERE d.source_id = $1
+       GROUP BY d.dataset_id
+       ORDER BY d.dataset_key`,
+      [sourceId]
+    );
+
+    const records = await this.pool.query(
+      `SELECT sr.source_record_id, sr.source_record_key, sr.source_location, sr.raw_content,
+              sr.content_hash, sr.revision_label, d.dataset_key
+       FROM source_record sr
+       JOIN dataset d ON d.dataset_id = sr.dataset_id
+       WHERE d.source_id = $1
+       ORDER BY d.dataset_key, sr.source_record_key
+       LIMIT 200`,
+      [sourceId]
+    );
+
+    return { source: source.rows[0], datasets: datasets.rows, sourceRecords: records.rows };
+  }
+
+  async getClaimProvenance(claimId: number): Promise<Record<string, unknown>> {
+    const result = await this.pool.query(
+      `SELECT c.claim_id, c.claim_key, c.claim_type_code,
+              e.evidence_id, e.evidence_key, e.evidence_type_code,
+              sr.source_record_id, sr.source_record_key, sr.source_location, sr.raw_content,
+              d.dataset_id, d.dataset_key, d.name AS dataset_name,
+              s.source_id, s.source_key, s.name AS source_name,
+              ci.citation_id, ci.citation_key, ci.locator, ci.quoted_text,
+              ce.relation_type_code
+       FROM claim c
+       LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
+       LEFT JOIN evidence e ON e.evidence_id = ce.evidence_id
+       LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
+       LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
+       LEFT JOIN source s ON s.source_id = d.source_id
+       LEFT JOIN evidence_citation ec ON ec.evidence_id = e.evidence_id
+       LEFT JOIN citation ci ON ci.citation_id = ec.citation_id
+       WHERE c.claim_id = $1
+       ORDER BY e.evidence_id, ci.citation_id`,
+      [claimId]
+    );
+
+    return { claimId, traversal: result.rows };
+  }
+
+  async getGenesisCoverage(): Promise<Record<string, unknown>> {
+    const byLocator = await this.pool.query(
+      `WITH locators AS (
+         SELECT sr.source_record_id, sr.source_location, sr.raw_content,
+                COALESCE(ci.locator, sr.source_location) AS locator
+         FROM source_record sr
+         LEFT JOIN citation ci ON ci.source_record_id = sr.source_record_id
+         WHERE sr.source_location ILIKE 'Genesis %' OR ci.locator ILIKE 'Genesis %' OR ci.locator ILIKE 'Gen.%'
+       ),
+       metrics AS (
+         SELECT l.locator,
+                bool_or(l.source_record_id IS NOT NULL) AS structurally_represented,
+                bool_or(l.raw_content IS NOT NULL) AS populated,
+                bool_or(l.raw_content IS NULL) AS source_unavailable,
+                count(DISTINCT CASE WHEN c.claim_type_code <> 'DERIVED_CLAIM' THEN c.claim_id END)::int AS source_backed_claims,
+                count(DISTINCT CASE WHEN c.claim_type_code = 'DERIVED_CLAIM' THEN c.claim_id END)::int AS derived_claims,
+                count(DISTINCT CASE WHEN c.claim_status_code = 'UNDER_REVIEW' THEN c.claim_id END)::int AS unresolved_claims,
+                count(DISTINCT CASE WHEN COALESCE(c.statement, '') ILIKE '%intentionally excluded%'
+                                      OR COALESCE(c.statement, '') ILIKE '%intentionally unresolved%'
+                                      OR COALESCE(c.notes, '') ILIKE '%deferred%'
+                                    THEN c.claim_id END)::int AS deferred_or_under_modeled_claims
+         FROM locators l
+         LEFT JOIN evidence e ON e.source_record_id = l.source_record_id
+         LEFT JOIN claim_evidence ce ON ce.evidence_id = e.evidence_id
+         LEFT JOIN claim c ON c.claim_id = ce.claim_id
+         GROUP BY l.locator
+       )
+       SELECT * FROM metrics ORDER BY locator LIMIT 300`
+    );
+
+    return {
+      locators: byLocator.rows,
+      summary: {
+        locatorCount: byLocator.rowCount,
+        structurallyRepresentedCount: byLocator.rows.filter((r: { structurally_represented: boolean }) => r.structurally_represented).length,
+        populatedCount: byLocator.rows.filter((r: { populated: boolean }) => r.populated).length,
+        sourceUnavailableCount: byLocator.rows.filter((r: { source_unavailable: boolean }) => r.source_unavailable).length
+      }
+    };
+  }
+
+  async getQualityDashboard(): Promise<Record<string, unknown>> {
+    const [counts, claimTypes, contradictory, mappings] = await Promise.all([
+      this.pool.query(
+        `SELECT
+           (SELECT count(*) FROM source) AS source_count,
+           (SELECT count(*) FROM dataset) AS dataset_count,
+           (SELECT count(*) FROM source_record) AS source_record_count,
+           (SELECT count(*) FROM evidence) AS evidence_count,
+           (SELECT count(*) FROM claim) AS claim_count,
+           (SELECT count(*) FROM proposition) AS proposition_count,
+           (SELECT count(*) FROM event) AS event_count,
+           (SELECT count(*) FROM entity) AS entity_count`
+      ),
+      this.pool.query(
+        `SELECT claim_type_code, count(*)::int AS count
+         FROM claim GROUP BY claim_type_code ORDER BY claim_type_code`
+      ),
+      this.pool.query(
+        `SELECT count(*)::int AS contradictory_claim_relations
+         FROM claim_relation WHERE relation_type_code = 'CONTRADICTS'`
+      ),
+      this.pool.query(
+        `SELECT mapping_status_code, count(*)::int AS count
+         FROM entity_source_mapping GROUP BY mapping_status_code ORDER BY mapping_status_code`
+      )
+    ]);
+
+    return {
+      totals: counts.rows[0],
+      claimTypeDistribution: claimTypes.rows,
+      contradictoryRelations: contradictory.rows[0]?.contradictory_claim_relations ?? 0,
+      sourceIdentityMappingStatus: mappings.rows
+    };
+  }
+
+  async getGraphNeighborhood(nodeType: string, nodeId: number): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+    const nodes = new Map<string, GraphNode>();
+    const edges: GraphEdge[] = [];
+
+    const addNode = (type: string, id: number, label: string): string => {
+      const key = `${type}:${id}`;
+      if (!nodes.has(key)) nodes.set(key, { id: key, type, label });
+      return key;
+    };
+
+    if (nodeType === 'entity') {
+      const entity = await this.pool.query(
+        `SELECT entity_id, canonical_name FROM entity WHERE entity_id = $1`,
+        [nodeId]
+      );
+      if (!entity.rowCount) return { nodes: [], edges: [] };
+
+      const center = addNode('entity', nodeId, entity.rows[0].canonical_name as string);
+
+      const related = await this.pool.query(
+        `SELECT p.predicate, p.proposition_id,
+                p.object_entity_id, oe.canonical_name AS object_entity_name,
+                p.subject_entity_id, se.canonical_name AS subject_entity_name,
+                c.claim_id
+         FROM proposition p
+         JOIN claim c ON c.proposition_id = p.proposition_id
+         LEFT JOIN entity oe ON oe.entity_id = p.object_entity_id
+         LEFT JOIN entity se ON se.entity_id = p.subject_entity_id
+         WHERE p.subject_entity_id = $1 OR p.object_entity_id = $1
+         LIMIT 150`,
+        [nodeId]
+      );
+
+      for (const row of related.rows) {
+        if (row.subject_entity_id && row.subject_entity_id !== nodeId) {
+          const from = addNode('entity', row.subject_entity_id as number, row.subject_entity_name as string);
+          edges.push({ source: from, target: center, relation: row.predicate as string, claimId: row.claim_id as number });
+        }
+        if (row.object_entity_id && row.object_entity_id !== nodeId) {
+          const to = addNode('entity', row.object_entity_id as number, row.object_entity_name as string);
+          edges.push({ source: center, target: to, relation: row.predicate as string, claimId: row.claim_id as number });
+        }
+      }
+
+      const eventLinks = await this.pool.query(
+        `SELECT ep.event_id, ev.event_key, ep.role_code, ep.asserting_claim_id
+         FROM event_participation ep
+         JOIN event ev ON ev.event_id = ep.event_id
+         WHERE ep.entity_id = $1
+         LIMIT 150`,
+        [nodeId]
+      );
+
+      for (const row of eventLinks.rows) {
+        const eventNode = addNode('event', row.event_id as number, row.event_key as string);
+        edges.push({ source: center, target: eventNode, relation: row.role_code as string, claimId: row.asserting_claim_id as number });
+      }
+    } else if (nodeType === 'claim') {
+      const claim = await this.pool.query(`SELECT claim_id, claim_key FROM claim WHERE claim_id = $1`, [nodeId]);
+      if (!claim.rowCount) return { nodes: [], edges: [] };
+      const center = addNode('claim', nodeId, claim.rows[0].claim_key as string);
+
+      const linked = await this.pool.query(
+        `SELECT p.proposition_id, p.predicate,
+                se.entity_id AS subject_entity_id, se.canonical_name AS subject_entity_name,
+                oe.entity_id AS object_entity_id, oe.canonical_name AS object_entity_name,
+                ev.event_id AS object_event_id, ev.event_key AS object_event_key
+         FROM claim c
+         JOIN proposition p ON p.proposition_id = c.proposition_id
+         LEFT JOIN entity se ON se.entity_id = p.subject_entity_id
+         LEFT JOIN entity oe ON oe.entity_id = p.object_entity_id
+         LEFT JOIN event ev ON ev.event_id = p.object_event_id
+         WHERE c.claim_id = $1`,
+        [nodeId]
+      );
+
+      for (const row of linked.rows) {
+        const propositionNode = addNode('proposition', row.proposition_id as number, row.predicate as string);
+        edges.push({ source: center, target: propositionNode, relation: 'asserts' });
+
+        if (row.subject_entity_id) {
+          const subj = addNode('entity', row.subject_entity_id as number, row.subject_entity_name as string);
+          edges.push({ source: propositionNode, target: subj, relation: 'subject' });
+        }
+        if (row.object_entity_id) {
+          const obj = addNode('entity', row.object_entity_id as number, row.object_entity_name as string);
+          edges.push({ source: propositionNode, target: obj, relation: 'object' });
+        }
+        if (row.object_event_id) {
+          const objEvent = addNode('event', row.object_event_id as number, row.object_event_key as string);
+          edges.push({ source: propositionNode, target: objEvent, relation: 'object' });
+        }
+      }
+
+      const evidence = await this.pool.query(
+        `SELECT e.evidence_id, e.evidence_key, ce.relation_type_code
+         FROM claim_evidence ce
+         JOIN evidence e ON e.evidence_id = ce.evidence_id
+         WHERE ce.claim_id = $1`,
+        [nodeId]
+      );
+
+      for (const row of evidence.rows) {
+        const evidenceNode = addNode('evidence', row.evidence_id as number, row.evidence_key as string);
+        edges.push({ source: center, target: evidenceNode, relation: row.relation_type_code as string });
+      }
+    }
+
+    return { nodes: Array.from(nodes.values()), edges };
+  }
+}
