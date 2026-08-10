@@ -235,6 +235,24 @@ export const createApp = (databaseUrl: string): express.Express => {
     }
   });
 
+  app.get('/api/derivations/check-eligibility', async (req, res, next) => {
+    try {
+      const derivationId = toStrictInt(String(req.query.derivation_id ?? ''));
+      if (!derivationId) {
+        res.status(400).json({ error: 'derivation_id must be a positive integer' });
+        return;
+      }
+      const eligibility = await repository.checkDerivationEligibility(derivationId);
+      if (!eligibility) {
+        res.status(404).json({ error: 'derivation not found' });
+        return;
+      }
+      res.json(eligibility);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api/genesis/coverage', async (_req, res, next) => {
     try {
       const coverage = await repository.getGenesisCoverage();

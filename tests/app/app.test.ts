@@ -37,6 +37,19 @@ const getPropositionIdByClaimKey = async (claimKey: string): Promise<number> => 
   return Number(result.rows[0].proposition_id);
 };
 
+const getDerivationIdByClaimKey = async (claimKey: string): Promise<number> => {
+  const result = await pool.query(
+    `SELECT derivation_id
+     FROM claim
+     WHERE claim_key = $1`,
+    [claimKey]
+  );
+  if (!result.rowCount || result.rows[0].derivation_id === null) {
+    throw new Error(`Missing derivation for fixture claim key: ${claimKey}`);
+  }
+  return Number(result.rows[0].derivation_id);
+};
+
 const snapshotPersistentTableCounts = async (): Promise<Record<string, number>> => {
   const tables = await pool.query(
     `SELECT table_name
@@ -315,6 +328,105 @@ describe('read-only API', () => {
       await pool.query(`DELETE FROM claim WHERE claim_id = $1`, [claimId]);
       await pool.query(`DELETE FROM derivation WHERE derivation_id = $1`, [derivationId]);
     }
+  });
+
+  it('checks an accepted derivation structurally without interpreting its method', async () => {
+    const derivationId = await getDerivationIdByClaimKey('CLAIM_MT_ENOSH_YEAR_DERIVED');
+    const before = await snapshotPersistentTableCounts();
+    const response = await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: derivationId });
+    const after = await snapshotPersistentTableCounts();
+    const checkStatus = (id: string): string[] =>
+      response.body.checks.filter((check: { id: string }) => check.id === id).map((check: { status: string }) => check.status);
+
+    expect(response.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(response.body.operation).toBe('CHECK_DERIVATION_ELIGIBILITY');
+    expect(response.body.structurally_eligible).toBe(true);
+    expect(response.body.license_status).toBe('REQUIRES_HUMAN_METHOD_JUSTIFICATION');
+    expect(response.body.derivation.method).toContain('Cumulative addition');
+    expect(response.body.input_status.length).toBeGreaterThan(0);
+    expect(checkStatus('DERIVATION_EXISTS')).toEqual(['PASS']);
+    expect(checkStatus('INPUT_PROVENANCE_STRUCTURALLY_COMPLETE')).not.toContain('FAIL');
+    expect(response.body.limitations).toContain('Structural eligibility is not logical entailment.');
+  });
+
+  it('reports missing linkage and inputs for structurally incomplete temporary derivations', async () => {
+    const unlinked = await pool.query(
+      `INSERT INTO derivation (method, assumptions)
+       VALUES ('stored semantic assertion is not interpreted', 'temporary assumptions')
+       RETURNING derivation_id`
+    );
+    const unlinkedDerivationId = Number(unlinked.rows[0].derivation_id);
+    const propositionId = await getPropositionIdByClaimKey('CLAIM_MT_ADAM_FATHER_SETH');
+    const linked = await pool.query(
+      `INSERT INTO derivation (method, assumptions)
+       VALUES ('temporary method', 'temporary assumptions')
+       RETURNING derivation_id`
+    );
+    const linkedDerivationId = Number(linked.rows[0].derivation_id);
+    const linkedClaim = await pool.query(
+      `INSERT INTO claim (claim_key, proposition_id, claim_type_code, derivation_id)
+       VALUES ('PHASE23_DERIVED_NO_INPUT', $1, 'DERIVED_CLAIM', $2)
+       RETURNING claim_id`,
+      [propositionId, linkedDerivationId]
+    );
+    try {
+      const unlinkedResponse = await request(app)
+        .get('/api/derivations/check-eligibility')
+        .query({ derivation_id: unlinkedDerivationId });
+      const linkedResponse = await request(app)
+        .get('/api/derivations/check-eligibility')
+        .query({ derivation_id: linkedDerivationId });
+      const unlinkedCheck = unlinkedResponse.body.checks.find((check: { id: string }) => check.id === 'DERIVED_CLAIM_EXISTS');
+      const inputCheck = linkedResponse.body.checks.find((check: { id: string }) => check.id === 'DERIVATION_INPUT_EXISTS');
+
+      expect(unlinkedResponse.status).toBe(200);
+      expect(unlinkedResponse.body.derivation.method).toBe('stored semantic assertion is not interpreted');
+      expect(unlinkedCheck.status).toBe('FAIL');
+      expect(linkedResponse.status).toBe(200);
+      expect(linkedResponse.body.structurally_eligible).toBe(false);
+      expect(inputCheck.status).toBe('FAIL');
+    } finally {
+      await pool.query(`DELETE FROM claim WHERE claim_id = $1`, [linkedClaim.rows[0].claim_id]);
+      await pool.query(`DELETE FROM derivation WHERE derivation_id IN ($1, $2)`, [unlinkedDerivationId, linkedDerivationId]);
+    }
+  });
+
+  it('reports self-input as structurally ineligible', async () => {
+    const propositionId = await getPropositionIdByClaimKey('CLAIM_MT_ADAM_FATHER_SETH');
+    const insertedDerivation = await pool.query(
+      `INSERT INTO derivation (method, assumptions) VALUES ('temporary method', 'temporary assumptions') RETURNING derivation_id`
+    );
+    const derivationId = Number(insertedDerivation.rows[0].derivation_id);
+    const insertedClaim = await pool.query(
+      `INSERT INTO claim (claim_key, proposition_id, claim_type_code, derivation_id)
+       VALUES ('PHASE23_DERIVED_SELF_INPUT', $1, 'DERIVED_CLAIM', $2)
+       RETURNING claim_id`,
+      [propositionId, derivationId]
+    );
+    const claimId = Number(insertedClaim.rows[0].claim_id);
+    await pool.query(
+      `INSERT INTO derivation_input (derivation_id, input_claim_id) VALUES ($1, $2)`,
+      [derivationId, claimId]
+    );
+    try {
+      const response = await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: derivationId });
+      expect(response.status).toBe(200);
+      expect(response.body.structurally_eligible).toBe(false);
+      expect(response.body.checks.find((check: { id: string }) => check.id === 'SELF_INPUT_ABSENT').status).toBe('FAIL');
+    } finally {
+      await pool.query(`DELETE FROM derivation_input WHERE derivation_id = $1`, [derivationId]);
+      await pool.query(`DELETE FROM claim WHERE claim_id = $1`, [claimId]);
+      await pool.query(`DELETE FROM derivation WHERE derivation_id = $1`, [derivationId]);
+    }
+  });
+
+  it('returns 400 for invalid eligibility input and 404 for a missing derivation', async () => {
+    expect((await request(app).get('/api/derivations/check-eligibility')).status).toBe(400);
+    expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: 'abc' })).status).toBe(400);
+    expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: 0 })).status).toBe(400);
+    expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: -1 })).status).toBe(400);
+    expect((await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: 999999999 })).status).toBe(404);
   });
 
   it('returns 400 for invalid explain-provenance input and 404 for nonexistent artifacts', async () => {
