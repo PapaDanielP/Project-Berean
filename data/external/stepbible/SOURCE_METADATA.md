@@ -21,7 +21,37 @@ Dataset/file-level indicators may differ (for example, tagged Bible filenames ca
 
 Any downstream modifications and differences from upstream source data must be recorded and made available as required by the upstream README and applicable dataset terms.
 
-The project maintainer verified on 2026-08-10 that Berean may use this source with attribution, including copying, redistribution, adaptation, and commercial use subject to attribution, modification indication, preserved license notices, and source-difference records. This verification is permission metadata only; it does not mean the upstream repository has been acquired, source text has been inspected, hashes have been recorded, or data has been imported.
+The project maintainer verified on 2026-08-10 that Berean may use this source with attribution, including copying, redistribution, adaptation, and commercial use subject to attribution, modification indication, preserved license notices, and source-difference records. Maintainer permission is permission metadata; it does not override a file-level condition.
+
+## Acquisition and inspection state
+
+One upstream file has been acquired at the pinned commit and inspected. See
+`ACQUISITION_MANIFEST.yaml` for the auditable record and `INSPECTION.md` for the results.
+
+- Acquired file: `Translators Amalgamated OT+NT/TAHOT Gen-Deu - Translators Amalgamated Hebrew OT - STEPBible.org CC BY.txt`
+- Acquisition date: 2026-08-10
+- Acquisition method: pinned raw-file download at commit `b86d26cdb1f51729e73b5b4eb7f7ccadc5dfba39`
+- Local artifact path (untracked): `.acquired/stepbible/TAHOT_Gen-Deu.txt`
+- SHA-256: `e9b8546ee48fe0bfc57c3b70f5f40e98d96580e803526d19026224e31753368b`
+- Source locator format: `Book.Chapter.Verse#WordIndex` (Berean records the verse-level locator, e.g. `Gen.1.1`)
+- File-level license: CC BY 4.0, declared in the filename and in the in-file header notice
+- Transformation or modification: none
+
+The acquired file's own notice adds a condition that is stricter than a bare CC BY 4.0 grant: it
+asks downstream users not to redistribute the data themselves and to refer others to
+`github.com/STEPBible`. Berean preserves that condition. The payload is therefore **not**
+redistributed in this repository; the recorded hashes are the auditable substitute.
+
+Every other upstream file remains unacquired and file-level-license-unverified.
+
+## Import state
+
+Imported into the reference model: exactly one Genesis source record, locator `Gen.1.1`, as
+provenance metadata (`Source → Dataset → SourceRecord → Citation → Evidence → ClaimEvidence →
+Claim → Proposition`). The source record stores a content hash and no `raw_content`; the citation
+stores a locator and no `quoted_text`. No upstream text, gloss, or transliteration is imported.
+
+Not imported: every other Genesis locator, every other upstream dataset, and any upstream payload.
 
 ## Berean import policy
 

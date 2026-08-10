@@ -1,0 +1,85 @@
+manifest_version: 1
+manifest_kind: external_source_acquisition
+
+# Auditable record of what was actually fetched from the pinned upstream revision.
+# This manifest describes artifacts that are NOT stored in this repository. Re-acquire them
+# with scripts/acquisition/fetch-stepbible.sh, which verifies every recorded SHA-256.
+
+upstream:
+  repository: STEPBible/STEPBible-Data
+  repository_url: https://github.com/STEPBible/STEPBible-Data
+  branch: master
+  pinned_commit: b86d26cdb1f51729e73b5b4eb7f7ccadc5dfba39
+  raw_url_prefix: https://raw.githubusercontent.com/STEPBible/STEPBible-Data/b86d26cdb1f51729e73b5b4eb7f7ccadc5dfba39/
+
+acquisition:
+  acquired_on: "2026-08-10"
+  acquisition_method: pinned_raw_file_download
+  acquired_by: project_agent
+  local_artifact_root: .acquired/stepbible
+  local_artifact_root_tracked: false
+  transformation: none
+  notes:
+    - >-
+      Only the single Genesis-containing dataset file was fetched. The upstream repository was
+      not cloned and no other upstream dataset was acquired.
+    - >-
+      Byte-for-byte artifacts are kept outside tracked source data. Hashes below are the
+      auditable substitute for redistribution.
+
+files:
+  - artifact_id: TAHOT_GEN_DEU
+    upstream_path: >-
+      Translators Amalgamated OT+NT/TAHOT Gen-Deu - Translators Amalgamated Hebrew OT - STEPBible.org CC BY.txt
+    url_encoded_path: >-
+      Translators%20Amalgamated%20OT%2BNT/TAHOT%20Gen-Deu%20-%20Translators%20Amalgamated%20Hebrew%20OT%20-%20STEPBible.org%20CC%20BY.txt
+    local_artifact_path: .acquired/stepbible/TAHOT_Gen-Deu.txt
+    size_bytes: 18190455
+    sha256: e9b8546ee48fe0bfc57c3b70f5f40e98d96580e803526d19026224e31753368b
+    acquired_on: "2026-08-10"
+    selection_reason: >-
+      Smallest upstream unit that contains Genesis. The upstream repository publishes the
+      Translators Amalgamated Hebrew OT as four book-range files; Genesis is only available
+      inside the Gen-Deu range file, so no smaller Genesis-only upstream file exists.
+    source_locator_format: >-
+      Book.Chapter.Verse#WordIndex (for example Gen.1.1#01), tab-delimited word-level rows.
+    file_level_license:
+      identifier: CC-BY-4.0
+      declared_in: filename and in-file header notice
+      notice_verified_on: "2026-08-10"
+      notice_text: >-
+        Data created by www.STEPBible.org based on work at Tyndale House Cambridge (CC BY 4.0)
+      additional_upstream_condition: >-
+        Refer others to github.com/STEPBible as the source of the data. Please do not
+        redistribute it yourself.
+      modification_condition: >-
+        You MAY make changes yourself, but you should include a note of changes that can be
+        viewed by those who use your new data.
+    attribution_text: >-
+      Data from STEP Bible (www.STEPBible.org), based on work at Tyndale House, Cambridge,
+      licensed CC BY 4.0.
+    redistribution:
+      decision: not_redistributed
+      decision_on: "2026-08-10"
+      rationale: >-
+        The maintainer permission and the CC BY 4.0 grant would allow redistribution, but the
+        file-level upstream notice explicitly asks downstream users not to redistribute the data
+        themselves and to refer others to github.com/STEPBible instead. Berean preserves the more
+        restrictive file-level request, so the payload stays out of tracked source data.
+      redistributed_bytes_in_repository: false
+    inspection:
+      status: inspected
+      inspected_on: "2026-08-10"
+      results_document: data/external/stepbible/INSPECTION.md
+
+records:
+  - record_id: STEP_TAHOT_GEN_1_1
+    artifact_id: TAHOT_GEN_DEU
+    locator: Gen.1.1
+    record_definition: >-
+      The ordered set of lines in the acquired artifact whose first tab-delimited field matches
+      the prefix "Gen.1.1#", each terminated by a newline.
+    row_count: 7
+    sha256: 28cdf66fc9d5c6e913595bbba12adc2a8059fb066cbcb0019d677ae883836e11
+    imported_into_reference_model: true
+    imported_payload_stored: false

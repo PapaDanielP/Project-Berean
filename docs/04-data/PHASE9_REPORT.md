@@ -27,6 +27,8 @@ After the Phase 9 fixture extension, the same command (now including the new `ge
 
 No metadata-only external dataset under `data/external/*` was used as evidence in this batch; only the existing `GEN_MT_REF` structural reference dataset was extended.
 
+> Superseded status note: the acquisition-pending statements in this Phase 9 record describe the state at Phase 9 only. The STEP Bible source has since been acquired, hash-verified, inspected, and minimally imported outside the Genesis population phases; see [`STEPBIBLE_ACQUISITION_REPORT.md`](STEPBIBLE_ACQUISITION_REPORT.md). The Genesis population status reported here is unchanged by that work.
+
 ## Population changes and statistics
 
 Genesis 1:14 through 1:19 add six Masoretic structural source records, citations, source observations, generic statement events, conservative direct claims, and the four additional concept entities required by those claims (`lights`, `greater light`, `lesser light`, `stars`). Genesis 1:18 reuses the existing `light` and `darkness` concept entities established in Genesis 1:3–5, consistent with the light/darkness distinction pattern already used for Genesis 1:4. Each direct claim has the complete `Source → Dataset → SourceRecord → Citation → Evidence → ClaimEvidence → Claim → Proposition` path. No SourceIdentity, EntitySourceMapping, Derivation, or DerivationInput is added, because this batch does not require reconciliation, chronology, or cross-source comparison.

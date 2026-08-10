@@ -26,6 +26,13 @@ run "$root/tests/validation/genesis-1-10-13-slice.sql"
 run "$root/tests/validation/phase8-coverage-report.sql"
 run "$root/tests/validation/genesis-1-14-19-slice.sql"
 run "$root/tests/validation/phase9-coverage-report.sql"
+
+# Bounded STEP Bible acquisition: manifest integrity offline, then the imported Genesis subset.
+"$root/tests/validation/stepbible-acquisition-manifest.sh"
+run "$root/tests/fixtures/040-stepbible-genesis-source-fixture.sql"
+run "$root/tests/validation/stepbible-source-slice.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"

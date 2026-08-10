@@ -40,7 +40,7 @@ Use one Proposition for the same normalized semantic assertion, even when multip
 
 ## Source discipline
 
-The Phase 6 Genesis slice uses repository-available structural locators and published genealogical numerals already represented in fixtures. It does not reproduce source text; `raw_content`, `content_hash`, and `quoted_text` remain null for structural Genesis records. External source declarations under `data/external/*` remain metadata-only until license and acquisition details are verified for a future import.
+The Phase 6 Genesis slice uses repository-available structural locators and published genealogical numerals already represented in fixtures. It does not reproduce source text; `raw_content`, `content_hash`, and `quoted_text` remain null for structural Genesis records. External source declarations under `data/external/*` remain metadata-only until license and acquisition details are verified for a future import; `data/external/stepbible` is the exception, where one pinned file has been acquired, hash-verified, and inspected, and a single Genesis locator has been imported as provenance metadata. An acquired external source may still be non-redistributable: where a file-level notice is more restrictive than the repository-level license, the payload stays out of tracked source data and the recorded SHA-256 hashes are the auditable substitute.
 
 ## Transactional validation
 
