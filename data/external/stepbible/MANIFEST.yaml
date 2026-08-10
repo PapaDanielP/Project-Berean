@@ -1,0 +1,39 @@
+manifest_version: 1
+source:
+  name: STEP Bible Data
+  upstream_repository: STEPBible/STEPBible-Data
+  upstream_branch: master
+  pinned_commit: b86d26cdb1f51729e73b5b4eb7f7ccadc5dfba39
+  pin_date: "2026-08-10"
+status:
+  metadata_only: true
+  upstream_repository_vendored: false
+  includes_full_repository_copy: false
+notes:
+  - This manifest records a reproducible upstream pin and inventory metadata only.
+  - No upstream data payloads are committed in this directory.
+  - Verify dataset/file licensing before ingestion; do not assume one license applies to all upstream files.
+  - Preserve attribution to STEP Bible and Tyndale House, Cambridge.
+  - Record downstream modifications/differences from upstream as required by upstream terms.
+initial_dataset_inventory:
+  - name: Lexicons
+    inventory_basis: upstream README and top-level repository structure inspection
+    ingestion_license_requirement: verify license at dataset/file level before ingestion
+  - name: Morphology codes
+    inventory_basis: upstream README and top-level repository structure inspection
+    ingestion_license_requirement: verify license at dataset/file level before ingestion
+  - name: Proper Nouns
+    inventory_basis: upstream README and top-level repository structure inspection
+    ingestion_license_requirement: verify license at dataset/file level before ingestion
+  - name: Tagged-Bibles
+    inventory_basis: upstream README and top-level repository structure inspection
+    ingestion_license_requirement: verify license at dataset/file level before ingestion
+  - name: Translators Amalgamated OT+NT
+    inventory_basis: upstream README and top-level repository structure inspection
+    ingestion_license_requirement: verify license at dataset/file level before ingestion
+  - name: Versification
+    inventory_basis: upstream README and top-level repository structure inspection
+    ingestion_license_requirement: verify license at dataset/file level before ingestion
+berean_ingestion_model:
+  workflow: "Source -> Dataset -> SourceRecord -> Citation -> Evidence -> Proposition -> Claim -> ClaimEvidence -> Entity/Event relationships -> optional Derivation -> validation"
+  policy: raw upstream data remains source data and is never treated as canonical/derived Berean knowledge without explicit modeled provenance
