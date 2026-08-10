@@ -282,7 +282,7 @@ export const createApp = (databaseUrl: string): express.Express => {
         entityKey: entityKey ?? undefined
       });
       if (!timeline) {
-        res.status(404).json({ error: 'entity not found' });
+        res.status(404).json({ error: 'entity not found', coverage_status: 'NO_ENTITY_FOUND' });
         return;
       }
       res.json(timeline);

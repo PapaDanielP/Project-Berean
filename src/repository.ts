@@ -893,6 +893,123 @@ export class BereanRepository {
     };
   }
 
+  // Sparse-state coverage metadata for an already-selected entity. It reports only what the
+  // database currently represents, so an explorer can distinguish an unpopulated subject from a
+  // populated one. Absence is never reported as source silence, falsity, or nonexistence.
+  private async exploreEntityCoverage(
+    entityId: number,
+    entityTypeCode: string,
+    canonicalName: string
+  ): Promise<Record<string, unknown>> {
+    const modelled = await this.pool.query(
+      `WITH entity_claim AS (
+         SELECT DISTINCT c.claim_id, c.claim_type_code
+         FROM proposition p
+         JOIN claim c ON c.proposition_id = p.proposition_id
+         WHERE p.subject_entity_id = $1 OR p.object_entity_id = $1
+       ),
+       entity_event AS (
+         SELECT DISTINCT ev.event_id
+         FROM event ev
+         JOIN proposition p ON (p.object_event_id = ev.event_id AND p.subject_entity_id = $1)
+                            OR (p.subject_event_id = ev.event_id AND p.object_entity_id = $1)
+         JOIN claim c ON c.proposition_id = p.proposition_id
+       ),
+       chain AS (
+         SELECT ec.claim_id, s.source_id, ci.citation_id, sr.source_record_id
+         FROM entity_claim ec
+         JOIN claim_evidence ce ON ce.claim_id = ec.claim_id
+         JOIN evidence e ON e.evidence_id = ce.evidence_id
+         JOIN evidence_citation ecit ON ecit.evidence_id = e.evidence_id
+         JOIN citation ci ON ci.citation_id = ecit.citation_id
+         JOIN source_record sr ON sr.source_record_id = ci.source_record_id
+         JOIN dataset d ON d.dataset_id = sr.dataset_id
+         JOIN source s ON s.source_id = d.source_id
+       )
+       SELECT
+         (SELECT count(*)::int FROM entity_claim) AS claim_count,
+         (SELECT count(*)::int FROM entity_claim WHERE claim_type_code = 'DERIVED_CLAIM') AS derived_claim_count,
+         (SELECT count(*)::int FROM entity_claim WHERE claim_type_code <> 'DERIVED_CLAIM') AS non_derived_claim_count,
+         (SELECT count(*)::int FROM entity_event) AS event_count,
+         (SELECT count(DISTINCT source_id)::int FROM chain) AS source_count,
+         (SELECT count(DISTINCT citation_id)::int FROM chain) AS modeled_reference_count,
+         (SELECT count(DISTINCT claim_id)::int FROM chain) AS claims_with_source_chain,
+         (SELECT count(DISTINCT ch.source_record_id)::int
+            FROM chain ch
+            JOIN source_record sr ON sr.source_record_id = ch.source_record_id
+           WHERE sr.raw_content IS NOT NULL) AS stored_source_text_count`,
+      [entityId]
+    );
+
+    // Source records that mention this entity by canonical name in a stored observation but do not
+    // yet back any claim about it. This is unmodeled related material, not evidence of absence.
+    const candidates = await this.pool.query(
+      `SELECT count(DISTINCT sr.source_record_id)::int AS candidate_reference_count
+       FROM evidence e
+       JOIN source_record sr ON sr.source_record_id = e.source_record_id
+       WHERE position(lower($2) in lower(e.observation)) > 0
+         AND NOT EXISTS (
+           SELECT 1
+           FROM claim_evidence ce
+           JOIN claim c ON c.claim_id = ce.claim_id
+           JOIN proposition p ON p.proposition_id = c.proposition_id
+           WHERE ce.evidence_id = e.evidence_id
+             AND (p.subject_entity_id = $1 OR p.object_entity_id = $1)
+         )`,
+      [entityId, canonicalName]
+    );
+
+    const row = modelled.rows[0];
+    const claimCount = Number(row.claim_count);
+    const eventCount = Number(row.event_count);
+    const sourceCount = Number(row.source_count);
+    const derivedClaimCount = Number(row.derived_claim_count);
+    const nonDerivedClaimCount = Number(row.non_derived_claim_count);
+    const claimsWithSourceChain = Number(row.claims_with_source_chain);
+    const storedSourceTextCount = Number(row.stored_source_text_count);
+    const modeledReferenceCount = Number(row.modeled_reference_count);
+    const candidateReferenceCount = Number(candidates.rows[0].candidate_reference_count);
+
+    const provenanceStatus =
+      nonDerivedClaimCount === 0
+        ? 'NO_SOURCE_BACKED_CLAIM'
+        : claimsWithSourceChain >= nonDerivedClaimCount
+          ? 'COMPLETE_SOURCE_CHAIN'
+          : 'INCOMPLETE_SOURCE_CHAIN';
+
+    const coverageStatus =
+      claimCount === 0
+        ? 'ENTITY_EXISTS_NO_CLAIMS'
+        : sourceCount === 0
+          ? 'CLAIMS_EXIST_NO_PROVENANCE'
+          : eventCount === 0
+            ? 'ENTITY_EXISTS_NO_EVENTS'
+            : storedSourceTextCount === 0
+              ? 'EVIDENCE_EXISTS_SOURCE_TEXT_NOT_STORED'
+              : 'EVIDENCE_EXISTS_SOURCE_TEXT_STORED';
+
+    const labels: string[] = [];
+    if (claimsWithSourceChain > 0) labels.push('SOURCE-BACKED');
+    if (derivedClaimCount > 0) labels.push('DERIVED-STRUCTURALLY');
+    if (claimCount === 0) labels.push('NOT-YET-MODELED');
+    if (candidateReferenceCount > 0) labels.push('CANDIDATE-REQUIRES-REVIEW');
+
+    return {
+      coverage_status: coverageStatus,
+      entity_type: entityTypeCode,
+      claim_count: claimCount,
+      event_count: eventCount,
+      source_count: sourceCount,
+      provenance_status: provenanceStatus,
+      modeled_reference_count: modeledReferenceCount,
+      candidate_reference_count: candidateReferenceCount,
+      related_source_material_status:
+        candidateReferenceCount > 0 ? 'RELATED_SOURCE_MATERIAL_NOT_YET_MODELED' : 'NO_UNMODELED_RELATED_SOURCE_MATERIAL',
+      labels,
+      note: 'Coverage describes what Berean currently represents. Absence of a claim, event, or source is never source silence, falsity, or nonexistence.'
+    };
+  }
+
   async exploreEntityTimeline(input: ExploreTimelineInput): Promise<Record<string, unknown> | null> {
     const entityResult = await this.pool.query(
       `SELECT entity_id, entity_key, entity_type_code, canonical_name, description
@@ -1062,6 +1179,12 @@ export class BereanRepository {
       String(left.source_key).localeCompare(String(right.source_key))
     );
 
+    const coverage = await this.exploreEntityCoverage(
+      entityId,
+      String(entity.entity_type_code),
+      String(entity.canonical_name)
+    );
+
     return {
       operation: 'EXPLORE_TIMELINE',
       input: { entity_id: input.entityId ?? null, entity_key: input.entityKey ?? null },
@@ -1073,6 +1196,7 @@ export class BereanRepository {
         canonical_name: entity.canonical_name,
         description: entity.description
       },
+      coverage,
       entity_source_mappings: sourceMappings.rows,
       timeline,
       entity_claims_without_event: entityClaims,

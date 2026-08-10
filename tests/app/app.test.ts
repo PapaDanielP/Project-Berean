@@ -77,6 +77,7 @@ beforeAll(async () => {
   await runSqlFile('tests/fixtures/080-phase18-ark-transport-fixture.sql');
   await runSqlFile('tests/fixtures/090-phase19-ark-lifecycle-conflict-fixture.sql');
   await runSqlFile('tests/fixtures/100-phase24-berean-in-action-fixture.sql');
+  await runSqlFile('tests/fixtures/110-phase26-biblical-entity-coverage-fixture.sql');
 });
 
 describe('read-only API', () => {
@@ -643,5 +644,118 @@ describe('read-only API', () => {
     expect(response.body.limitations).toContain(
       'This operation assembles existing Berean knowledge. It does not create, evaluate, or promote knowledge.'
     );
+  });
+});
+
+describe('phase 26 biblical entity coverage', () => {
+  it('represents Enoch end-to-end with complete provenance', async () => {
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'enoch' });
+    expect(response.status).toBe(200);
+    expect(response.body.entity.entity_key).toBe('enoch');
+    expect(response.body.entity.entity_type_code).toBe('PERSON');
+
+    const claims = [
+      ...response.body.timeline.flatMap((entry: { claims: unknown[] }) => entry.claims),
+      ...response.body.entity_claims_without_event
+    ];
+    expect(claims.length).toBeGreaterThan(0);
+    for (const claimEntry of claims) {
+      expect(claimEntry.provenance.provenance_status).toBe('SOURCE-BACKED');
+      expect(claimEntry.provenance.sources.map((source: { source_key: string }) => source.source_key)).toContain('GEN_MT');
+      for (const record of claimEntry.provenance.source_records) {
+        expect(record.raw_content_status).toBe('NOT_STORED_BY_POLICY');
+      }
+      for (const citation of claimEntry.provenance.citations) {
+        expect(citation.quoted_text_status).toBe('NOT_STORED_BY_POLICY');
+      }
+    }
+
+    const locators = claims.flatMap((claimEntry: { provenance: { citations: { locator: string }[] } }) =>
+      claimEntry.provenance.citations.map((citation) => citation.locator)
+    );
+    expect(locators).toEqual(expect.arrayContaining(['Genesis 5:18', 'Genesis 5:21']));
+
+    const participation = response.body.timeline.flatMap(
+      (entry: { projected_event_participation: { entity_key: string; projection: string }[] }) =>
+        entry.projected_event_participation
+    );
+    expect(participation.map((row: { entity_key: string }) => row.entity_key)).toEqual(
+      expect.arrayContaining(['enoch', 'methuselah'])
+    );
+    expect(participation.every((row: { projection: string }) => row.projection === 'PROJECTED_FROM_CLAIM_ASSERTED_PROPOSITION')).toBe(true);
+  });
+
+  it('leaves Genesis 5:22-24 observations unmodeled and marked as requiring review', async () => {
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'enoch' });
+    expect(response.status).toBe(200);
+
+    const locators = [
+      ...response.body.timeline.flatMap((entry: { claims: { provenance: { citations: { locator: string }[] } }[] }) => entry.claims),
+      ...response.body.entity_claims_without_event
+    ].flatMap((claimEntry: { provenance: { citations: { locator: string }[] } }) =>
+      claimEntry.provenance.citations.map((citation) => citation.locator)
+    );
+    expect(locators).not.toContain('Genesis 5:22');
+    expect(locators).not.toContain('Genesis 5:23');
+    expect(locators).not.toContain('Genesis 5:24');
+
+    expect(response.body.coverage.candidate_reference_count).toBeGreaterThan(0);
+    expect(response.body.coverage.related_source_material_status).toBe('RELATED_SOURCE_MATERIAL_NOT_YET_MODELED');
+    expect(response.body.coverage.labels).toEqual(expect.arrayContaining(['SOURCE-BACKED', 'CANDIDATE-REQUIRES-REVIEW']));
+  });
+
+  it('reports sparse-state coverage metadata for an explored entity', async () => {
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'ark_of_covenant' });
+    expect(response.status).toBe(200);
+
+    const coverage = response.body.coverage;
+    expect(coverage.coverage_status).toBe('EVIDENCE_EXISTS_SOURCE_TEXT_NOT_STORED');
+    expect(coverage.entity_type).toBe('OBJECT');
+    expect(coverage.provenance_status).toBe('COMPLETE_SOURCE_CHAIN');
+    expect(coverage.claim_count).toBeGreaterThan(0);
+    expect(coverage.event_count).toBeGreaterThan(0);
+    expect(coverage.source_count).toBeGreaterThan(1);
+    expect(coverage.modeled_reference_count).toBeGreaterThan(0);
+    expect(typeof coverage.candidate_reference_count).toBe('number');
+    expect(coverage.labels).toContain('SOURCE-BACKED');
+  });
+
+  it('reports NO_ENTITY_FOUND for an unmodeled subject', async () => {
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'melchizedek' });
+    expect(response.status).toBe(404);
+    expect(response.body.coverage_status).toBe('NO_ENTITY_FOUND');
+  });
+
+  it('makes 1 Samuel 4-7 people and places explorable with 1SA_MT provenance', async () => {
+    for (const entityKey of ['eli', 'ashdod', 'kiriath_jearim', 'abinadab']) {
+      const response = await request(app).get('/api/exploration/timeline').query({ entity_key: entityKey });
+      expect(response.status).toBe(200);
+      const sourceKeys = response.body.source_comparison.sources.map((source: { source_key: string }) => source.source_key);
+      expect(sourceKeys).toContain('1SA_MT');
+      expect(response.body.coverage.provenance_status).toBe('COMPLETE_SOURCE_CHAIN');
+    }
+  });
+
+  it('keeps 1 Samuel 5 alongside Joshua 3 and 2 Samuel 6 without contradiction classification', async () => {
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'ark_of_covenant' });
+    expect(response.status).toBe(200);
+    const sourceKeys = response.body.source_comparison.sources.map((source: { source_key: string }) => source.source_key);
+    expect(sourceKeys).toEqual(expect.arrayContaining(['JOS_MT', '1SA_MT', '2SA_MT']));
+    expect(response.body.source_comparison.comparison_status).toBe('DIFFERING_SOURCE_DESCRIPTION');
+
+    const descriptionTypes = response.body.source_comparison.sources.flatMap(
+      (source: { descriptions: { record_type: string }[] }) => source.descriptions.map((description) => description.record_type)
+    );
+    expect(new Set(descriptionTypes)).toEqual(new Set(['SOURCE_DESCRIPTION']));
+  });
+
+  it('does not mutate any persistent or registry table while exploring phase 26 data', async () => {
+    const before = await snapshotPersistentTableCounts();
+    for (const entityKey of ['enoch', 'methuselah', 'eli', 'ashdod', 'ark_of_covenant']) {
+      const response = await request(app).get('/api/exploration/timeline').query({ entity_key: entityKey });
+      expect(response.status).toBe(200);
+    }
+    const after = await snapshotPersistentTableCounts();
+    expect(after).toEqual(before);
   });
 });
