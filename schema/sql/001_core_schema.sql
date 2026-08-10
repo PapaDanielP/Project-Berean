@@ -75,7 +75,8 @@ INSERT INTO event_type VALUES
     ('BIRTH', 'Birth'), ('DEATH', 'Death'), ('GENEALOGICAL', 'Genealogical event'),
     ('CHRONOLOGICAL', 'Chronological event'), ('OTHER', 'Other event'),
     ('INSTRUCTION', 'A source-recorded commanded/specified action, not asserted as completed'),
-    ('CONSTRUCTION', 'A source-recorded completed act of building or making a persistent object');
+    ('CONSTRUCTION', 'A source-recorded completed act of building or making a persistent object'),
+    ('STANDING_REQUIREMENT', 'A source-recorded ongoing normative requirement or restriction, not a single occurrence; distinct from INSTRUCTION (a one-time commanded act) and CONSTRUCTION (a completed act); must never be used to assert participation, compliance, transport, or historical occurrence');
 INSERT INTO event_participation_role VALUES
     ('PARTICIPANT', 'General participant'), ('SUBJECT', 'Primary subject'),
     ('PARENT', 'Parent'), ('CHILD', 'Child'), ('BUILDER', 'Builder or craftsman');
@@ -125,7 +126,8 @@ VALUES
     ('madeOfMaterial', 'Subject entity''s primary structural material, as recorded by the source', 'ENTITY', 'VALUE', NULL),
     ('overlaidWithMaterial', 'Subject entity is overlaid/covered with the named material, distinct from its primary material', 'ENTITY', 'VALUE', NULL),
     ('hasComponent', 'Subject entity has the object entity as a persistent, source-identified component', 'ENTITY', 'ENTITY', NULL),
-    ('containsContent', 'Subject entity contains the object entity as a persistent, source-identified content item', 'ENTITY', 'ENTITY', NULL);
+    ('containsContent', 'Subject entity contains the object entity as a persistent, source-identified content item', 'ENTITY', 'ENTITY', NULL),
+    ('standingRequirementIn', 'Subject entity is the subject of a source-recorded standing/ongoing requirement or restriction described by the object STANDING_REQUIREMENT event; asserts only that the requirement exists, never compliance, non-compliance, transport, or historical occurrence. Deliberately carries no event_participation_role_code so it never projects as event participation.', 'ENTITY', 'EVENT', NULL);
 
 CREATE TABLE source (
     source_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
