@@ -253,6 +253,44 @@ export const createApp = (databaseUrl: string): express.Express => {
     }
   });
 
+  app.get('/api/exploration/timeline', async (req, res, next) => {
+    try {
+      const entityIdRaw = req.query.entity_id;
+      const entityKeyRaw = req.query.entity_key;
+      const hasEntityId = entityIdRaw !== undefined;
+      const hasEntityKey = entityKeyRaw !== undefined;
+
+      if ((hasEntityId && hasEntityKey) || (!hasEntityId && !hasEntityKey)) {
+        res.status(400).json({ error: 'exactly one of entity_id or entity_key is required' });
+        return;
+      }
+
+      const entityId = hasEntityId ? toStrictInt(entityIdRaw) : null;
+      if (hasEntityId && !entityId) {
+        res.status(400).json({ error: 'entity_id must be a positive integer' });
+        return;
+      }
+
+      const entityKey = hasEntityKey && typeof entityKeyRaw === 'string' ? entityKeyRaw.trim() : null;
+      if (hasEntityKey && !entityKey) {
+        res.status(400).json({ error: 'entity_key must be a non-empty string' });
+        return;
+      }
+
+      const timeline = await repository.exploreEntityTimeline({
+        entityId: entityId ?? undefined,
+        entityKey: entityKey ?? undefined
+      });
+      if (!timeline) {
+        res.status(404).json({ error: 'entity not found' });
+        return;
+      }
+      res.json(timeline);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api/genesis/coverage', async (_req, res, next) => {
     try {
       const coverage = await repository.getGenesisCoverage();
