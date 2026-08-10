@@ -70,7 +70,13 @@ const snapshotPersistentTableCounts = async (): Promise<Record<string, number>> 
 beforeAll(async () => {
   await runSqlFile('schema/sql/001_core_schema.sql');
   await runSqlFile('tests/fixtures/020-genesis-1-11-fixture.sql');
+  await runSqlFile('tests/fixtures/050-phase11-object-entity-fixture.sql');
   await runSqlFile('tests/fixtures/040-stepbible-genesis-source-fixture.sql');
+  await runSqlFile('tests/fixtures/060-phase16-artifact-construction-fixture.sql');
+  await runSqlFile('tests/fixtures/070-phase17-standing-requirement-fixture.sql');
+  await runSqlFile('tests/fixtures/080-phase18-ark-transport-fixture.sql');
+  await runSqlFile('tests/fixtures/090-phase19-ark-lifecycle-conflict-fixture.sql');
+  await runSqlFile('tests/fixtures/100-phase24-berean-in-action-fixture.sql');
 });
 
 describe('read-only API', () => {
@@ -469,5 +475,61 @@ describe('read-only API', () => {
     expect(nonexistentClaim.status).toBe(404);
     const nonexistentProposition = await request(app).get('/api/provenance/explain').query({ proposition_id: 999999999 });
     expect(nonexistentProposition.status).toBe(404);
+  });
+});
+
+describe('Phase 24 Berean in Action', () => {
+  it('explains complete 1 Kings provenance through the existing endpoint', async () => {
+    const claimId = await getClaimIdByKey('CLAIM_1KI_POLES_VISIBLE_HOLY_PLACE_TEMPLE');
+    const response = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+
+    expect(response.status).toBe(200);
+    expect(response.body.claims).toHaveLength(1);
+    expect(response.body.claims[0].provenance_status).toBe('SOURCE-BACKED');
+    expect(response.body.claims[0].structural_gaps).toEqual([]);
+    expect(response.body.claims[0].source[0].source_key).toBe('1KI_MT');
+    expect(response.body.claims[0].datasets[0].dataset_key).toBe('1KI_MT_REF');
+    expect(response.body.claims[0].source_records[0].source_record_key).toBe('MT_1KI_8_8');
+    expect(response.body.claims[0].citations[0].locator).toBe('1 Kings 8:8');
+  });
+
+  it('explains complete 2 Chronicles provenance through the existing endpoint', async () => {
+    const claimId = await getClaimIdByKey('CLAIM_2CH_POLES_VISIBLE_HOLY_PLACE_TEMPLE');
+    const response = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+
+    expect(response.status).toBe(200);
+    expect(response.body.claims).toHaveLength(1);
+    expect(response.body.claims[0].provenance_status).toBe('SOURCE-BACKED');
+    expect(response.body.claims[0].structural_gaps).toEqual([]);
+    expect(response.body.claims[0].source[0].source_key).toBe('2CH_MT');
+    expect(response.body.claims[0].datasets[0].dataset_key).toBe('2CH_MT_REF');
+    expect(response.body.claims[0].source_records[0].source_record_key).toBe('MT_2CH_5_9');
+    expect(response.body.claims[0].citations[0].locator).toBe('2 Chronicles 5:9');
+  });
+
+  it('checks the cross-source pole-visibility derivation structurally', async () => {
+    const derivationId = await getDerivationIdByClaimKey('CLAIM_XSRC_POLES_VISIBLE_HOLY_PLACE_TEMPLE_SHARED_DERIVED');
+    const response = await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: derivationId });
+
+    expect(response.status).toBe(200);
+    expect(response.body.structurally_eligible).toBe(true);
+    expect(response.body.derived_claim.claim_key).toBe('CLAIM_XSRC_POLES_VISIBLE_HOLY_PLACE_TEMPLE_SHARED_DERIVED');
+    expect(
+      response.body.input_status.map((input: { input_claim_key: string }) => input.input_claim_key).sort()
+    ).toEqual(['CLAIM_1KI_POLES_VISIBLE_HOLY_PLACE_TEMPLE', 'CLAIM_2CH_POLES_VISIBLE_HOLY_PLACE_TEMPLE'].sort());
+  });
+
+  it('keeps the phase 24 endpoints read-only', async () => {
+    const oneKingsClaimId = await getClaimIdByKey('CLAIM_1KI_POLES_VISIBLE_HOLY_PLACE_TEMPLE');
+    const derivationId = await getDerivationIdByClaimKey('CLAIM_XSRC_POLES_VISIBLE_HOLY_PLACE_TEMPLE_SHARED_DERIVED');
+    const before = await snapshotPersistentTableCounts();
+
+    const provenance = await request(app).get('/api/provenance/explain').query({ claim_id: oneKingsClaimId });
+    const eligibility = await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: derivationId });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(provenance.status).toBe(200);
+    expect(eligibility.status).toBe(200);
+    expect(after).toEqual(before);
   });
 });
