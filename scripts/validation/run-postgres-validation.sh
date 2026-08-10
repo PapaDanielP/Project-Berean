@@ -127,6 +127,18 @@ run "$root/scripts/validation/validate.sql"
  run "$root/tests/validation/phase24-coverage-report.sql"
  run "$root/scripts/validation/validate.sql"
 
+# Phase 26 populates a bounded, source-backed biblical entity corpus using existing architecture
+# only: Genesis 5:12-24 (the Enoch end-to-end gap example) and 1 Samuel 4:4-7:2 Ark material.
+# The same coverage report runs immediately before and after ingestion, so the before/after
+# inventory is reproducible. No schema, registry, or persistence change is introduced.
+echo '--- Phase 26 coverage inventory BEFORE ingestion ---'
+run "$root/tests/validation/phase26-coverage-report.sql"
+run "$root/tests/fixtures/110-phase26-biblical-entity-coverage-fixture.sql"
+run "$root/tests/validation/phase26-biblical-entity-coverage-slice.sql"
+echo '--- Phase 26 coverage inventory AFTER ingestion ---'
+run "$root/tests/validation/phase26-coverage-report.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
