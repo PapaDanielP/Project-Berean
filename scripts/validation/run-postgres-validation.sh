@@ -62,6 +62,16 @@ run "$root/tests/fixtures/040-stepbible-genesis-source-fixture.sql"
 run "$root/tests/validation/stepbible-source-slice.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 16 extends the noahs_ark and ark_of_covenant OBJECT entities established in Phase 11
+# with source-backed construction, builder, dimension, material, component, content, and
+# instruction/completed-event semantics for Genesis 6-7 and Exodus 25/37/40 plus Deuteronomy
+# 10:3. Loaded last so earlier phases' bounded coverage/deferral checks are unaffected.
+run "$root/tests/fixtures/060-phase16-artifact-construction-fixture.sql"
+run "$root/tests/validation/phase16-artifact-construction-slice.sql"
+run "$root/tests/validation/phase16-coverage-report.sql"
+"$root/tests/validation/phase16-artifact-negative-cases.sh"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"

@@ -73,10 +73,12 @@ INSERT INTO mapping_status VALUES
     ('REJECTED', 'Rejected reconciliation'), ('SUPERSEDED', 'Superseded reconciliation');
 INSERT INTO event_type VALUES
     ('BIRTH', 'Birth'), ('DEATH', 'Death'), ('GENEALOGICAL', 'Genealogical event'),
-    ('CHRONOLOGICAL', 'Chronological event'), ('OTHER', 'Other event');
+    ('CHRONOLOGICAL', 'Chronological event'), ('OTHER', 'Other event'),
+    ('INSTRUCTION', 'A source-recorded commanded/specified action, not asserted as completed'),
+    ('CONSTRUCTION', 'A source-recorded completed act of building or making a persistent object');
 INSERT INTO event_participation_role VALUES
     ('PARTICIPANT', 'General participant'), ('SUBJECT', 'Primary subject'),
-    ('PARENT', 'Parent'), ('CHILD', 'Child');
+    ('PARENT', 'Parent'), ('CHILD', 'Child'), ('BUILDER', 'Builder or craftsman');
 INSERT INTO claim_relation_type VALUES
     ('CONTRADICTS', 'Contradicts another claim'), ('QUALIFIES', 'Qualifies another claim'),
     ('REFINES', 'Refines another claim'), ('DUPLICATES', 'Duplicates another claim'),
@@ -113,9 +115,17 @@ VALUES
     ('subjectOf', 'Subject entity is the primary subject of the object event', 'ENTITY', 'EVENT', 'SUBJECT'),
     ('parentIn', 'Subject entity is the parent in the object event', 'ENTITY', 'EVENT', 'PARENT'),
     ('childIn', 'Subject entity is the child in the object event', 'ENTITY', 'EVENT', 'CHILD'),
+    ('builderIn', 'Subject entity is the builder/craftsman in the object event', 'ENTITY', 'EVENT', 'BUILDER'),
     ('ageAtDeathYears', 'Subject entity age at death, in years', 'ENTITY', 'VALUE', NULL),
     ('ageAtFatherhoodYears', 'Subject entity age when the named child was begotten, in years', 'ENTITY', 'VALUE', NULL),
-    ('yearsFromCreation', 'Subject event position measured in years from creation', 'EVENT', 'VALUE', NULL);
+    ('yearsFromCreation', 'Subject event position measured in years from creation', 'EVENT', 'VALUE', NULL),
+    ('lengthCubits', 'Subject entity length, in cubits, as recorded by the source; no unit conversion', 'ENTITY', 'VALUE', NULL),
+    ('widthCubits', 'Subject entity width, in cubits, as recorded by the source; no unit conversion', 'ENTITY', 'VALUE', NULL),
+    ('heightCubits', 'Subject entity height, in cubits, as recorded by the source; no unit conversion', 'ENTITY', 'VALUE', NULL),
+    ('madeOfMaterial', 'Subject entity''s primary structural material, as recorded by the source', 'ENTITY', 'VALUE', NULL),
+    ('overlaidWithMaterial', 'Subject entity is overlaid/covered with the named material, distinct from its primary material', 'ENTITY', 'VALUE', NULL),
+    ('hasComponent', 'Subject entity has the object entity as a persistent, source-identified component', 'ENTITY', 'ENTITY', NULL),
+    ('containsContent', 'Subject entity contains the object entity as a persistent, source-identified content item', 'ENTITY', 'ENTITY', NULL);
 
 CREATE TABLE source (
     source_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
