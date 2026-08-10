@@ -117,6 +117,15 @@ run "$root/tests/validation/phase19-coverage-report.sql"
 "$root/tests/validation/phase19-negative-cases.sh"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 24 demonstrates Berean in action on a substantive 1 Samuel Ark lifecycle slice
+# extending the accepted Phase 19 baseline. It adds only source-backed data and
+# read-only demonstration/coverage queries: no schema, registry, evaluator, or
+# persistence extension.
+run "$root/tests/fixtures/100-phase24-berean-in-action-fixture.sql"
+run "$root/tests/validation/phase24-berean-in-action-slice.sql"
+run "$root/tests/validation/phase24-coverage-report.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"

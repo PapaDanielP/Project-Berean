@@ -71,6 +71,12 @@ beforeAll(async () => {
   await runSqlFile('schema/sql/001_core_schema.sql');
   await runSqlFile('tests/fixtures/020-genesis-1-11-fixture.sql');
   await runSqlFile('tests/fixtures/040-stepbible-genesis-source-fixture.sql');
+  await runSqlFile('tests/fixtures/050-phase11-object-entity-fixture.sql');
+  await runSqlFile('tests/fixtures/060-phase16-artifact-construction-fixture.sql');
+  await runSqlFile('tests/fixtures/070-phase17-standing-requirement-fixture.sql');
+  await runSqlFile('tests/fixtures/080-phase18-ark-transport-fixture.sql');
+  await runSqlFile('tests/fixtures/090-phase19-ark-lifecycle-conflict-fixture.sql');
+  await runSqlFile('tests/fixtures/100-phase24-berean-in-action-fixture.sql');
 });
 
 describe('read-only API', () => {
@@ -469,5 +475,33 @@ describe('read-only API', () => {
     expect(nonexistentClaim.status).toBe(404);
     const nonexistentProposition = await request(app).get('/api/provenance/explain').query({ proposition_id: 999999999 });
     expect(nonexistentProposition.status).toBe(404);
+  });
+
+  it('explores the Phase 24 Ark lifecycle slice without mutating persistent data', async () => {
+    const claimId = await getClaimIdByKey('CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5');
+    const derivationId = await getDerivationIdByClaimKey('CLAIM_MT_ENOSH_YEAR_DERIVED');
+    const before = await snapshotPersistentTableCounts();
+
+    const provenance = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+    const eventSearch = await request(app).get('/api/search').query({ q: 'ark_covenant_moved_to_ashdod_1sam5', limit: 5 });
+    const eventResult = eventSearch.body.results.find((r: { type: string }) => r.type === 'event');
+    const eventDetail = await request(app).get(`/api/events/${eventResult.id}`);
+    const eligibility = await request(app).get('/api/derivations/check-eligibility').query({ derivation_id: derivationId });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(provenance.status).toBe(200);
+    expect(provenance.body.claims[0].provenance_status).toBe('SOURCE-BACKED');
+    expect(provenance.body.claims[0].source[0].source_key).toBe('1SA_MT');
+    expect(provenance.body.claims[0].citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
+    expect(provenance.body.claims[0].source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
+    expect(eventDetail.status).toBe(200);
+    expect(eventDetail.body.event.event_key).toBe('ark_covenant_moved_to_ashdod_1sam5');
+    expect(eventDetail.body.participation.map((row: { entity_key: string }) => row.entity_key)).toEqual(
+      expect.arrayContaining(['ark_of_covenant', 'philistines'])
+    );
+    expect(eligibility.status).toBe(200);
+    expect(eligibility.body.operation).toBe('CHECK_DERIVATION_ELIGIBILITY');
+    expect(eligibility.body.read_only).toBe(true);
+    expect(after).toEqual(before);
   });
 });
