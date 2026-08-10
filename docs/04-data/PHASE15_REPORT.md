@@ -46,8 +46,11 @@ without inputs, wrong mapping, direct participant store, and JSON semantic paylo
 predicates, complete direct provenance, source identity separation, and projection-only
 participation are verified.
 
-Final validation is recorded after the final fresh-database run. Application tests, Phase 6–14,
-schema/blocking tests, Genesis suites, and STEP Bible checks remain in the authoritative runner.
+Fresh final PostgreSQL validation passed with no blocking failure or warning. It ran the
+schema/blocking suites, negative fixture, both established `blocking-cases.sh` runs, all Genesis
+and Phase 6–14 suites, Phase 15, and STEP Bible checks. The Phase 15 corruption suite passed all
+nine cases. `npm run lint`, `npm run typecheck`, and 7/7 application tests also passed against a
+separate fresh database. Final counts match the baseline; no prior validation was weakened.
 
 ## Architecture assessment and exclusions
 
