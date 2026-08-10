@@ -50,6 +50,12 @@ run "$root/tests/validation/phase13-coverage-report.sql"
 run "$root/tests/validation/genesis-artifact-slice.sql"
 run "$root/tests/validation/phase14-coverage-report.sql"
 
+# Phase 15 re-verifies that the same source-backed artifact slice supports persistent
+# object semantics without fabricating unavailable construction or attribute material.
+run "$root/tests/validation/phase15-artifact-semantics.sql"
+run "$root/tests/validation/phase15-coverage-report.sql"
+"$root/tests/validation/phase15-artifact-negative-cases.sh"
+
 # Bounded STEP Bible acquisition: manifest integrity offline, then the imported Genesis subset.
 "$root/tests/validation/stepbible-acquisition-manifest.sh"
 run "$root/tests/fixtures/040-stepbible-genesis-source-fixture.sql"
