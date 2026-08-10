@@ -1,208 +1,207 @@
--- Phase 24 Berean-in-action knowledge slice: Ark of the Covenant lifecycle from
--- Shiloh through Philistine capture and Kiriath-jearim (1 Samuel 4-7).
+-- Phase 24 Berean in Action real-knowledge demonstration fixture.
 --
--- This fixture extends the accepted Phase 19 Ark lifecycle baseline in place. It
--- deliberately adds no schema, registry, event type, predicate, claim-relation
--- type, inference machinery, evaluator output, or persistence behavior. It uses
--- the existing generic OTHER event type and the existing subjectOf,
--- participatesIn, and occursAt predicates.
+-- This fixture extends the accepted Phase 16-19 Ark-of-the-Covenant data in place. It adds a
+-- bounded temple-placement source slice from 1 Kings 8:1-9 and 2 Chronicles 5:2-10, preserving
+-- the established reference-point convention: source locators are recorded, but raw_content,
+-- content_hash, and quoted_text remain NULL. No Scripture quotation, hash, source silence,
+-- contradiction, compliance, causation, theology, or global factual-core promotion is inferred.
 --
--- Source policy: locators are recorded, but raw_content, content_hash, and
--- quoted_text remain NULL. No verbatim Scripture text, translation, source hash,
--- contradiction, compliance/violation finding, theological conclusion, or
--- causation is fabricated. The source observations summarize well-known public
--- locator content in the same reference-point style as the accepted Genesis,
--- Exodus, Joshua, and 2 Samuel fixtures.
---
--- Source differences preserved: Joshua 3:6 records priestly carrying before the
--- people; 1 Samuel 4-7 records capture, Philistine movement, and custody at
--- Kiriath-jearim; 2 Samuel 6:3 records a new-cart transport. Phase 24 records
--- these as distinct source-backed events. Difference is not automatically
--- classified as contradiction, violation, compliance, causation, or punishment.
+-- The slice demonstrates actual knowledge construction with the existing substrate: two new
+-- sources, source records, citations, evidence, canonical/source identities, propositions,
+-- direct claims, projected event participation, multiple source-backed claims for one normalized
+-- proposition, and one genuine cross-source derived claim whose inputs are explicit direct claims.
 BEGIN;
 
--- 1. Source and dataset for 1 Samuel.
+-- 1. Sources and datasets for the temple-placement comparison slice.
 INSERT INTO source (source_key, name, source_type_code, description) VALUES
-    ('1SA_MT', '1 Samuel, Masoretic textual tradition', 'SCRIPTURE',
-     'Reference to the Masoretic tradition of 1 Samuel. No text is stored in this repository.');
+    ('1KI_MT', '1 Kings, Masoretic textual tradition', 'SCRIPTURE',
+     'Reference to the Masoretic tradition of 1 Kings. No text is stored in this repository.'),
+    ('2CH_MT', '2 Chronicles, Masoretic textual tradition', 'SCRIPTURE',
+     'Reference to the Masoretic tradition of 2 Chronicles. No text is stored in this repository.');
 
 INSERT INTO dataset (source_id, dataset_key, name, edition_label, version,
                      license_status, acquisition_method, transformation_notes)
-SELECT source_id, '1SA_MT_REF', '1 Samuel reference points, Masoretic tradition',
+SELECT source_id, '1KI_MT_REF', '1 Kings reference points, Masoretic tradition',
        'Masoretic tradition', 'ref-1',
-       'No source text reproduced; only locators and selected published Ark lifecycle content are recorded.',
+       'No source text reproduced; only locators and selected temple-placement content are recorded.',
        'Manually entered reference points',
-       '1 Samuel 4-7 Ark capture/movement/custody data recorded via existing generic predicates; no text imported.'
-FROM source WHERE source_key = '1SA_MT';
+       '1 Kings 8:1-9 Ark-of-the-Covenant temple-placement observations recorded with existing predicates; no text imported.'
+FROM source WHERE source_key = '1KI_MT'
+UNION ALL
+SELECT source_id, '2CH_MT_REF', '2 Chronicles reference points, Masoretic tradition',
+       'Masoretic tradition', 'ref-1',
+       'No source text reproduced; only locators and selected temple-placement content are recorded.',
+       'Manually entered reference points',
+       '2 Chronicles 5:2-10 Ark-of-the-Covenant temple-placement observations recorded with existing predicates; no text imported.'
+FROM source WHERE source_key = '2CH_MT';
 
--- 2. Bounded locators.
+-- 2. Bounded source records and unquoted citations.
 INSERT INTO source_record (dataset_id, source_record_key, source_location, revision_label)
 SELECT d.dataset_id, r.source_record_key, r.source_location, 'ref-1'
 FROM dataset d
 JOIN (VALUES
-        ('MT_1SA_4_4', '1 Samuel 4:4'),
-        ('MT_1SA_4_11', '1 Samuel 4:11'),
-        ('MT_1SA_5_1', '1 Samuel 5:1'),
-        ('MT_1SA_5_2', '1 Samuel 5:2'),
-        ('MT_1SA_7_1', '1 Samuel 7:1'),
-        ('MT_1SA_7_2', '1 Samuel 7:2')
-     ) AS r(source_record_key, source_location)
-  ON d.dataset_key = '1SA_MT_REF';
+        ('1KI_MT_REF', 'MT_1KI_8_1', '1 Kings 8:1'),
+        ('1KI_MT_REF', 'MT_1KI_8_3', '1 Kings 8:3'),
+        ('1KI_MT_REF', 'MT_1KI_8_4', '1 Kings 8:4'),
+        ('1KI_MT_REF', 'MT_1KI_8_6', '1 Kings 8:6'),
+        ('1KI_MT_REF', 'MT_1KI_8_9', '1 Kings 8:9'),
+        ('2CH_MT_REF', 'MT_2CH_5_2', '2 Chronicles 5:2'),
+        ('2CH_MT_REF', 'MT_2CH_5_4', '2 Chronicles 5:4'),
+        ('2CH_MT_REF', 'MT_2CH_5_5', '2 Chronicles 5:5'),
+        ('2CH_MT_REF', 'MT_2CH_5_7', '2 Chronicles 5:7'),
+        ('2CH_MT_REF', 'MT_2CH_5_10', '2 Chronicles 5:10')
+     ) AS r(dataset_key, source_record_key, source_location)
+  ON r.dataset_key = d.dataset_key;
 
 INSERT INTO citation (citation_key, source_record_id, locator)
 SELECT 'CITE_' || sr.source_record_key, sr.source_record_id, sr.source_location
 FROM source_record sr
 WHERE sr.source_record_key IN (
-    'MT_1SA_4_4', 'MT_1SA_4_11', 'MT_1SA_5_1',
-    'MT_1SA_5_2', 'MT_1SA_7_1', 'MT_1SA_7_2');
+    'MT_1KI_8_1', 'MT_1KI_8_3', 'MT_1KI_8_4', 'MT_1KI_8_6', 'MT_1KI_8_9',
+    'MT_2CH_5_2', 'MT_2CH_5_4', 'MT_2CH_5_5', 'MT_2CH_5_7', 'MT_2CH_5_10');
 
--- 3. Persistent referents justified by the selected source slice.
+-- 3. New persistent referents required by the selected slice.
 INSERT INTO entity (entity_key, entity_type_code, canonical_name, description) VALUES
-    ('philistines', 'ORGANIZATION', 'Philistines',
-     'The collective Philistine group explicitly associated with the Ark capture and movement in 1 Samuel 4-5.'),
-    ('men_kiriath_jearim', 'ORGANIZATION', 'men of Kiriath-jearim',
-     'The group in 1 Samuel 7:1 recorded as bringing up the Ark to the house of Abinadab.'),
-    ('eleazar_son_abinadab', 'PERSON', 'Eleazar son of Abinadab',
-     'The named person in 1 Samuel 7:1 set apart to keep the Ark.'),
-    ('ashdod', 'PLACE', 'Ashdod',
-     'The Philistine city named in 1 Samuel 5:1 as the destination after the Ark was taken from Ebenezer.'),
-    ('house_dagon_ashdod', 'PLACE', 'house of Dagon at Ashdod',
-     'The source-identified place in 1 Samuel 5:2 where the Ark was brought and set beside Dagon.'),
-    ('house_abinadab_kiriath_jearim', 'PLACE', 'house of Abinadab at Kiriath-jearim',
-     'The source-identified place in 1 Samuel 7:1 where the Ark was brought.'),
-    ('kiriath_jearim', 'PLACE', 'Kiriath-jearim',
-     'The place named in 1 Samuel 7:1-2 in connection with the Ark.');
+    ('solomon', 'PERSON', 'Solomon', 'The king who assembles Israel in the selected 1 Kings 8 / 2 Chronicles 5 temple-placement slice.'),
+    ('elders_of_israel_solomon_assembly', 'ORGANIZATION', 'elders of Israel assembled by Solomon', 'The collective Israelite elders/heads/chiefs assembled in the selected temple-placement source slice.'),
+    ('priests_levites_temple_ark_bearers', 'ORGANIZATION', 'priests and Levites bearing the ark in the temple-placement slice', 'The priestly/Levitical group recorded as bringing up and placing the Ark in 1 Kings 8 and 2 Chronicles 5.'),
+    ('solomon_temple_inner_sanctuary', 'PLACE', 'inner sanctuary of Solomon''s temple', 'The inner sanctuary / most holy place named as the Ark placement location in the selected source slice.'),
+    ('tent_of_meeting', 'OBJECT', 'tent of meeting', 'The tent of meeting brought up with the Ark in the selected 1 Kings 8 / 2 Chronicles 5 source slice.'),
+    ('sanctuary_vessels_temporal_slice', 'OBJECT', 'holy vessels in the temple-placement slice', 'The holy vessels brought up with the Ark and tent in the selected temple-placement source slice.');
 
--- 4. Events. OTHER is sufficient: these are historical source-recorded
---    occurrences/custody states, not construction, instruction, death, or standing requirements.
+-- 4. Events. These are descriptive historical occurrences, not compliance, causation, or theology.
 INSERT INTO event (event_key, event_type_code, description) VALUES
-    ('ark_covenant_brought_from_shiloh_1sam4', 'OTHER',
-     '1 Samuel 4:4 records the Ark of the Covenant/Ark of God being brought from Shiloh to the Israelite camp context. This does not assert route, carrier identity, compliance, or pole state.'),
-    ('ark_covenant_captured_1sam4', 'OTHER',
-     '1 Samuel 4:11 records the Ark of God being taken. This capture event does not infer theological cause, punishment, or contradiction with any transport requirement.'),
-    ('ark_covenant_moved_to_ashdod_1sam5', 'OTHER',
-     '1 Samuel 5:1 records the Philistines taking the Ark of God from Ebenezer to Ashdod. This is represented as a source-recorded movement occurrence, not as permanent location truth.'),
-    ('ark_covenant_set_in_house_dagon_1sam5', 'OTHER',
-     '1 Samuel 5:2 records the Ark being brought into the house of Dagon and set there. This records source-backed placement only, without theological inference.'),
-    ('ark_covenant_brought_to_abinadab_house_1sam7', 'OTHER',
-     '1 Samuel 7:1 records the men of Kiriath-jearim bringing the Ark to the house of Abinadab.'),
-    ('ark_covenant_care_eleazar_1sam7', 'OTHER',
-     '1 Samuel 7:1 records Eleazar son of Abinadab being set apart in connection with keeping the Ark. This does not infer office, duration, or sufficiency.'),
-    ('ark_covenant_stay_kiriath_jearim_1sam7', 'OTHER',
-     '1 Samuel 7:2 records the Ark remaining at Kiriath-jearim for a long period. The twenty-year duration is preserved in evidence text but not promoted to a typed proposition because no duration predicate exists.');
+    ('ark_covenant_temple_assembly', 'OTHER',
+     '1 Kings 8:1 and 2 Chronicles 5:2 record Solomon assembling Israelite leaders for bringing up the Ark. This asserts assembly only, not political theory or theology.'),
+    ('ark_covenant_temple_transfer', 'OTHER',
+     '1 Kings 8:3-4 and 2 Chronicles 5:4-5 record the Ark, tent of meeting, and holy vessels being brought up by priestly/Levitical participants. This asserts no route, duration, compliance, or pole/ring state.'),
+    ('ark_covenant_temple_placement', 'OTHER',
+     '1 Kings 8:6 and 2 Chronicles 5:7 record the Ark being brought into its place in the inner sanctuary. This is distinct from construction, standing requirement, Joshua transport, and 2 Samuel new-cart transport events.');
 
--- 5. Entity/event propositions.
+-- 5. Propositions: event participation and location using only existing predicates.
 INSERT INTO proposition (subject_entity_id, predicate, object_event_id)
 SELECT s.entity_id, m.predicate, e.event_id
 FROM (VALUES
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_brought_from_shiloh_1sam4'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_captured_1sam4'),
-        ('philistines', 'participatesIn', 'ark_covenant_captured_1sam4'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_moved_to_ashdod_1sam5'),
-        ('philistines', 'participatesIn', 'ark_covenant_moved_to_ashdod_1sam5'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_set_in_house_dagon_1sam5'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_brought_to_abinadab_house_1sam7'),
-        ('men_kiriath_jearim', 'participatesIn', 'ark_covenant_brought_to_abinadab_house_1sam7'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_care_eleazar_1sam7'),
-        ('eleazar_son_abinadab', 'participatesIn', 'ark_covenant_care_eleazar_1sam7'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_stay_kiriath_jearim_1sam7')
+        ('solomon', 'subjectOf', 'ark_covenant_temple_assembly'),
+        ('elders_of_israel_solomon_assembly', 'participatesIn', 'ark_covenant_temple_assembly'),
+        ('ark_of_covenant', 'participatesIn', 'ark_covenant_temple_transfer'),
+        ('tent_of_meeting', 'participatesIn', 'ark_covenant_temple_transfer'),
+        ('sanctuary_vessels_temporal_slice', 'participatesIn', 'ark_covenant_temple_transfer'),
+        ('priests_levites_temple_ark_bearers', 'participatesIn', 'ark_covenant_temple_transfer'),
+        ('ark_of_covenant', 'subjectOf', 'ark_covenant_temple_placement'),
+        ('priests_levites_temple_ark_bearers', 'participatesIn', 'ark_covenant_temple_placement')
      ) AS m(subject_key, predicate, event_key)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN event e ON e.event_key = m.event_key;
 
--- 6. Event/place propositions.
 INSERT INTO proposition (subject_event_id, predicate, object_entity_id)
-SELECT e.event_id, 'occursAt', p.entity_id
-FROM (VALUES
-        ('ark_covenant_moved_to_ashdod_1sam5', 'ashdod'),
-        ('ark_covenant_set_in_house_dagon_1sam5', 'house_dagon_ashdod'),
-        ('ark_covenant_brought_to_abinadab_house_1sam7', 'house_abinadab_kiriath_jearim'),
-        ('ark_covenant_care_eleazar_1sam7', 'house_abinadab_kiriath_jearim'),
-        ('ark_covenant_stay_kiriath_jearim_1sam7', 'kiriath_jearim')
-     ) AS m(event_key, place_key)
-JOIN event e ON e.event_key = m.event_key
-JOIN entity p ON p.entity_key = m.place_key;
+SELECT e.event_id, 'occursAt', pl.entity_id
+FROM event e
+JOIN entity pl ON pl.entity_key = 'solomon_temple_inner_sanctuary'
+WHERE e.event_key = 'ark_covenant_temple_placement';
 
--- 7. Claims for entity/event propositions.
+INSERT INTO proposition (subject_entity_id, predicate, object_entity_id)
+SELECT ark.entity_id, 'locatedAt', pl.entity_id
+FROM entity ark
+JOIN entity pl ON pl.entity_key = 'solomon_temple_inner_sanctuary'
+WHERE ark.entity_key = 'ark_of_covenant';
+
+-- 6. Direct source claims. The existing ark_of_covenant containsContent tablets_of_testimony
+--    proposition is reused instead of duplicating semantic authority.
 INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
 SELECT m.claim_key, p.proposition_id, 'DIRECT_SOURCE_CLAIM', m.statement
 FROM (VALUES
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_brought_from_shiloh_1sam4',
-         'CLAIM_ARK_COVENANT_SUBJECT_BROUGHT_FROM_SHILOH_1SAM4',
-         '1 Samuel 4:4 records the Ark of the Covenant/Ark of God being brought from Shiloh.'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_captured_1sam4',
-         'CLAIM_ARK_COVENANT_SUBJECT_CAPTURE_1SAM4',
-         '1 Samuel 4:11 records the Ark of God being taken.'),
-        ('philistines', 'participatesIn', 'ark_covenant_captured_1sam4',
-         'CLAIM_PHILISTINES_PARTICIPANT_CAPTURE_1SAM4',
-         '1 Samuel 4:11 records the Philistines in the context of the Ark being taken.'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_moved_to_ashdod_1sam5',
-         'CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5',
-         '1 Samuel 5:1 records the Ark of God being taken from Ebenezer to Ashdod.'),
-        ('philistines', 'participatesIn', 'ark_covenant_moved_to_ashdod_1sam5',
-         'CLAIM_PHILISTINES_PARTICIPANT_MOVED_ASHDOD_1SAM5',
-         '1 Samuel 5:1 records the Philistines moving the Ark from Ebenezer to Ashdod.'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_set_in_house_dagon_1sam5',
-         'CLAIM_ARK_COVENANT_SUBJECT_HOUSE_DAGON_1SAM5',
-         '1 Samuel 5:2 records the Ark being brought into the house of Dagon and set there.'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_brought_to_abinadab_house_1sam7',
-         'CLAIM_ARK_COVENANT_SUBJECT_ABINADAB_HOUSE_1SAM7',
-         '1 Samuel 7:1 records the Ark being brought to the house of Abinadab.'),
-        ('men_kiriath_jearim', 'participatesIn', 'ark_covenant_brought_to_abinadab_house_1sam7',
-         'CLAIM_MEN_KIRIATH_JEARIM_PARTICIPANT_ABINADAB_HOUSE_1SAM7',
-         '1 Samuel 7:1 records the men of Kiriath-jearim bringing the Ark to the house of Abinadab.'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_care_eleazar_1sam7',
-         'CLAIM_ARK_COVENANT_SUBJECT_ELEAZAR_CARE_1SAM7',
-         '1 Samuel 7:1 records Eleazar son of Abinadab being set apart in connection with keeping the Ark.'),
-        ('eleazar_son_abinadab', 'participatesIn', 'ark_covenant_care_eleazar_1sam7',
-         'CLAIM_ELEAZAR_PARTICIPANT_ARK_CARE_1SAM7',
-         '1 Samuel 7:1 records Eleazar son of Abinadab being set apart to keep the Ark.'),
-        ('ark_of_covenant', 'subjectOf', 'ark_covenant_stay_kiriath_jearim_1sam7',
-         'CLAIM_ARK_COVENANT_SUBJECT_STAY_KIRIATH_JEARIM_1SAM7',
-         '1 Samuel 7:2 records the Ark remaining at Kiriath-jearim for a long period.')
+        ('solomon', 'subjectOf', 'ark_covenant_temple_assembly', 'CLAIM_1KI_SOLOMON_SUBJECT_TEMPLE_ASSEMBLY',
+         '1 Kings 8:1 records Solomon assembling Israelite leaders for bringing up the Ark.'),
+        ('elders_of_israel_solomon_assembly', 'participatesIn', 'ark_covenant_temple_assembly', 'CLAIM_1KI_ELDERS_PARTICIPANT_TEMPLE_ASSEMBLY',
+         '1 Kings 8:1 records Israelite leaders assembled in the Ark temple-placement context.'),
+        ('solomon', 'subjectOf', 'ark_covenant_temple_assembly', 'CLAIM_2CH_SOLOMON_SUBJECT_TEMPLE_ASSEMBLY',
+         '2 Chronicles 5:2 records Solomon assembling Israelite leaders for bringing up the Ark.'),
+        ('elders_of_israel_solomon_assembly', 'participatesIn', 'ark_covenant_temple_assembly', 'CLAIM_2CH_ELDERS_PARTICIPANT_TEMPLE_ASSEMBLY',
+         '2 Chronicles 5:2 records Israelite leaders assembled in the Ark temple-placement context.'),
+        ('ark_of_covenant', 'participatesIn', 'ark_covenant_temple_transfer', 'CLAIM_1KI_ARK_PARTICIPANT_TEMPLE_TRANSFER',
+         '1 Kings 8:4 records the Ark being brought up in the temple-placement sequence.'),
+        ('tent_of_meeting', 'participatesIn', 'ark_covenant_temple_transfer', 'CLAIM_1KI_TENT_PARTICIPANT_TEMPLE_TRANSFER',
+         '1 Kings 8:4 records the tent of meeting being brought up with the Ark.'),
+        ('sanctuary_vessels_temporal_slice', 'participatesIn', 'ark_covenant_temple_transfer', 'CLAIM_1KI_VESSELS_PARTICIPANT_TEMPLE_TRANSFER',
+         '1 Kings 8:4 records holy vessels being brought up with the Ark and tent.'),
+        ('priests_levites_temple_ark_bearers', 'participatesIn', 'ark_covenant_temple_transfer', 'CLAIM_1KI_PRIESTS_LEVITES_PARTICIPANT_TEMPLE_TRANSFER',
+         '1 Kings 8:3-4 records priestly/Levitical participants bringing up the Ark and related sanctuary objects.'),
+        ('ark_of_covenant', 'participatesIn', 'ark_covenant_temple_transfer', 'CLAIM_2CH_ARK_PARTICIPANT_TEMPLE_TRANSFER',
+         '2 Chronicles 5:5 records the Ark being brought up in the temple-placement sequence.'),
+        ('tent_of_meeting', 'participatesIn', 'ark_covenant_temple_transfer', 'CLAIM_2CH_TENT_PARTICIPANT_TEMPLE_TRANSFER',
+         '2 Chronicles 5:5 records the tent of meeting being brought up with the Ark.'),
+        ('sanctuary_vessels_temporal_slice', 'participatesIn', 'ark_covenant_temple_transfer', 'CLAIM_2CH_VESSELS_PARTICIPANT_TEMPLE_TRANSFER',
+         '2 Chronicles 5:5 records holy vessels being brought up with the Ark and tent.'),
+        ('priests_levites_temple_ark_bearers', 'participatesIn', 'ark_covenant_temple_transfer', 'CLAIM_2CH_PRIESTS_LEVITES_PARTICIPANT_TEMPLE_TRANSFER',
+         '2 Chronicles 5:4-5 records Levitical priests bringing up the Ark and related sanctuary objects.'),
+        ('ark_of_covenant', 'subjectOf', 'ark_covenant_temple_placement', 'CLAIM_1KI_ARK_SUBJECT_TEMPLE_PLACEMENT',
+         '1 Kings 8:6 records the Ark being brought into its place in the inner sanctuary.'),
+        ('priests_levites_temple_ark_bearers', 'participatesIn', 'ark_covenant_temple_placement', 'CLAIM_1KI_PRIESTS_PARTICIPANT_TEMPLE_PLACEMENT',
+         '1 Kings 8:6 records priests bringing the Ark into its place.'),
+        ('ark_of_covenant', 'subjectOf', 'ark_covenant_temple_placement', 'CLAIM_2CH_ARK_SUBJECT_TEMPLE_PLACEMENT',
+         '2 Chronicles 5:7 records priests bringing the Ark into its place.'),
+        ('priests_levites_temple_ark_bearers', 'participatesIn', 'ark_covenant_temple_placement', 'CLAIM_2CH_PRIESTS_PARTICIPANT_TEMPLE_PLACEMENT',
+         '2 Chronicles 5:7 records priests bringing the Ark into its place.')
      ) AS m(subject_key, predicate, event_key, claim_key, statement)
 JOIN entity s ON s.entity_key = m.subject_key
 JOIN event e ON e.event_key = m.event_key
-JOIN proposition p ON p.subject_entity_id = s.entity_id
-                  AND p.object_event_id = e.event_id
+JOIN proposition p ON p.subject_entity_id = s.entity_id AND p.object_event_id = e.event_id
                   AND p.predicate = m.predicate;
 
--- 8. Claims for event/place propositions.
 INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
 SELECT m.claim_key, p.proposition_id, 'DIRECT_SOURCE_CLAIM', m.statement
 FROM (VALUES
-        ('ark_covenant_moved_to_ashdod_1sam5', 'ashdod',
-         'CLAIM_ARK_MOVEMENT_ASHDOD_PLACE_1SAM5',
-         '1 Samuel 5:1 records Ashdod as the destination in the Ark movement from Ebenezer.'),
-        ('ark_covenant_set_in_house_dagon_1sam5', 'house_dagon_ashdod',
-         'CLAIM_ARK_HOUSE_DAGON_PLACE_1SAM5',
-         '1 Samuel 5:2 records the house of Dagon as the place where the Ark was brought and set.'),
-        ('ark_covenant_brought_to_abinadab_house_1sam7', 'house_abinadab_kiriath_jearim',
-         'CLAIM_ARK_ABINADAB_HOUSE_PLACE_1SAM7',
-         '1 Samuel 7:1 records the house of Abinadab as the place to which the Ark was brought.'),
-        ('ark_covenant_care_eleazar_1sam7', 'house_abinadab_kiriath_jearim',
-         'CLAIM_ELEAZAR_CARE_ABINADAB_HOUSE_PLACE_1SAM7',
-         '1 Samuel 7:1 records Eleazar son of Abinadab in the house-of-Abinadab Ark custody context.'),
-        ('ark_covenant_stay_kiriath_jearim_1sam7', 'kiriath_jearim',
-         'CLAIM_ARK_STAY_KIRIATH_JEARIM_PLACE_1SAM7',
-         '1 Samuel 7:2 records Kiriath-jearim as the place where the Ark remained.')
-     ) AS m(event_key, place_key, claim_key, statement)
+        ('ark_covenant_temple_placement', 'occursAt', 'solomon_temple_inner_sanctuary', 'CLAIM_1KI_TEMPLE_PLACEMENT_OCCURS_AT_INNER_SANCTUARY',
+         '1 Kings 8:6 records the Ark placement event as occurring in the inner sanctuary.'),
+        ('ark_covenant_temple_placement', 'occursAt', 'solomon_temple_inner_sanctuary', 'CLAIM_2CH_TEMPLE_PLACEMENT_OCCURS_AT_INNER_SANCTUARY',
+         '2 Chronicles 5:7 records the Ark placement event as occurring in the inner sanctuary.')
+     ) AS m(event_key, predicate, object_key, claim_key, statement)
 JOIN event e ON e.event_key = m.event_key
-JOIN entity place ON place.entity_key = m.place_key
-JOIN proposition p ON p.subject_event_id = e.event_id
-                  AND p.object_entity_id = place.entity_id
-                  AND p.predicate = 'occursAt';
+JOIN entity o ON o.entity_key = m.object_key
+JOIN proposition p ON p.subject_event_id = e.event_id AND p.object_entity_id = o.entity_id
+                  AND p.predicate = m.predicate;
 
--- 9. Evidence: one cited source observation per locator.
+INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
+SELECT m.claim_key, p.proposition_id, 'DIRECT_SOURCE_CLAIM', m.statement
+FROM (VALUES
+        ('CLAIM_1KI_ARK_LOCATED_INNER_SANCTUARY',
+         '1 Kings 8:6 records the Ark as placed in the inner sanctuary.'),
+        ('CLAIM_2CH_ARK_LOCATED_INNER_SANCTUARY',
+         '2 Chronicles 5:7 records the Ark as placed in the inner sanctuary.')
+     ) AS m(claim_key, statement)
+JOIN entity ark ON ark.entity_key = 'ark_of_covenant'
+JOIN entity pl ON pl.entity_key = 'solomon_temple_inner_sanctuary'
+JOIN proposition p ON p.subject_entity_id = ark.entity_id AND p.object_entity_id = pl.entity_id
+                  AND p.predicate = 'locatedAt';
+
+INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
+SELECT m.claim_key, p.proposition_id, 'DIRECT_SOURCE_CLAIM', m.statement
+FROM (VALUES
+        ('CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION',
+         '1 Kings 8:9 records the Ark contents in the temple-placement context as the two tablets of stone.'),
+        ('CLAIM_2CH_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION',
+         '2 Chronicles 5:10 records the Ark contents in the temple-placement context as the two tablets.')
+     ) AS m(claim_key, statement)
+JOIN entity ark ON ark.entity_key = 'ark_of_covenant'
+JOIN entity tablets ON tablets.entity_key = 'tablets_of_testimony'
+JOIN proposition p ON p.subject_entity_id = ark.entity_id AND p.object_entity_id = tablets.entity_id
+                  AND p.predicate = 'containsContent';
+
+-- 7. Evidence and citations.
 INSERT INTO evidence (evidence_key, source_record_id, observation, evidence_type_code, notes)
 SELECT 'EV_' || m.source_record_key, sr.source_record_id, m.observation, 'SOURCE_OBSERVATION', m.notes
 FROM (VALUES
-        ('MT_1SA_4_4', '1 Samuel 4:4 records the people sending to Shiloh and bringing from there the Ark of the Covenant/Ark of God into the camp context.', NULL),
-        ('MT_1SA_4_11', '1 Samuel 4:11 records the Ark of God being taken in the Philistine battle context.', 'Hophni and Phinehas are recorded in the locator but not modeled as Phase 24 entities because the bounded demonstration focuses on the Ark lifecycle path.'),
-        ('MT_1SA_5_1', '1 Samuel 5:1 records the Philistines taking the Ark of God from Ebenezer and bringing it to Ashdod.', NULL),
-        ('MT_1SA_5_2', '1 Samuel 5:2 records the Philistines bringing the Ark of God into the house of Dagon and setting it there.', 'No theological interpretation is recorded.'),
-        ('MT_1SA_7_1', '1 Samuel 7:1 records the men of Kiriath-jearim bringing the Ark to the house of Abinadab and setting apart Eleazar son of Abinadab to keep it.', NULL),
-        ('MT_1SA_7_2', '1 Samuel 7:2 records the Ark remaining at Kiriath-jearim for a long period, described in the source as twenty years.', 'The duration is intentionally not converted into a structured proposition because the current predicate registry has no event-duration predicate.')
+        ('MT_1KI_8_1', '1 Kings 8:1 records Solomon assembling Israelite leaders in Jerusalem in order to bring up the Ark.', NULL),
+        ('MT_1KI_8_3', '1 Kings 8:3 records Israelite elders arriving and priests taking up the Ark.', NULL),
+        ('MT_1KI_8_4', '1 Kings 8:4 records the Ark, tent of meeting, and holy vessels being brought up by priests and Levites.', NULL),
+        ('MT_1KI_8_6', '1 Kings 8:6 records priests bringing the Ark into its place in the inner sanctuary.', NULL),
+        ('MT_1KI_8_9', '1 Kings 8:9 records the Ark contents in the temple-placement context as the two stone tablets; no broader inventory conclusion is inferred.', 'The source description is preserved without inferring source silence from unstored text.'),
+        ('MT_2CH_5_2', '2 Chronicles 5:2 records Solomon assembling Israelite leaders in Jerusalem to bring up the Ark.', NULL),
+        ('MT_2CH_5_4', '2 Chronicles 5:4 records Israelite elders arriving and Levites taking up the Ark.', NULL),
+        ('MT_2CH_5_5', '2 Chronicles 5:5 records the Ark, tent of meeting, and holy vessels being brought up by Levitical priests.', NULL),
+        ('MT_2CH_5_7', '2 Chronicles 5:7 records priests bringing the Ark into its place in the inner sanctuary.', NULL),
+        ('MT_2CH_5_10', '2 Chronicles 5:10 records the Ark contents in the temple-placement context as the two tablets; no broader inventory conclusion is inferred.', 'The source description is preserved without inferring source silence from unstored text.')
      ) AS m(source_record_key, observation, notes)
 JOIN source_record sr ON sr.source_record_key = m.source_record_key;
 
@@ -212,64 +211,99 @@ FROM evidence ev
 JOIN source_record sr ON sr.source_record_id = ev.source_record_id
 JOIN citation ci ON ci.source_record_id = sr.source_record_id
 WHERE ev.evidence_key IN (
-    'EV_MT_1SA_4_4', 'EV_MT_1SA_4_11', 'EV_MT_1SA_5_1',
-    'EV_MT_1SA_5_2', 'EV_MT_1SA_7_1', 'EV_MT_1SA_7_2');
+    'EV_MT_1KI_8_1', 'EV_MT_1KI_8_3', 'EV_MT_1KI_8_4', 'EV_MT_1KI_8_6', 'EV_MT_1KI_8_9',
+    'EV_MT_2CH_5_2', 'EV_MT_2CH_5_4', 'EV_MT_2CH_5_5', 'EV_MT_2CH_5_7', 'EV_MT_2CH_5_10');
 
 INSERT INTO claim_evidence (claim_id, evidence_id, relation_type_code, notes)
 SELECT c.claim_id, ev.evidence_id, 'SUPPORTS', 'Direct source observation for this claim.'
 FROM (VALUES
-        ('CLAIM_ARK_COVENANT_SUBJECT_BROUGHT_FROM_SHILOH_1SAM4', 'EV_MT_1SA_4_4'),
-        ('CLAIM_ARK_COVENANT_SUBJECT_CAPTURE_1SAM4', 'EV_MT_1SA_4_11'),
-        ('CLAIM_PHILISTINES_PARTICIPANT_CAPTURE_1SAM4', 'EV_MT_1SA_4_11'),
-        ('CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5', 'EV_MT_1SA_5_1'),
-        ('CLAIM_PHILISTINES_PARTICIPANT_MOVED_ASHDOD_1SAM5', 'EV_MT_1SA_5_1'),
-        ('CLAIM_ARK_MOVEMENT_ASHDOD_PLACE_1SAM5', 'EV_MT_1SA_5_1'),
-        ('CLAIM_ARK_COVENANT_SUBJECT_HOUSE_DAGON_1SAM5', 'EV_MT_1SA_5_2'),
-        ('CLAIM_ARK_HOUSE_DAGON_PLACE_1SAM5', 'EV_MT_1SA_5_2'),
-        ('CLAIM_ARK_COVENANT_SUBJECT_ABINADAB_HOUSE_1SAM7', 'EV_MT_1SA_7_1'),
-        ('CLAIM_MEN_KIRIATH_JEARIM_PARTICIPANT_ABINADAB_HOUSE_1SAM7', 'EV_MT_1SA_7_1'),
-        ('CLAIM_ARK_ABINADAB_HOUSE_PLACE_1SAM7', 'EV_MT_1SA_7_1'),
-        ('CLAIM_ARK_COVENANT_SUBJECT_ELEAZAR_CARE_1SAM7', 'EV_MT_1SA_7_1'),
-        ('CLAIM_ELEAZAR_PARTICIPANT_ARK_CARE_1SAM7', 'EV_MT_1SA_7_1'),
-        ('CLAIM_ELEAZAR_CARE_ABINADAB_HOUSE_PLACE_1SAM7', 'EV_MT_1SA_7_1'),
-        ('CLAIM_ARK_COVENANT_SUBJECT_STAY_KIRIATH_JEARIM_1SAM7', 'EV_MT_1SA_7_2'),
-        ('CLAIM_ARK_STAY_KIRIATH_JEARIM_PLACE_1SAM7', 'EV_MT_1SA_7_2')
+        ('CLAIM_1KI_SOLOMON_SUBJECT_TEMPLE_ASSEMBLY', 'EV_MT_1KI_8_1'),
+        ('CLAIM_1KI_ELDERS_PARTICIPANT_TEMPLE_ASSEMBLY', 'EV_MT_1KI_8_1'),
+        ('CLAIM_2CH_SOLOMON_SUBJECT_TEMPLE_ASSEMBLY', 'EV_MT_2CH_5_2'),
+        ('CLAIM_2CH_ELDERS_PARTICIPANT_TEMPLE_ASSEMBLY', 'EV_MT_2CH_5_2'),
+        ('CLAIM_1KI_ARK_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_1KI_8_4'),
+        ('CLAIM_1KI_TENT_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_1KI_8_4'),
+        ('CLAIM_1KI_VESSELS_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_1KI_8_4'),
+        ('CLAIM_1KI_PRIESTS_LEVITES_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_1KI_8_3'),
+        ('CLAIM_1KI_PRIESTS_LEVITES_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_1KI_8_4'),
+        ('CLAIM_2CH_ARK_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_2CH_5_5'),
+        ('CLAIM_2CH_TENT_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_2CH_5_5'),
+        ('CLAIM_2CH_VESSELS_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_2CH_5_5'),
+        ('CLAIM_2CH_PRIESTS_LEVITES_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_2CH_5_4'),
+        ('CLAIM_2CH_PRIESTS_LEVITES_PARTICIPANT_TEMPLE_TRANSFER', 'EV_MT_2CH_5_5'),
+        ('CLAIM_1KI_ARK_SUBJECT_TEMPLE_PLACEMENT', 'EV_MT_1KI_8_6'),
+        ('CLAIM_1KI_PRIESTS_PARTICIPANT_TEMPLE_PLACEMENT', 'EV_MT_1KI_8_6'),
+        ('CLAIM_2CH_ARK_SUBJECT_TEMPLE_PLACEMENT', 'EV_MT_2CH_5_7'),
+        ('CLAIM_2CH_PRIESTS_PARTICIPANT_TEMPLE_PLACEMENT', 'EV_MT_2CH_5_7'),
+        ('CLAIM_1KI_TEMPLE_PLACEMENT_OCCURS_AT_INNER_SANCTUARY', 'EV_MT_1KI_8_6'),
+        ('CLAIM_2CH_TEMPLE_PLACEMENT_OCCURS_AT_INNER_SANCTUARY', 'EV_MT_2CH_5_7'),
+        ('CLAIM_1KI_ARK_LOCATED_INNER_SANCTUARY', 'EV_MT_1KI_8_6'),
+        ('CLAIM_2CH_ARK_LOCATED_INNER_SANCTUARY', 'EV_MT_2CH_5_7'),
+        ('CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION', 'EV_MT_1KI_8_9'),
+        ('CLAIM_2CH_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION', 'EV_MT_2CH_5_10')
      ) AS m(claim_key, evidence_key)
 JOIN claim c ON c.claim_key = m.claim_key
 JOIN evidence ev ON ev.evidence_key = m.evidence_key;
 
--- 10. Source identities and evidence-backed mappings. These mappings preserve
---     source-specific names ("Ark of God", group labels, and places) as distinct
---     source identities mapped to canonical entities; they do not merge sources.
+-- 8. Source-specific identities remain distinct from canonical entities.
 INSERT INTO source_identity (source_id, source_identity_key, display_name)
 SELECT s.source_id, m.source_identity_key, m.display_name
 FROM (VALUES
-        ('mt-ark-god-1sam4-7', 'Ark of God'),
-        ('mt-philistines-1sam4-5', 'Philistines'),
-        ('mt-men-kiriath-jearim-1sam7', 'men of Kiriath-jearim'),
-        ('mt-eleazar-abinadab-1sam7', 'Eleazar son of Abinadab'),
-        ('mt-ashdod-1sam5', 'Ashdod'),
-        ('mt-house-dagon-1sam5', 'house of Dagon'),
-        ('mt-house-abinadab-1sam7', 'house of Abinadab'),
-        ('mt-kiriath-jearim-1sam7', 'Kiriath-jearim')
-     ) AS m(source_identity_key, display_name)
-JOIN source s ON s.source_key = '1SA_MT';
+        ('1KI_MT', 'mt1ki-solomon-8', 'Solomon'),
+        ('1KI_MT', 'mt1ki-ark-8', 'the ark'),
+        ('1KI_MT', 'mt1ki-priests-8', 'the priests and Levites'),
+        ('1KI_MT', 'mt1ki-inner-sanctuary-8', 'the inner sanctuary'),
+        ('2CH_MT', 'mt2ch-solomon-5', 'Solomon'),
+        ('2CH_MT', 'mt2ch-ark-5', 'the ark'),
+        ('2CH_MT', 'mt2ch-levitical-priests-5', 'the Levitical priests'),
+        ('2CH_MT', 'mt2ch-inner-sanctuary-5', 'the most holy place')
+     ) AS m(source_key, source_identity_key, display_name)
+JOIN source s ON s.source_key = m.source_key;
 
 INSERT INTO entity_source_mapping (source_identity_id, entity_id, mapping_status_code, confidence,
                                    justification, supporting_evidence_id)
 SELECT si.source_identity_id, en.entity_id, 'ACTIVE', m.confidence, m.justification, ev.evidence_id
 FROM (VALUES
-        ('mt-ark-god-1sam4-7', 'ark_of_covenant', 0.9600, '1 Samuel 4:4 names the Ark of the Covenant/Ark of God in the selected lifecycle slice.', 'EV_MT_1SA_4_4'),
-        ('mt-philistines-1sam4-5', 'philistines', 0.9900, '1 Samuel 5:1 identifies the Philistines as the group moving the Ark.', 'EV_MT_1SA_5_1'),
-        ('mt-men-kiriath-jearim-1sam7', 'men_kiriath_jearim', 0.9900, '1 Samuel 7:1 identifies the men of Kiriath-jearim as bringing up the Ark.', 'EV_MT_1SA_7_1'),
-        ('mt-eleazar-abinadab-1sam7', 'eleazar_son_abinadab', 0.9900, '1 Samuel 7:1 names Eleazar son of Abinadab in the Ark custody context.', 'EV_MT_1SA_7_1'),
-        ('mt-ashdod-1sam5', 'ashdod', 0.9900, '1 Samuel 5:1 names Ashdod in the Ark movement event.', 'EV_MT_1SA_5_1'),
-        ('mt-house-dagon-1sam5', 'house_dagon_ashdod', 0.9900, '1 Samuel 5:2 identifies the house of Dagon as the place where the Ark was brought.', 'EV_MT_1SA_5_2'),
-        ('mt-house-abinadab-1sam7', 'house_abinadab_kiriath_jearim', 0.9900, '1 Samuel 7:1 identifies the house of Abinadab as the place where the Ark was brought.', 'EV_MT_1SA_7_1'),
-        ('mt-kiriath-jearim-1sam7', 'kiriath_jearim', 0.9900, '1 Samuel 7:2 names Kiriath-jearim as the place where the Ark remained.', 'EV_MT_1SA_7_2')
+        ('mt1ki-solomon-8', 'solomon', 0.9900, '1 Kings 8:1 names Solomon in the selected temple-placement slice.', 'EV_MT_1KI_8_1'),
+        ('mt1ki-ark-8', 'ark_of_covenant', 0.9900, '1 Kings 8:1 identifies the Ark as the object being brought up.', 'EV_MT_1KI_8_1'),
+        ('mt1ki-priests-8', 'priests_levites_temple_ark_bearers', 0.9800, '1 Kings 8:3-4 identifies the priestly/Levitical participants in the selected slice.', 'EV_MT_1KI_8_4'),
+        ('mt1ki-inner-sanctuary-8', 'solomon_temple_inner_sanctuary', 0.9900, '1 Kings 8:6 identifies the inner sanctuary as the Ark placement location.', 'EV_MT_1KI_8_6'),
+        ('mt2ch-solomon-5', 'solomon', 0.9900, '2 Chronicles 5:2 names Solomon in the selected temple-placement slice.', 'EV_MT_2CH_5_2'),
+        ('mt2ch-ark-5', 'ark_of_covenant', 0.9900, '2 Chronicles 5:2 identifies the Ark as the object being brought up.', 'EV_MT_2CH_5_2'),
+        ('mt2ch-levitical-priests-5', 'priests_levites_temple_ark_bearers', 0.9800, '2 Chronicles 5:4-5 identifies Levitical priests in the selected slice.', 'EV_MT_2CH_5_5'),
+        ('mt2ch-inner-sanctuary-5', 'solomon_temple_inner_sanctuary', 0.9900, '2 Chronicles 5:7 identifies the inner sanctuary / most holy place as the Ark placement location.', 'EV_MT_2CH_5_7')
      ) AS m(source_identity_key, entity_key, confidence, justification, evidence_key)
 JOIN source_identity si ON si.source_identity_key = m.source_identity_key
 JOIN entity en ON en.entity_key = m.entity_key
 JOIN evidence ev ON ev.evidence_key = m.evidence_key;
+
+-- 9. Genuine derived claim: a normalized cross-source comparison of the two source-backed
+--    temple contents claims. This does not assert truth, sufficiency, source silence, or a global
+--    factual core; it records that these selected source claims assert the same proposition.
+INSERT INTO derivation (method, assumptions)
+VALUES ('Cross-source comparison of normalized Ark contents propositions in the temple-placement slice',
+        'Only the selected 1 Kings 8:9 and 2 Chronicles 5:10 direct source claims are compared; the result is structural agreement on the existing ark_of_covenant containsContent tablets_of_testimony proposition and does not infer exhaustive inventory, truth, source silence, or contradiction.');
+
+INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement, derivation_id)
+SELECT 'CLAIM_XSRC_ARK_CONTAINS_TABLETS_TEMPLE_SHARED_DERIVED', p.proposition_id, 'DERIVED_CLAIM',
+       'The selected 1 Kings 8:9 and 2 Chronicles 5:10 claims share the normalized proposition that the Ark of the Covenant contains the tablets of the testimony.',
+       d.derivation_id
+FROM proposition p
+JOIN entity ark ON ark.entity_id = p.subject_entity_id
+JOIN entity tablets ON tablets.entity_id = p.object_entity_id
+CROSS JOIN derivation d
+WHERE ark.entity_key = 'ark_of_covenant'
+  AND tablets.entity_key = 'tablets_of_testimony'
+  AND p.predicate = 'containsContent'
+  AND d.method = 'Cross-source comparison of normalized Ark contents propositions in the temple-placement slice';
+
+INSERT INTO derivation_input (derivation_id, input_claim_id, notes)
+SELECT d.derivation_id, c.claim_id, m.notes
+FROM (VALUES
+        ('CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION', '1 Kings direct source claim for the shared normalized proposition.'),
+        ('CLAIM_2CH_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION', '2 Chronicles direct source claim for the shared normalized proposition.')
+     ) AS m(claim_key, notes)
+JOIN derivation d ON d.method = 'Cross-source comparison of normalized Ark contents propositions in the temple-placement slice'
+JOIN claim c ON c.claim_key = m.claim_key;
 
 COMMIT;

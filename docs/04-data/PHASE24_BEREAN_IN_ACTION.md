@@ -1,265 +1,293 @@
-# Phase 24 — Berean in Action
+# Phase 24 — Berean in Action: Real Knowledge Construction Demonstration
 
-## Scope built
+**PHASE 24 STATUS:** implemented as fixture data, read-only demonstrations, validation, and documentation  
+**ARCHITECTURAL STATUS:** existing model remained sufficient  
+**SCHEMA CHANGE:** none  
+**REGISTRY CHANGE:** none  
+**READ-ONLY API CHANGE:** no new endpoint; existing Phase 21 and Phase 23 endpoints are demonstrated  
+**EVALUATION-IS-NOT-KNOWLEDGE:** preserved
 
-Phase 24 adds a reproducible, source-backed Ark of the Covenant lifecycle slice from 1 Samuel 4–7, extending the accepted Genesis / Ark material through Phase 19:
+Phase 24 transitions from architecture validation to an inspectable knowledge-construction demonstration using the existing Berean relational substrate. It extends the accepted Ark-of-the-Covenant material with a bounded temple-placement slice from **1 Kings 8:1, 8:3, 8:4, 8:6, 8:9** and **2 Chronicles 5:2, 5:4, 5:5, 5:7, 5:10**.
 
-- 1 Samuel 4:4 — Ark brought from Shiloh into the battle-camp context.
-- 1 Samuel 4:11 — Ark taken in the Philistine battle context.
-- 1 Samuel 5:1 — Ark moved from Ebenezer to Ashdod by the Philistines.
-- 1 Samuel 5:2 — Ark brought into the house of Dagon and set there.
-- 1 Samuel 7:1 — Ark brought to the house of Abinadab; Eleazar set apart to keep it.
-- 1 Samuel 7:2 — Ark remains at Kiriath-jearim for a long period.
+The slice is deliberately modest but coherent: Solomon assembles Israelite leaders; priestly/Levitical participants bring up the Ark, tent of meeting, and holy vessels; the Ark is placed in the inner sanctuary; the temple-placement contents statements from 1 Kings and 2 Chronicles are compared with explicit provenance.
 
-The slice is intentionally small but coherent. It demonstrates source-backed Sources, Datasets, SourceRecords, Citations, Evidence, Propositions, Claims, Events, projected event relationships, source-identity mappings, provenance traversal, source comparison, event exploration, dependency exploration, and reuse of accepted genuine derivations.
-
-## Files added or changed
+## Files added or extended
 
 - `tests/fixtures/100-phase24-berean-in-action-fixture.sql`
 - `tests/validation/phase24-berean-in-action-slice.sql`
 - `tests/validation/phase24-coverage-report.sql`
-- `scripts/validation/run-postgres-validation.sh`
 - `tests/app/app.test.ts`
+- `scripts/validation/run-postgres-validation.sh`
 - `docs/04-data/PHASE24_BEREAN_IN_ACTION.md`
 
-No schema file or registry definition was changed.
+## Data scope
+
+### New sources and datasets
+
+| Source | Dataset | Scope |
+| --- | --- | --- |
+| `1KI_MT` — 1 Kings, Masoretic textual tradition | `1KI_MT_REF` | Manually entered reference points for selected 1 Kings 8 Ark temple-placement locators |
+| `2CH_MT` — 2 Chronicles, Masoretic textual tradition | `2CH_MT_REF` | Manually entered reference points for selected 2 Chronicles 5 Ark temple-placement locators |
+
+As in earlier phases, no source text is stored. `source_record.raw_content`, `source_record.content_hash`, and `citation.quoted_text` remain `NULL` for this manually entered reference-point slice. Phase 21 reports those nulls as `NOT_STORED_BY_POLICY`, not as source silence.
+
+### New referents
+
+Phase 24 adds only the persistent referents needed for the bounded slice:
+
+- `solomon` (`PERSON`)
+- `elders_of_israel_solomon_assembly` (`ORGANIZATION`)
+- `priests_levites_temple_ark_bearers` (`ORGANIZATION`)
+- `solomon_temple_inner_sanctuary` (`PLACE`)
+- `tent_of_meeting` (`OBJECT`)
+- `sanctuary_vessels_temporal_slice` (`OBJECT`)
+
+The existing `ark_of_covenant` entity is reused. No duplicate Ark entity is created.
+
+### New events
+
+All new events use the existing generic `OTHER` event type:
+
+- `ark_covenant_temple_assembly`
+- `ark_covenant_temple_transfer`
+- `ark_covenant_temple_placement`
+
+These are descriptive historical occurrences only. They do not encode compliance, violation, causation, theology, pole/ring physical state, route, duration, or inference from source difference.
 
 ## Coverage summary
 
-Phase 24 itself adds:
+The Phase 24 validation report demonstrates the following scoped additions:
 
-| Category | Phase 24 count | Notes |
-| --- | ---: | --- |
-| Sources | 1 | `1SA_MT` |
-| Datasets | 1 | `1SA_MT_REF` |
-| SourceRecords | 6 | 1 Samuel 4:4, 4:11, 5:1, 5:2, 7:1, 7:2 |
-| Citations | 6 | Locator-only, unquoted |
-| Evidence | 6 | One source observation per locator |
-| Propositions | 16 | Entity-event and event-place propositions |
-| Claims | 16 | All `DIRECT_SOURCE_CLAIM` |
-| Events | 7 | All existing `OTHER` event type |
-| Relationships | 11 projected `event_participation` rows | Projection from claim-asserted propositions |
-| ClaimRelations | 0 | No automatic source-difference classification |
-| Derivations | 0 new | Existing accepted Genesis derivations remain available |
-| DerivationInputs | 0 new | Existing accepted derivation inputs remain available |
+| Structure | Phase 24 count |
+| --- | ---: |
+| Sources | 2 |
+| Datasets | 2 |
+| Source records | 10 |
+| Citations | 10 |
+| Evidence observations | 10 |
+| Direct source claims | 22 |
+| Derived claims | 1 |
+| Derivation inputs | 2 |
 
-Executable coverage query: `tests/validation/phase24-coverage-report.sql`.
+The count is not the main success criterion. The important property is that every direct source claim has a full source-backed path and that the one derived claim has explicit claim inputs.
 
-## Provenance examples
+## Complete provenance examples
 
-Every Phase 24 claim is traceable through:
+The fixture and validation demonstrate complete paths of the form:
 
-```text
-Claim
-→ ClaimEvidence
-→ Evidence
-→ EvidenceCitation
-→ Citation
-→ SourceRecord
-→ Dataset
-→ Source
-```
+`Claim -> ClaimEvidence -> Evidence -> EvidenceCitation -> Citation -> SourceRecord -> Dataset -> Source`
 
-Examples validated by `tests/validation/phase24-berean-in-action-slice.sql`:
+Examples:
 
-| Claim | Evidence | Citation | SourceRecord | Dataset | Source |
+| Claim | Evidence | Citation | Source record | Dataset | Source |
 | --- | --- | --- | --- | --- | --- |
-| `CLAIM_ARK_COVENANT_SUBJECT_CAPTURE_1SAM4` | `EV_MT_1SA_4_11` | `1 Samuel 4:11` | `MT_1SA_4_11` | `1SA_MT_REF` | `1SA_MT` |
-| `CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5` | `EV_MT_1SA_5_1` | `1 Samuel 5:1` | `MT_1SA_5_1` | `1SA_MT_REF` | `1SA_MT` |
-| `CLAIM_ELEAZAR_PARTICIPANT_ARK_CARE_1SAM7` | `EV_MT_1SA_7_1` | `1 Samuel 7:1` | `MT_1SA_7_1` | `1SA_MT_REF` | `1SA_MT` |
+| `CLAIM_1KI_ARK_SUBJECT_TEMPLE_PLACEMENT` | `EV_MT_1KI_8_6` | `CITE_MT_1KI_8_6` | `MT_1KI_8_6` | `1KI_MT_REF` | `1KI_MT` |
+| `CLAIM_2CH_ARK_SUBJECT_TEMPLE_PLACEMENT` | `EV_MT_2CH_5_7` | `CITE_MT_2CH_5_7` | `MT_2CH_5_7` | `2CH_MT_REF` | `2CH_MT` |
+| `CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION` | `EV_MT_1KI_8_9` | `CITE_MT_1KI_8_9` | `MT_1KI_8_9` | `1KI_MT_REF` | `1KI_MT` |
+| `CLAIM_2CH_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION` | `EV_MT_2CH_5_10` | `CITE_MT_2CH_5_10` | `MT_2CH_5_10` | `2CH_MT_REF` | `2CH_MT` |
 
-Source text remains unstored by policy:
+## Proposition exploration and multiple claims
 
-```text
-source_record.raw_content = NULL
-citation.quoted_text = NULL
+Phase 24 reuses the existing `ark_of_covenant containsContent tablets_of_testimony` proposition. It now has multiple coexisting claims:
+
+- `CLAIM_ARK_COVENANT_CONTAINS_TESTIMONY` — Exodus 40:20 direct source claim from Phase 16.
+- `CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION` — 1 Kings 8:9 direct source claim.
+- `CLAIM_2CH_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION` — 2 Chronicles 5:10 direct source claim.
+- `CLAIM_XSRC_ARK_CONTAINS_TABLETS_TEMPLE_SHARED_DERIVED` — Phase 24 derived comparison claim.
+
+The proposition remains the structured semantic authority. The claim statements are display/explanation text, not a second semantic authority.
+
+## Source differences preserved
+
+Phase 24 demonstrates source comparison without automatic resolution:
+
+- 1 Kings records priestly/Levitical participation in the temple-transfer sequence with `EV_MT_1KI_8_3` and `EV_MT_1KI_8_4`.
+- 2 Chronicles records related priestly/Levitical participation with `EV_MT_2CH_5_4` and `EV_MT_2CH_5_5`.
+- Both source-backed descriptions coexist on normalized event-participation propositions.
+- No `ClaimRelation` is created between 1 Kings and 2 Chronicles claims merely because details differ.
+- The existing Exodus 37:1 / Deuteronomy 10:3 builder difference from Phase 16 remains a separate preserved source-difference example.
+
+## Event exploration
+
+The new events are explorable through the existing event APIs and the `event_participation` view. Participation is projected from asserted claims using existing predicates:
+
+- `subjectOf` projects `SUBJECT`.
+- `participatesIn` projects `PARTICIPANT`.
+- `occursAt` records event location without creating event participation.
+
+The placement event has source-backed projected participation from both 1 Kings and 2 Chronicles:
+
+- `ark_of_covenant` as `SUBJECT`.
+- `priests_levites_temple_ark_bearers` as `PARTICIPANT`.
+
+The placement event also has explicit location claims:
+
+- `CLAIM_1KI_TEMPLE_PLACEMENT_OCCURS_AT_INNER_SANCTUARY`
+- `CLAIM_2CH_TEMPLE_PLACEMENT_OCCURS_AT_INNER_SANCTUARY`
+
+## Derivation example
+
+Phase 24 includes one genuine derived-claim example:
+
+- Derived claim: `CLAIM_XSRC_ARK_CONTAINS_TABLETS_TEMPLE_SHARED_DERIVED`
+- Method: `Cross-source comparison of normalized Ark contents propositions in the temple-placement slice`
+- Inputs:
+  - `CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION`
+  - `CLAIM_2CH_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION`
+
+This derived claim records structural agreement between the selected 1 Kings and 2 Chronicles source-backed claims on the existing normalized proposition. It does **not** infer exhaustive inventory, truth, source silence, contradiction, sufficiency, theology, or a global factual core.
+
+## Demonstration queries
+
+The executable examples are in `tests/validation/phase24-coverage-report.sql`. They cover:
+
+1. Coverage summary for sources, datasets, source records, citations, evidence, claims, derivations, and derivation inputs.
+2. Full provenance examples from claim to source.
+3. Proposition exploration with multiple source-backed and derived claims.
+4. Source comparison preserving differences without automatic contradiction.
+5. Event exploration through projected participation and explicit location propositions.
+6. Derivation explanation through stored method, assumptions, and inputs.
+
+Run them through the full validation script:
+
+```sh
+DATABASE_URL=<clean disposable PostgreSQL database> scripts/validation/run-postgres-validation.sh
 ```
 
-The API reports those NULLs as `NOT_STORED_BY_POLICY`, not as source silence.
+## API demonstrations
 
-## Demonstration queries and API examples
+Phase 24 does not add endpoints. It demonstrates the existing Phase 21 and Phase 23 read-only endpoints with new data.
 
-### Provenance / evidence / source tracing
+### Provenance explanation
+
+Example lookup after loading the fixture:
 
 ```sql
-SELECT c.claim_key, ev.evidence_key, ci.locator, sr.source_record_key, d.dataset_key, s.source_key
-FROM claim c
-JOIN claim_evidence ce ON ce.claim_id = c.claim_id
-JOIN evidence ev ON ev.evidence_id = ce.evidence_id
-JOIN evidence_citation ec ON ec.evidence_id = ev.evidence_id
-JOIN citation ci ON ci.citation_id = ec.citation_id
-JOIN source_record sr ON sr.source_record_id = ev.source_record_id
-JOIN dataset d ON d.dataset_id = sr.dataset_id
-JOIN source s ON s.source_id = d.source_id
-WHERE c.claim_key = 'CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5';
+SELECT claim_id
+FROM claim
+WHERE claim_key = 'CLAIM_1KI_ARK_SUBJECT_TEMPLE_PLACEMENT';
 ```
 
-API:
+Then call:
 
-```text
-GET /api/provenance/explain?claim_id=<id for CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5>
+```http
+GET /api/provenance/explain?claim_id=<claim_id>
 ```
 
-The Phase 24 app test verifies this operation is read-only and resolves the full `1SA_MT` source chain.
+Expected behavior:
 
-### Proposition exploration
+- `operation = EXPLAIN_PROVENANCE`
+- `read_only = true`
+- complete source-backed traversal through `1KI_MT_REF` / `1KI_MT`
+- `raw_content_status = NOT_STORED_BY_POLICY`
+- `quoted_text_status = NOT_STORED_BY_POLICY`
+- no mutation of persistent table counts
+
+For proposition-level exploration:
 
 ```sql
-SELECT c.claim_key, c.claim_type_code, c.statement
-FROM claim c
-WHERE c.proposition_id = (
-    SELECT proposition_id
-    FROM claim
-    WHERE claim_key = 'CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5'
-);
+SELECT proposition_id
+FROM claim
+WHERE claim_key = 'CLAIM_1KI_ARK_CONTAINS_TABLETS_ONLY_SOURCE_DESCRIPTION';
 ```
 
-This shows which claims assert the same authoritative structured proposition. The proposition remains authoritative; `claim.statement` is only a display label.
+Then call:
 
-### Source comparison
+```http
+GET /api/provenance/explain?proposition_id=<proposition_id>
+```
+
+Expected behavior: the response returns the Exodus, 1 Kings, 2 Chronicles, and derived comparison claims that assert the same normalized proposition.
+
+### Derivation eligibility
+
+Example lookup:
 
 ```sql
-SELECT s.source_key, c.claim_key, ev.event_key, c.statement
-FROM claim c
-JOIN proposition p ON p.proposition_id = c.proposition_id
-JOIN event ev ON ev.event_id = p.object_event_id
-JOIN claim_evidence ce ON ce.claim_id = c.claim_id
-JOIN evidence e ON e.evidence_id = ce.evidence_id
-JOIN source_record sr ON sr.source_record_id = e.source_record_id
-JOIN dataset d ON d.dataset_id = sr.dataset_id
-JOIN source s ON s.source_id = d.source_id
-WHERE c.claim_key IN (
-    'CLAIM_ARK_COVENANT_SUBJECT_TRANSPORT_JORDAN',
-    'CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5',
-    'CLAIM_ARK_COVENANT_SUBJECT_TRANSPORT_NEW_CART_2SAM6'
-);
+SELECT derivation_id
+FROM claim
+WHERE claim_key = 'CLAIM_XSRC_ARK_CONTAINS_TABLETS_TEMPLE_SHARED_DERIVED';
 ```
 
-This compares:
+Then call:
 
-- Joshua 3:6 — priestly carrying before the people.
-- 1 Samuel 5:1 — Philistine movement from Ebenezer to Ashdod.
-- 2 Samuel 6:3 — new-cart transport.
-
-Berean preserves those differences as separate source-backed events. It does not automatically classify them as contradiction, violation, compliance, causation, or theological meaning.
-
-### Event exploration
-
-```sql
-SELECT ev.event_key, ev.event_type_code, en.entity_key, ep.role_code, c.claim_key
-FROM event ev
-JOIN event_participation ep ON ep.event_id = ev.event_id
-JOIN entity en ON en.entity_id = ep.entity_id
-JOIN claim c ON c.claim_id = ep.asserting_claim_id
-WHERE ev.event_key = 'ark_covenant_moved_to_ashdod_1sam5'
-ORDER BY en.entity_key;
+```http
+GET /api/derivations/check-eligibility?derivation_id=<derivation_id>
 ```
 
-API:
+Expected behavior:
 
-```text
-GET /api/events/<id for ark_covenant_moved_to_ashdod_1sam5>
-```
+- `operation = CHECK_DERIVATION_ELIGIBILITY`
+- `structurally_eligible = true`
+- stored method and assumptions returned without semantic interpretation
+- two input claims reported
+- `license_status = REQUIRES_HUMAN_METHOD_JUSTIFICATION`
+- limitation remains: structural eligibility is not logical entailment
+- no mutation of persistent table counts
 
-The result demonstrates that `event_participation` remains a projection from claim-asserted propositions, not a second authoritative event-participant table.
+These API behaviors are covered by `tests/app/app.test.ts`.
 
-### Dependency exploration
+## Deliberately unmade conclusions
 
-```sql
-SELECT ev.evidence_key, c.claim_key, ce.relation_type_code
-FROM evidence ev
-JOIN claim_evidence ce ON ce.evidence_id = ev.evidence_id
-JOIN claim c ON c.claim_id = ce.claim_id
-WHERE ev.evidence_key LIKE 'EV_MT_1SA_%'
-ORDER BY ev.evidence_key, c.claim_key;
-```
+Phase 24 intentionally does not assert:
 
-Existing derivation dependency exploration remains available through `derivation_input`:
+- that the 1 Kings and 2 Chronicles accounts are identical in every detail;
+- that any source is exhaustive because it mentions tablets;
+- that missing stored source text means source silence;
+- that the Ark was or was not compliant with Exodus 25:15 during the temple transfer;
+- that Joshua 3, 2 Samuel 6, 1 Kings 8, and 2 Chronicles 5 contradict one another merely because they describe different Ark-handling contexts;
+- theological meaning of the Ark, temple, cherubim, cloud, glory, or covenant;
+- causation, violation, punishment, obedience, sufficiency, entailment, truth, or falsity;
+- a canonical factual core promoted from multiple sources.
 
-```sql
-SELECT dc.claim_key AS derived_claim_key, ic.claim_key AS input_claim_key, di.notes
-FROM claim dc
-JOIN derivation_input di ON di.derivation_id = dc.derivation_id
-JOIN claim ic ON ic.claim_id = di.input_claim_id
-WHERE dc.claim_key = 'CLAIM_MT_ENOSH_YEAR_DERIVED';
-```
+## Problems discovered and classification
 
-### Derivation explanation and structural eligibility
+No architectural deficiency requiring schema, registry, predicate, event-type, persistence, or API redesign was discovered.
 
-Phase 24 does not add artificial 1 Samuel derivations. It reuses accepted genuine Genesis derivations, including:
+Observed limitations are classified as expected model boundaries rather than defects:
 
-- `CLAIM_MT_ENOSH_YEAR_DERIVED`
-- `CLAIM_LXX_ENOSH_YEAR_DERIVED`
-- `CLAIM_XSRC_ADAM_FATHER_SETH_SHARED_DERIVED`
+| Limitation | Classification | Phase 24 handling |
+| --- | --- | --- |
+| Fine-grained distinctions among priests, Levites, and offices can vary by source wording | Data/usability precision limit | Scoped collective entity `priests_levites_temple_ark_bearers`; source identities remain distinct |
+| The model can record placement and location but not infer compliance with a standing requirement | Deliberate semantic boundary | No compliance/violation claim or relation added |
+| Source descriptions can be compared structurally, but semantic identity/exhaustiveness is not automatic | Deliberate evaluation boundary | One explicit derived comparison only for the selected normalized proposition |
+| No source text is stored for these locators | Storage-policy limitation | Citations and source records remain locator-only; Phase 21 reports `NOT_STORED_BY_POLICY` |
 
-API:
+## Existing model sufficiency
 
-```text
-GET /api/derivations/check-eligibility?derivation_id=<id for CLAIM_MT_ENOSH_YEAR_DERIVED>
-```
+The existing Berean model remained sufficient for this phase. The demonstration used only:
 
-This preserves Phase 23: the endpoint checks only structural eligibility, returns method and assumptions as metadata, and does not license logical entailment.
+- `Source`, `Dataset`, `SourceRecord`, `Citation`, `Evidence`, `EvidenceCitation`
+- `Entity`, `SourceIdentity`, `EntitySourceMapping`
+- `Event`
+- `Proposition`
+- `Claim`, `ClaimEvidence`
+- `Derivation`, `DerivationInput`
+- existing predicate and event-type registries
+- existing `event_participation` projection
+- existing Phase 21 and Phase 23 read-only APIs
 
-## Source-difference examples
+No schema, registry, persistence, semantic-engine, evaluator, classifier, or mutation endpoint change was justified.
 
-### Ark movement and custody differences
+## Validation status
 
-The accepted Ark material now includes:
+Validated on a clean disposable PostgreSQL database and app test database during implementation:
 
-- Exodus 25:15 — a standing requirement that the poles remain in the rings (`standingRequirementIn`, no projected participation).
-- Joshua 3:6 — priests carry the Ark before the people.
-- 1 Samuel 4–7 — the Ark is taken, moved by Philistines, set in the house of Dagon, brought to Abinadab's house, and remains at Kiriath-jearim.
-- 2 Samuel 6:3 — the Ark is set on a new cart.
+- `npm run lint` — passed
+- `npm run typecheck` — passed
+- `npm run build` — passed
+- `npm test` — passed, 24 tests
+- `scripts/validation/run-postgres-validation.sh` — passed, including Phase 19 positive/coverage/negative behavior and Phase 24 fixture/coverage validation
 
-These are represented as distinct source-backed claims and events. Phase 24 deliberately does not infer:
+The app tests include read-only table-count checks for both:
 
-- compliance or violation of Exodus 25:15;
-- contradiction between priestly carrying and new-cart transport;
-- causation for any consequence;
-- theological explanation;
-- global factual-core promotion.
+- `GET /api/provenance/explain`
+- `GET /api/derivations/check-eligibility`
 
-### Names and identities
+## Highest-value next architectural question
 
-1 Samuel uses the source identity “Ark of God” in this slice. Phase 24 maps that source-specific identity to the existing canonical `ark_of_covenant` entity with evidence-backed justification, while preserving the source identity as distinct from the canonical entity.
+The highest-value next question is not a new schema element by default. Based on actual usage, the next useful question is:
 
-## Limitations and deliberately unmade conclusions
+**Can Berean provide a read-only dependency-impact view over existing Claim, Evidence, DerivationInput, ClaimRelation, and projected event-participation edges while clearly reporting only structural dependencies, not truth consequences or semantic invalidation?**
 
-The model remained sufficient for the Phase 24 slice, but the demonstration shows some boundaries:
-
-- 1 Samuel 7:2's “twenty years” is preserved in the evidence observation but not promoted to a typed proposition because the current predicate registry has no event-duration predicate.
-- Hophni, Phinehas, Dagon as a distinct entity, Ebenezer, Shiloh as a place entity, additional Philistine city movements, and later return details are not modeled. They are future data-entry scope, not schema failures.
-- The fixture does not store source text or quotations. That is policy-preserving, not source silence.
-- The fixture does not classify source differences as contradictions. Difference is not contradiction.
-
-## Issue classification
-
-No actual schema insufficiency was discovered.
-
-Observed limits are classified as:
-
-- `DATA ENTRY / FIXTURE PROBLEM` for unmodeled adjacent persons, places, and later events.
-- `USABILITY PROBLEM` for needing multi-join SQL to answer common exploration questions.
-- `DOCUMENTATION PROBLEM` addressed by this report and the Phase 24 validation/coverage scripts.
-
-The “twenty years” duration is best classified as a bounded registry-usability question, not an immediate schema insufficiency: the evidence can preserve the source observation without forcing an unsupported proposition.
-
-## Model sufficiency
-
-The existing model remained sufficient for Phase 24:
-
-- NO SCHEMA CHANGE.
-- NO REGISTRY CHANGE.
-- NO EVALUATION PERSISTENCE.
-- NO AUTOMATIC Claim, Derivation, Evidence, ClaimRelation, or provenance creation.
-- NO semantic inference.
-
-Berean now demonstrates an inspectable knowledge substrate rather than only structural fixtures: a user can ask what claims exist, where they came from, which source supplied them, what events and projected relationships they assert, where sources differ, and which derivations remain structurally eligible.
-
-## Highest-value next question
-
-Based on actual usage, the highest-value next question is:
-
-> Can Berean provide a read-only “source comparison / event timeline” API that assembles already-stored claims, evidence, events, and source chains for a selected entity without creating new knowledge or classifying the differences?
-
-That would improve usability while preserving the current architecture and evaluation-is-not-knowledge boundary.
+That question should remain read-only and query-scoped unless a separate accepted phase justifies more.
