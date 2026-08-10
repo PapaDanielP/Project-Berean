@@ -11,7 +11,7 @@
 
 ## Attribution
 
-Upstream documentation attributes this material to STEP Bible and Tyndale House, Cambridge. Preserve upstream attribution requirements in any downstream ingestion and distribution artifacts.
+Upstream documentation attributes this material to STEP Bible and Tyndale House, Cambridge. Required attribution should credit STEP Bible, include Tyndale House, Cambridge as additional attribution, and appear in source metadata, dataset metadata, distributed data notices, and documentation.
 
 ## Licensing position and caveats
 
@@ -20,6 +20,8 @@ Upstream README states a repository-wide CC BY 4.0 licensing statement. This mus
 Dataset/file-level indicators may differ (for example, tagged Bible filenames can include dataset-specific indicators such as CC BY-NC). Each dataset/file must be license-verified and recorded before ingestion.
 
 Any downstream modifications and differences from upstream source data must be recorded and made available as required by the upstream README and applicable dataset terms.
+
+The project maintainer verified on 2026-08-10 that Berean may use this source with attribution, including copying, redistribution, adaptation, and commercial use subject to attribution, modification indication, preserved license notices, and source-difference records. This verification is permission metadata only; it does not mean the upstream repository has been acquired, source text has been inspected, hashes have been recorded, or data has been imported.
 
 ## Berean import policy
 

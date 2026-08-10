@@ -32,7 +32,7 @@ Blocking failures: none observed in local validation.
 Warnings and limitations:
 
 - Genesis source text is intentionally not stored because this repository currently distributes only structural locators for the selected records.
-- External datasets under `data/external/*` remain metadata-only; license or acquisition ambiguity prevents substantive import in this phase.
+- External datasets under `data/external/*` remain metadata-only; maintainer permission verification is distinct from source acquisition, inspection, hashing, and provenance-preserving import.
 - Event identity correspondence remains unresolved and unmodeled; no sameEventAs/correspondsTo structure was added.
 - Genesis 1:1-5 semantic details remain intentionally under-modeled where existing binary predicates would force false precision.
 

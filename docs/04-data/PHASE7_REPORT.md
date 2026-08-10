@@ -12,11 +12,11 @@ Architecture remains **SUPPORTED / RUNTIME VERIFIED**. No reproducible architect
 | --- | --- | --- | --- | --- | --- | --- |
 | Genesis, Masoretic textual tradition | `GEN_MT_REF` | 1:1–9, 5:3, 5:6, 8:4 | No; structural locators only | Yes; locators only, no quoted text | Limited to conservative structural source observations under the existing fixture convention | POPULATED for represented locators; text intentionally excluded |
 | Genesis, Septuagint textual tradition | `GEN_LXX_REF` | 5:3, 5:6 | No; structural locators only | Yes; locators only, no quoted text | Limited to existing genealogy observations | POPULATED for represented locators; text intentionally excluded |
-| STEP Bible Data | None | None | No; metadata declaration only | No Berean citations | No | SOURCE UNAVAILABLE |
-| Theographic Bible Metadata | None | None | No; metadata declaration only | No Berean citations | No | SOURCE UNAVAILABLE |
-| BibleData | None | None | No; metadata declaration only; license declarations conflict | No Berean citations | No | SOURCE UNAVAILABLE |
+| STEP Bible Data | None | None | Not acquired in Berean; external repository pinned and permission verified | No Berean citations | Possible only after acquisition, dataset/file verification, and provenance-preserving import | ACQUISITION PENDING |
+| Theographic Bible Metadata | None | None | Not acquired in Berean; external repository pinned and permission verified | No Berean citations | Possible only after acquisition and provenance-preserving import | ACQUISITION PENDING |
+| BibleData | None | None | Not acquired in Berean; external repository pinned, permission verified, and upstream license discrepancy preserved | No Berean citations | Possible only after acquisition, dataset/file term recording, and provenance-preserving import | ACQUISITION PENDING |
 
-The external declarations in `data/external/*` contain no vendored source material. They cannot support new evidence, citations, or claims. The Phase 7 batch therefore uses only the established structural Masoretic reference dataset and neither invents source text nor quotes it.
+The external declarations in `data/external/*` contain no vendored source material, so they did not support new evidence, citations, or claims in this completed Phase 7 batch. Their manifests now distinguish maintainer-confirmed permission and attribution requirements from actual acquisition, inspection, hashing, and import. Future batches may use the pinned external repositories only after acquisition and provenance-preserving import work is performed.
 
 ## Chapter coverage
 
@@ -28,6 +28,7 @@ The external declarations in `data/external/*` contain no vendored source materi
 - **DERIVED**: a claim has explicit derivation metadata and inputs.
 - **UNRESOLVED**: no modeled semantic assertion is available for the chapter.
 - **INTENTIONALLY EXCLUDED**: source text and quoted citation text remain absent.
+- **ACQUISITION PENDING**: permission and source metadata may be recorded, but no local source payload or imported SourceRecord supports population yet.
 - **SOURCE UNAVAILABLE**: no locally available source material or existing structural record supports population.
 
 Chapter 1 is **POPULATED**, **STRUCTURALLY REPRESENTED**, **SOURCE-BACKED**, and has text **INTENTIONALLY EXCLUDED**. Chapters 5 and 8 are populated by the prior Phase 6 fixture. Chapters 2–4, 6–7, and 9–11 are **SOURCE UNAVAILABLE** and **UNRESOLVED** for this batch. The report retains locator-level counts for the represented verses.

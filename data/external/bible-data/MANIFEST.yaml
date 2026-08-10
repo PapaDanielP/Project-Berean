@@ -1,42 +1,80 @@
+manifest_version: 2
+
 source:
   name: BibleData
-  description: Information from the Bible as structured data.
+  author: Brady Stephenson
   repository: BradyStephenson/bible-data
   repository_url: https://github.com/BradyStephenson/bible-data
-  default_branch: main
-  commit: c6bf7893c78352effad1c32dcc4dc2c0ffbb4ee1
-  pin_inspection_date: 2026-08-10
-  upstream_commit_timestamp_observed: 2026-08-02
-  metadata_only: true
-  upstream_files_vendored: false
-  acquisition_method: pinned GitHub repository metadata inspection only
-  source_location_format: upstream repository path and dataset-specific source locator, to be verified before import
-  import_date: null
-  transformation_rules: none; metadata declaration only
-  preserve_source_specific_data: required before any future import
-release:
-  title: "BibleData: Structured Datasets from the Holy Bible"
+  branch: main
+  pinned_commit: c6bf7893c78352effad1c32dcc4dc2c0ffbb4ee1
+  release_version: "1.0"
+  release_date: "2026-04-12"
+  doi: 10.5281/zenodo.19539956
+  source_type: structured_bible_data
+  edition_label: BibleData 1.0 at pinned commit
+
+attribution:
+  required: true
+  preferred_text: >-
+    BibleData: Structured Datasets from the Holy Bible, by Brady Stephenson.
   author: Brady Stephenson
-  copyright: 2021-2026 Brady Stephenson
-  version: "1.0"
-  date_released: 2026-04-12
-  doi: "10.5281/zenodo.19539956"
-  repository_code: https://github.com/BradyStephenson/bible-data
-license_observations:
-  readme: CC BY 4.0
-  license_file: Creative Commons Attribution 4.0 International Public License
-  citation_cff: CC-BY-NC-SA-4.0
-  github_license_key: other
-license_status: CONFLICTING_UPSTREAM_DECLARATIONS
-berean_policy:
-  license_resolution_required: true
-  redistribution_allowed_without_resolution: false
-  ingestion_allowed_without_resolution: false
-  notes:
-    - Berean does not choose between conflicting upstream license declarations.
-    - Attribution, modification notices, and applicable license, share-alike, or noncommercial restrictions must be reviewed before redistribution or adapted database publication.
-    - Raw upstream material must remain distinct from canonical Entity, Event, Evidence, Claim, Proposition, relationship, and derived knowledge records until explicitly imported and validated.
-  future_workflow:
+  copyright_holder: Brady Stephenson
+  project_url: https://github.com/BradyStephenson/bible-data
+  doi: 10.5281/zenodo.19539956
+  attribution_placement:
+    - source_metadata
+    - dataset_metadata
+    - distributed_data_notice
+    - documentation
+
+license:
+  verification_status: verified_by_project_maintainer
+  verified_on: "2026-08-10"
+  verified_by: project_maintainer
+  permission_to_use_confirmed: true
+  permission_scope:
+    copy: true
+    redistribute: true
+    adapt: true
+    commercial_use: true
+  upstream_declarations_preserved:
+    - identifier: CC-BY-4.0
+      evidence:
+        - README
+        - LICENSE
+    - identifier: CC-BY-NC-SA-4.0
+      evidence:
+        - CITATION.cff
+  effective_license_identifier: not_selected_in_repository_metadata
+  effective_license_name: not_selected_in_repository_metadata
+  resolution_note: >-
+    The project maintainer has confirmed that Berean may use the source data
+    with attribution. Berean does not independently replace or erase the
+    upstream license declarations. The applicable license terms for each
+    imported dataset or file must be recorded before distribution, including
+    any noncommercial, ShareAlike, attribution, or modification obligations.
+  obligations:
+    attribution: true
+    indicate_modifications: true
+    preserve_upstream_license_notices: true
+    preserve_source_identifiers: true
+    record_dataset_level_terms: true
+  import_gate:
+    permitted_for_local_inspection: true
+    permitted_for_berean_population: true
+    permitted_for_public_redistribution: verify_per_dataset_before_distribution
+
+acquisition:
+  status: pending
+  acquisition_method: pinned_upstream_repository
+  acquisition_revision: c6bf7893c78352effad1c32dcc4dc2c0ffbb4ee1
+  source_text_inspected: false
+  imported_files: []
+
+berean_import_policy:
+  source_backed_assertions_allowed_after_acquisition: true
+  raw_source_distinct_from_canonical_records: true
+  required_workflow:
     - Source
     - Dataset
     - SourceRecord
@@ -45,45 +83,6 @@ berean_policy:
     - Proposition
     - Claim
     - ClaimEvidence
-    - Entity/Event relationships
-    - optional Derivation
+    - Entity_or_Event_relationships
+    - optional_Derivation
     - validation
-inventory:
-  - name: Alamo Polyglot
-    status: requires source/license verification before ingestion
-  - name: BibleData-Book
-    status: requires source/license verification before ingestion
-  - name: BibleData-Commandments
-    status: requires source/license verification before ingestion
-  - name: BibleData-Epoch
-    status: requires source/license verification before ingestion
-  - name: BibleData-Event
-    status: requires source/license verification before ingestion
-  - name: BibleData-Person
-    status: requires source/license verification before ingestion
-  - name: BibleData-PersonLabel
-    status: requires source/license verification before ingestion
-  - name: BibleData-PersonRelationship
-    status: requires source/license verification before ingestion
-  - name: BibleData-PersonVerse
-    status: requires source/license verification before ingestion
-  - name: BibleData-PersonVerseApostolic
-    status: requires source/license verification before ingestion
-  - name: BibleData-PersonVerseTanakh
-    status: requires source/license verification before ingestion
-  - name: BibleData-Place
-    status: requires source/license verification before ingestion
-  - name: BibleData-PlaceLabel
-    status: requires source/license verification before ingestion
-  - name: BibleData-PlaceVerse
-    status: requires source/license verification before ingestion
-  - name: BibleData-Reference
-    status: requires source/license verification before ingestion
-  - name: HebrewStrongs
-    status: requires source/license verification before ingestion
-  - name: Hitchcock's Bible Names Dictionary
-    status: requires source/license verification before ingestion
-  - name: Naves Topical Dictionary
-    status: requires source/license verification before ingestion
-  - name: Ussher's Annals of the World
-    status: requires source/license verification before ingestion

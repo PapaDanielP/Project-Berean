@@ -9,3 +9,5 @@ Berean pins this external source to commit `cfb1c485d4da6fb63a69cb3b7f5b0752792f
 Future imports from this source must preserve the upstream repository identity, pinned commit, source-specific record identity, source locators, and transformation history. Raw upstream material must remain distinct from Berean canonical Entity, Event, Evidence, Claim, Proposition, and derived knowledge records until explicitly imported and validated.
 
 The upstream license metadata identifies the work as Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0). Future use, adaptation, or database population from this source must retain attribution, license information, and an indication of modifications; downstream adapted databases must comply with applicable ShareAlike requirements.
+
+The project maintainer verified on 2026-08-10 that Berean may use this source with attribution, including copying, redistribution, adaptation, and commercial use subject to CC BY-SA obligations. This verification does not acquire, inspect, hash, or import upstream payloads; acquisition remains pending.

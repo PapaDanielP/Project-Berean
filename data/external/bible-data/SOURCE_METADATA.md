@@ -30,13 +30,15 @@ These are upstream observations, not a Berean license determination:
 - `CITATION.cff` declares license `CC-BY-NC-SA-4.0`.
 - GitHub repository metadata reports license key `other`.
 
-License status: `CONFLICTING_UPSTREAM_DECLARATIONS`.
+License status: `CONFLICTING_UPSTREAM_DECLARATIONS`; Berean permission status: `VERIFIED_BY_PROJECT_MAINTAINER_FOR_USE_WITH_ATTRIBUTION`.
 
-Berean must not resolve this discrepancy on behalf of the upstream author. Clarification and verification are required before any ingestion, redistribution, or adapted database publication. Attribution, modification notices, and any applicable license, share-alike, or noncommercial restrictions must be reviewed before redistributing upstream material or publishing adapted database content.
+Berean must not resolve this discrepancy on behalf of the upstream author. The project maintainer verified on 2026-08-10 that Berean may use this source with attribution, including copying, redistribution, adaptation, and commercial use. The effective license remains dataset/file-level pending clarification; before public distribution, imported dataset or file metadata must preserve the upstream declarations and record any applicable noncommercial, ShareAlike, attribution, or modification obligations.
 
 ## Berean import policy
 
 This directory contains metadata only. It does not contain upstream CSV files, raw data exports, derived fixtures, canonical knowledge records, import code, or schema changes.
+
+Maintainer permission verification is not acquisition. No source payload has been acquired, inspected, hashed, or imported by this declaration.
 
 A future import must record:
 
