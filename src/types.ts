@@ -35,3 +35,8 @@ export interface ExplainProvenanceInput {
   claimId?: number;
   propositionId?: number;
 }
+
+export interface ExploreTimelineInput {
+  entityId?: number;
+  entityKey?: string;
+}

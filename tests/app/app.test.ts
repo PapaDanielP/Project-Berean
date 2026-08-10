@@ -504,4 +504,172 @@ describe('read-only API', () => {
     expect(eligibility.body.read_only).toBe(true);
     expect(after).toEqual(before);
   });
+
+  it('returns 400 for invalid exploration timeline input and 404 for a nonexistent entity', async () => {
+    expect((await request(app).get('/api/exploration/timeline')).status).toBe(400);
+    expect(
+      (await request(app).get('/api/exploration/timeline').query({ entity_id: 1, entity_key: 'ark_of_covenant' })).status
+    ).toBe(400);
+    expect((await request(app).get('/api/exploration/timeline').query({ entity_id: 'abc' })).status).toBe(400);
+    expect((await request(app).get('/api/exploration/timeline').query({ entity_id: '1.5' })).status).toBe(400);
+    expect((await request(app).get('/api/exploration/timeline').query({ entity_id: 0 })).status).toBe(400);
+    expect((await request(app).get('/api/exploration/timeline').query({ entity_id: -1 })).status).toBe(400);
+    expect((await request(app).get('/api/exploration/timeline?entity_id=1&entity_id=2')).status).toBe(400);
+    expect((await request(app).get('/api/exploration/timeline').query({ entity_key: '' })).status).toBe(400);
+    expect((await request(app).get('/api/exploration/timeline?entity_key=a&entity_key=b')).status).toBe(400);
+    expect((await request(app).get('/api/exploration/timeline').query({ entity_id: 999999999 })).status).toBe(404);
+    expect((await request(app).get('/api/exploration/timeline').query({ entity_key: 'no_such_entity' })).status).toBe(404);
+  });
+
+  it('returns 200 for an existing entity with no associated events or claims', async () => {
+    const inserted = await pool.query(
+      `INSERT INTO entity (entity_key, entity_type_code, canonical_name)
+       VALUES ('phase25_unassociated_entity', 'CONCEPT', 'phase25 unassociated entity')
+       RETURNING entity_id`
+    );
+    const entityId = Number(inserted.rows[0].entity_id);
+    try {
+      const byId = await request(app).get('/api/exploration/timeline').query({ entity_id: entityId });
+      const byKey = await request(app).get('/api/exploration/timeline').query({ entity_key: 'phase25_unassociated_entity' });
+      expect(byId.status).toBe(200);
+      expect(byId.body.timeline).toEqual([]);
+      expect(byId.body.entity_claims_without_event).toEqual([]);
+      expect(byId.body.source_comparison.distinct_source_count).toBe(0);
+      expect(byKey.status).toBe(200);
+      expect(Number(byKey.body.entity.entity_id)).toBe(entityId);
+    } finally {
+      await pool.query(`DELETE FROM entity WHERE entity_id = $1`, [entityId]);
+    }
+  });
+
+  it('explores the Ark entity timeline with claims, provenance, and projected participation', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'ark_of_covenant' });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(response.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(response.body.operation).toBe('EXPLORE_TIMELINE');
+    expect(response.body.read_only).toBe(true);
+    expect(response.body.entity.entity_key).toBe('ark_of_covenant');
+    expect(response.body.entity.entity_type_code).toBe('OBJECT');
+
+    const eventKeys = response.body.timeline.map((entry: { event: { event_key: string } }) => entry.event.event_key);
+    expect(eventKeys).toEqual(
+      expect.arrayContaining([
+        'ark_covenant_brought_from_shiloh_1sam4',
+        'ark_covenant_captured_1sam4',
+        'ark_covenant_moved_to_ashdod_1sam5',
+        'ark_covenant_set_in_house_dagon_1sam5',
+        'ark_covenant_brought_to_abinadab_house_1sam7',
+        'ark_covenant_care_eleazar_1sam7',
+        'ark_covenant_stay_kiriath_jearim_1sam7',
+        'ark_covenant_transport_jordan',
+        'ark_covenant_transport_new_cart_2sam6'
+      ])
+    );
+    expect(new Set(eventKeys).size).toBe(eventKeys.length);
+    expect(
+      response.body.timeline.every(
+        (entry: { temporal: { temporal_status: string } }) => entry.temporal.temporal_status === 'DATE_NOT_STORED'
+      )
+    ).toBe(true);
+
+    const ashdod = response.body.timeline.find(
+      (entry: { event: { event_key: string } }) => entry.event.event_key === 'ark_covenant_moved_to_ashdod_1sam5'
+    );
+    const arkClaim = ashdod.claims.find(
+      (entry: { claim: { claim_key: string } }) => entry.claim.claim_key === 'CLAIM_ARK_COVENANT_SUBJECT_MOVED_ASHDOD_1SAM5'
+    );
+    expect(arkClaim.record_type).toBe('STORED_CLAIM');
+    expect(arkClaim.claim.statement_role).toBe('DISPLAY_METADATA_ONLY');
+    expect(arkClaim.proposition.authority).toBe('AUTHORITATIVE_STRUCTURED_CONTENT');
+    expect(arkClaim.proposition.predicate).toBe('subjectOf');
+    expect(arkClaim.predicate.event_participation_role_code).toBe('SUBJECT');
+    expect(arkClaim.provenance.supporting_evidence[0].evidence_key).toBe('EV_MT_1SA_5_1');
+    expect(arkClaim.provenance.supporting_evidence[0].relation_type_code).toBe('SUPPORTS');
+    expect(arkClaim.provenance.citations[0].locator).toBe('1 Samuel 5:1');
+    expect(arkClaim.provenance.citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
+    expect(arkClaim.provenance.source_records[0].source_record_key).toBe('MT_1SA_5_1');
+    expect(arkClaim.provenance.source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
+    expect(arkClaim.provenance.datasets[0].dataset_key).toBe('1SA_MT_REF');
+    expect(arkClaim.provenance.sources[0].source_key).toBe('1SA_MT');
+    expect(arkClaim.projected_relationships[0].projection).toBe('PROJECTED_FROM_CLAIM_ASSERTED_PROPOSITION');
+
+    const participants = ashdod.projected_event_participation;
+    expect(participants.map((row: { entity_key: string }) => row.entity_key)).toEqual(
+      expect.arrayContaining(['ark_of_covenant', 'philistines'])
+    );
+    expect(participants.every((row: { projection: string }) => row.projection === 'PROJECTED_FROM_CLAIM_ASSERTED_PROPOSITION')).toBe(true);
+    expect(participants.every((row: { asserting_claim_key: string }) => typeof row.asserting_claim_key === 'string')).toBe(true);
+
+    const locators = response.body.timeline
+      .flatMap((entry: { claims: { provenance: { citations: { locator: string }[] } }[] }) => entry.claims)
+      .flatMap((entry: { provenance: { citations: { locator: string }[] } }) => entry.provenance.citations)
+      .map((citation: { locator: string }) => citation.locator);
+    expect(locators).toEqual(
+      expect.arrayContaining([
+        '1 Samuel 4:4',
+        '1 Samuel 4:11',
+        '1 Samuel 5:1',
+        '1 Samuel 5:2',
+        '1 Samuel 7:1',
+        '1 Samuel 7:2'
+      ])
+    );
+
+    expect(response.body.entity_claims_without_event.length).toBeGreaterThan(0);
+    expect(response.body.entity_source_mappings.length).toBeGreaterThan(0);
+  });
+
+  it('keeps Joshua 3, 1 Samuel 5, and 2 Samuel 6 descriptions distinct and unclassified', async () => {
+    const response = await request(app).get('/api/exploration/timeline').query({ entity_key: 'ark_of_covenant' });
+    expect(response.status).toBe(200);
+
+    const sourceKeys = response.body.source_comparison.sources.map((source: { source_key: string }) => source.source_key);
+    expect(sourceKeys).toEqual(expect.arrayContaining(['JOS_MT', '1SA_MT', '2SA_MT']));
+    expect(response.body.source_comparison.comparison_status).toBe('DIFFERING_SOURCE_DESCRIPTION');
+    expect(response.body.source_comparison.distinct_source_count).toBeGreaterThan(1);
+
+    const locatorsBySource = Object.fromEntries(
+      response.body.source_comparison.sources.map((source: { source_key: string; descriptions: { locators: string[] }[] }) => [
+        source.source_key,
+        source.descriptions.flatMap((description) => description.locators)
+      ])
+    );
+    expect(locatorsBySource.JOS_MT).toContain('Joshua 3:6');
+    expect(locatorsBySource['1SA_MT']).toContain('1 Samuel 5:1');
+    expect(locatorsBySource['2SA_MT']).toContain('2 Samuel 6:3');
+
+    const descriptionTypes = response.body.source_comparison.sources.flatMap(
+      (source: { descriptions: { record_type: string }[] }) => source.descriptions.map((description) => description.record_type)
+    );
+    expect(new Set(descriptionTypes)).toEqual(new Set(['SOURCE_DESCRIPTION']));
+
+    const labels = new Set<string>();
+    for (const entry of response.body.timeline) {
+      labels.add(entry.record_type);
+      for (const claimEntry of entry.claims) {
+        labels.add(claimEntry.record_type);
+        labels.add(claimEntry.provenance.provenance_status);
+        labels.add(claimEntry.claim.statement_role);
+      }
+    }
+    labels.add(response.body.source_comparison.comparison_status);
+    for (const source of response.body.source_comparison.sources) {
+      for (const description of source.descriptions) labels.add(description.record_type);
+    }
+    for (const forbidden of ['CONTRADICTION', 'CONTRADICTS', 'COMPLIANCE', 'VIOLATION', 'ERROR', 'TRUE', 'FALSE']) {
+      expect(labels.has(forbidden)).toBe(false);
+    }
+
+    const storedRelationTypes = response.body.stored_claim_relations.map(
+      (relation: { relation_type_code: string }) => relation.relation_type_code
+    );
+    expect(storedRelationTypes).toContain('CONTRADICTS');
+    expect(response.body.source_comparison.note).toContain('DIFFERENCE IS NOT CONTRADICTION');
+    expect(response.body.limitations).toContain(
+      'This operation assembles existing Berean knowledge. It does not create, evaluate, or promote knowledge.'
+    );
+  });
 });

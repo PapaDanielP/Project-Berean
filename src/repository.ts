@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import type { ExplainProvenanceInput, GraphEdge, GraphNode, SearchResult } from './types.js';
+import type { ExplainProvenanceInput, ExploreTimelineInput, GraphEdge, GraphNode, SearchResult } from './types.js';
 
 const boundedLimit = (value: number | undefined, fallback: number, max: number): number => {
   if (!value || Number.isNaN(value)) return fallback;
@@ -792,6 +792,308 @@ export class BereanRepository {
         'Structural eligibility is not logical entailment.',
         'Method and assumptions are returned as stored metadata without semantic interpretation.',
         'This read-only operation does not create, modify, or persist any artifact.'
+      ]
+    };
+  }
+
+  private async exploreClaim(claimId: number): Promise<Record<string, unknown>> {
+    const explanation = await this.explainProvenance({ claimId });
+    const entry = ((explanation?.claims as Record<string, unknown>[] | undefined) ?? [])[0] ?? {};
+    const claim = (entry.claim as Record<string, unknown>) ?? {};
+    const proposition = (entry.proposition as Record<string, unknown>) ?? {};
+    const projected = (entry.projected_relationships as Record<string, unknown>[]) ?? [];
+
+    return {
+      record_type: 'STORED_CLAIM',
+      claim: {
+        claim_id: claim.claim_id,
+        claim_key: claim.claim_key,
+        claim_type_code: claim.claim_type_code,
+        claim_status_code: claim.claim_status_code,
+        notes: claim.notes,
+        statement: claim.statement,
+        statement_role: 'DISPLAY_METADATA_ONLY'
+      },
+      proposition: {
+        proposition_id: proposition.proposition_id,
+        predicate: proposition.predicate,
+        subject_entity_id: proposition.subject_entity_id,
+        subject_entity_key: proposition.subject_entity_key,
+        subject_entity_name: proposition.subject_entity_name,
+        subject_event_id: proposition.subject_event_id,
+        subject_event_key: proposition.subject_event_key,
+        subject_event_type_code: proposition.subject_event_type_code,
+        object_entity_id: proposition.object_entity_id,
+        object_entity_key: proposition.object_entity_key,
+        object_entity_name: proposition.object_entity_name,
+        object_event_id: proposition.object_event_id,
+        object_event_key: proposition.object_event_key,
+        object_event_type_code: proposition.object_event_type_code,
+        object_typed_value_id: proposition.object_typed_value_id,
+        value_type_code: proposition.value_type_code,
+        text_value: proposition.text_value,
+        numeric_value: proposition.numeric_value,
+        date_value: proposition.date_value,
+        duration_value: proposition.duration_value,
+        authority: 'AUTHORITATIVE_STRUCTURED_CONTENT'
+      },
+      predicate: {
+        predicate_code: proposition.predicate,
+        description: proposition.predicate_description,
+        subject_kind_code: proposition.subject_kind_code,
+        object_kind_code: proposition.object_kind_code,
+        event_participation_role_code: proposition.event_participation_role_code
+      },
+      provenance: {
+        provenance_status: entry.provenance_status ?? null,
+        source_chain: entry.source_chain ?? [],
+        supporting_evidence: entry.supporting_evidence ?? [],
+        citations: entry.citations ?? [],
+        source_records: entry.source_records ?? [],
+        datasets: entry.datasets ?? [],
+        sources: entry.source ?? [],
+        structural_gaps: entry.structural_gaps ?? []
+      },
+      derivation: entry.derivation ?? null,
+      derivation_inputs: entry.derivation_inputs ?? [],
+      projected_relationships: projected.map((row) => ({
+        ...row,
+        projection: 'PROJECTED_FROM_CLAIM_ASSERTED_PROPOSITION'
+      }))
+    };
+  }
+
+  private async exploreEventTemporalMetadata(eventId: number): Promise<Record<string, unknown>> {
+    const stored = await this.pool.query(
+      `SELECT p.proposition_id, p.predicate, c.claim_id, c.claim_key,
+              tv.typed_value_id, tv.value_type_code, tv.text_value, tv.numeric_value,
+              tv.date_value, tv.duration_value, tv.uncertainty_lower, tv.uncertainty_upper
+       FROM proposition p
+       JOIN typed_value tv ON tv.typed_value_id = p.object_typed_value_id
+       JOIN claim c ON c.proposition_id = p.proposition_id
+       WHERE p.subject_event_id = $1
+       ORDER BY tv.typed_value_id, c.claim_id`,
+      [eventId]
+    );
+
+    const storedDates = stored.rows.filter((row) => row.date_value !== null);
+    const chronological = stored.rows.filter(
+      (row) => row.date_value === null && row.numeric_value !== null && row.value_type_code === 'YEAR'
+    );
+
+    return {
+      temporal_status: storedDates.length
+        ? 'DATE_KNOWN'
+        : chronological.length
+          ? 'CHRONOLOGICAL_METADATA_STORED'
+          : 'DATE_NOT_STORED',
+      stored_dates: storedDates,
+      chronological_metadata: chronological,
+      note: 'No date is inferred, calculated, or narrated. Only stored typed values are reported.'
+    };
+  }
+
+  async exploreEntityTimeline(input: ExploreTimelineInput): Promise<Record<string, unknown> | null> {
+    const entityResult = await this.pool.query(
+      `SELECT entity_id, entity_key, entity_type_code, canonical_name, description
+       FROM entity
+       WHERE ($1::bigint IS NOT NULL AND entity_id = $1)
+          OR ($2::text IS NOT NULL AND entity_key = $2)`,
+      [input.entityId ?? null, input.entityKey ?? null]
+    );
+    if (!entityResult.rowCount) return null;
+
+    const entity = entityResult.rows[0];
+    const entityId = Number(entity.entity_id);
+
+    const eventsResult = await this.pool.query(
+      `SELECT DISTINCT ev.event_id, ev.event_key, ev.event_type_code, ev.description
+       FROM event ev
+       JOIN proposition p ON (p.object_event_id = ev.event_id AND p.subject_entity_id = $1)
+                          OR (p.subject_event_id = ev.event_id AND p.object_entity_id = $1)
+       JOIN claim c ON c.proposition_id = p.proposition_id
+       ORDER BY ev.event_id`,
+      [entityId]
+    );
+
+    const timeline = [];
+    const claimIds = new Set<number>();
+
+    for (const event of eventsResult.rows) {
+      const eventClaims = await this.pool.query(
+        `SELECT DISTINCT c.claim_id
+         FROM claim c
+         JOIN proposition p ON p.proposition_id = c.proposition_id
+         WHERE p.subject_event_id = $1 OR p.object_event_id = $1
+         ORDER BY c.claim_id`,
+        [event.event_id]
+      );
+
+      const claims = [];
+      for (const row of eventClaims.rows) {
+        claimIds.add(Number(row.claim_id));
+        claims.push(await this.exploreClaim(Number(row.claim_id)));
+      }
+
+      const participation = await this.pool.query(
+        `SELECT ep.event_id, ev.event_key, ev.event_type_code,
+                ep.entity_id, en.entity_key, en.canonical_name, en.entity_type_code,
+                ep.role_code, ep.asserting_claim_id, c.claim_key AS asserting_claim_key
+         FROM event_participation ep
+         JOIN event ev ON ev.event_id = ep.event_id
+         JOIN entity en ON en.entity_id = ep.entity_id
+         JOIN claim c ON c.claim_id = ep.asserting_claim_id
+         WHERE ep.event_id = $1
+         ORDER BY ep.entity_id, ep.role_code, ep.asserting_claim_id`,
+        [event.event_id]
+      );
+
+      timeline.push({
+        record_type: 'RELATED_EVENT',
+        event: {
+          event_id: event.event_id,
+          event_key: event.event_key,
+          event_type_code: event.event_type_code,
+          description: event.description
+        },
+        temporal: await this.exploreEventTemporalMetadata(Number(event.event_id)),
+        claims,
+        projected_event_participation: participation.rows.map((row) => ({
+          ...row,
+          projection: 'PROJECTED_FROM_CLAIM_ASSERTED_PROPOSITION'
+        }))
+      });
+    }
+
+    const temporalRank = (entry: { temporal: Record<string, unknown> }): number =>
+      entry.temporal.temporal_status === 'DATE_KNOWN' ? 0 : entry.temporal.temporal_status === 'CHRONOLOGICAL_METADATA_STORED' ? 1 : 2;
+    const firstDate = (entry: { temporal: Record<string, unknown> }): string =>
+      String(((entry.temporal.stored_dates as { date_value: unknown }[])[0]?.date_value) ?? '');
+    const firstChronological = (entry: { temporal: Record<string, unknown> }): number =>
+      Number(((entry.temporal.chronological_metadata as { numeric_value: unknown }[])[0]?.numeric_value) ?? 0);
+
+    timeline.sort((left, right) => {
+      const rankDelta = temporalRank(left) - temporalRank(right);
+      if (rankDelta !== 0) return rankDelta;
+      const dateDelta = firstDate(left).localeCompare(firstDate(right));
+      if (dateDelta !== 0) return dateDelta;
+      const chronologicalDelta = firstChronological(left) - firstChronological(right);
+      if (chronologicalDelta !== 0) return chronologicalDelta;
+      return Number(left.event.event_id) - Number(right.event.event_id);
+    });
+
+    const entityOnlyClaims = await this.pool.query(
+      `SELECT DISTINCT c.claim_id
+       FROM claim c
+       JOIN proposition p ON p.proposition_id = c.proposition_id
+       WHERE (p.subject_entity_id = $1 OR p.object_entity_id = $1)
+         AND p.subject_event_id IS NULL
+         AND p.object_event_id IS NULL
+       ORDER BY c.claim_id`,
+      [entityId]
+    );
+
+    const entityClaims = [];
+    for (const row of entityOnlyClaims.rows) {
+      claimIds.add(Number(row.claim_id));
+      entityClaims.push(await this.exploreClaim(Number(row.claim_id)));
+    }
+
+    const sourceMappings = await this.pool.query(
+      `SELECT esm.entity_source_mapping_id, esm.mapping_status_code, esm.confidence, esm.justification,
+              esm.notes, esm.supporting_evidence_id,
+              si.source_identity_id, si.source_identity_key, si.display_name,
+              s.source_id, s.source_key, s.name AS source_name
+       FROM entity_source_mapping esm
+       JOIN source_identity si ON si.source_identity_id = esm.source_identity_id
+       JOIN source s ON s.source_id = si.source_id
+       WHERE esm.entity_id = $1
+       ORDER BY esm.entity_source_mapping_id`,
+      [entityId]
+    );
+
+    const orderedClaimIds = Array.from(claimIds).sort((left, right) => left - right);
+    const storedClaimRelations = orderedClaimIds.length
+      ? await this.pool.query(
+          `SELECT cr.claim_relation_id, cr.relation_type_code, cr.notes,
+                  cr.claim_id, c.claim_key,
+                  cr.related_claim_id, rc.claim_key AS related_claim_key
+           FROM claim_relation cr
+           JOIN claim c ON c.claim_id = cr.claim_id
+           JOIN claim rc ON rc.claim_id = cr.related_claim_id
+           WHERE cr.claim_id = ANY($1::bigint[]) OR cr.related_claim_id = ANY($1::bigint[])
+           ORDER BY cr.claim_relation_id`,
+          [orderedClaimIds]
+        )
+      : { rows: [] };
+
+    const allClaims = [...timeline.flatMap((entry) => entry.claims), ...entityClaims];
+    const sourceGroups = new Map<string, Record<string, unknown>>();
+
+    for (const claimEntry of allClaims) {
+      const claim = claimEntry.claim as Record<string, unknown>;
+      const provenance = claimEntry.provenance as Record<string, unknown>;
+      const sources = (provenance.sources as Record<string, unknown>[]) ?? [];
+      const citations = (provenance.citations as Record<string, unknown>[]) ?? [];
+      for (const source of sources) {
+        const key = String(source.source_key ?? '');
+        if (!sourceGroups.has(key)) {
+          sourceGroups.set(key, {
+            source_id: source.source_id,
+            source_key: source.source_key,
+            source_name: source.source_name,
+            source_type_code: source.source_type_code,
+            descriptions: [] as Record<string, unknown>[]
+          });
+        }
+        (sourceGroups.get(key)!.descriptions as Record<string, unknown>[]).push({
+          record_type: 'SOURCE_DESCRIPTION',
+          claim_id: claim.claim_id,
+          claim_key: claim.claim_key,
+          claim_type_code: claim.claim_type_code,
+          statement: claim.statement,
+          statement_role: 'DISPLAY_METADATA_ONLY',
+          locators: citations.map((citation) => citation.locator)
+        });
+      }
+    }
+
+    const sourceComparison = Array.from(sourceGroups.values()).sort((left, right) =>
+      String(left.source_key).localeCompare(String(right.source_key))
+    );
+
+    return {
+      operation: 'EXPLORE_TIMELINE',
+      input: { entity_id: input.entityId ?? null, entity_key: input.entityKey ?? null },
+      read_only: true,
+      entity: {
+        entity_id: entity.entity_id,
+        entity_key: entity.entity_key,
+        entity_type_code: entity.entity_type_code,
+        canonical_name: entity.canonical_name,
+        description: entity.description
+      },
+      entity_source_mappings: sourceMappings.rows,
+      timeline,
+      entity_claims_without_event: entityClaims,
+      source_comparison: {
+        distinct_source_count: sourceComparison.length,
+        comparison_status: sourceComparison.length > 1 ? 'DIFFERING_SOURCE_DESCRIPTION' : 'SINGLE_SOURCE_DESCRIPTION',
+        sources: sourceComparison,
+        note: 'DIFFERENCE IS NOT CONTRADICTION. SOURCE-BACKED IS NOT TRUE. Differences between stored source descriptions are reported without classification.'
+      },
+      stored_claim_relations: storedClaimRelations.rows,
+      ordering: [
+        'stored event date/time typed values',
+        'existing stored chronological metadata',
+        'stable event_id'
+      ],
+      limitations: [
+        'This operation assembles existing Berean knowledge. It does not create, evaluate, or promote knowledge.',
+        'No truth, falsity, contradiction, compliance, violation, causation, entailment, or theological meaning is assigned.',
+        'Event participation rows are projections of claim-asserted propositions, not independently authored authoritative facts.',
+        'NULL raw_content and NULL quoted_text are reported as NOT_STORED_BY_POLICY, never as source silence.',
+        'No date is invented; events without stored temporal values are reported as DATE_NOT_STORED.'
       ]
     };
   }
