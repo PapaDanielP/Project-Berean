@@ -99,6 +99,17 @@ run "$root/tests/validation/phase18-coverage-report.sql"
 "$root/tests/validation/phase18-negative-cases.sh"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 19 tests whether the existing generic architecture can represent the bounded
+# 2 Samuel 6:3-7 Ark lifecycle conflict/handling slice -- Ark transport on a new cart,
+# Uzzah's source-recorded physical interaction with the Ark, and Uzzah's death -- without
+# inferring Exodus 25:15 violation/compliance, causation, or contradiction with Joshua 3:6.
+# No registry, schema, table, JSON payload, or ClaimRelation extension is added.
+run "$root/tests/fixtures/090-phase19-ark-lifecycle-conflict-fixture.sql"
+run "$root/tests/validation/phase19-ark-lifecycle-conflict-slice.sql"
+run "$root/tests/validation/phase19-coverage-report.sql"
+"$root/tests/validation/phase19-negative-cases.sh"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
