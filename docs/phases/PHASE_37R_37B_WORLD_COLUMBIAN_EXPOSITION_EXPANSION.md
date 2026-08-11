@@ -139,4 +139,6 @@ psql "$DATABASE_URL" -f tests/validation/phase37b-worlds-columbian-exposition-wi
 The full repository runner executes the Phase 37R/37B lifecycle twice after unchanged Phase 37.
 Targeted PostgreSQL validation passed on `2026-08-11`: the first fixture run inserted the inventory
 above, the second inserted zero rows, both population validations passed, and Phase 37B preserved
-identical before/after persistent counts.
+identical before/after persistent counts. The full PostgreSQL reference validation also passed
+end-to-end. `npm run typecheck`, `npm run lint`, and `npm run build` passed; `npm test` passed all
+83 tests against an isolated PostgreSQL database.
