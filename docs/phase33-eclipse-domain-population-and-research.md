@@ -180,7 +180,7 @@ Validated, not merely asserted:
 
 | Boundary | Check | Result |
 | --- | --- | --- |
-| Scholarship is not a source claim | No `claim_evidence` row references `ANALYTICAL_OBSERVATION` evidence | 0 |
+| Scholarship is not a source claim | No Phase 33 `claim_evidence` row references `ANALYTICAL_OBSERVATION` evidence | 0 |
 | Unresolved material is not a claim | Sobral concern, results discussion, and meeting reservations back no claim | 0 |
 | No interpretive claim types | Phase 33 claims of type ≠ `DIRECT_SOURCE_CLAIM` | 0 |
 | No interpretive predicates | Propositions using `confirmsTheory`, `supportsTheory`, `refutesTheory`, `preferredOver`, `strongerThan`, `sameAs`, `excludedBecause`, `biasedBy`, `weightedOver`, `occursOnDate` | 0 |
@@ -192,7 +192,12 @@ Validated, not merely asserted:
 
 The predicate registry does not structurally prevent a reviewer from attaching analytical evidence
 to a claim; that boundary is enforced by validation, as in Phases 30–32. This is stated here rather
-than "fixed" by adding schema.
+than "fixed" by adding schema. The enforcement was exercised, not merely asserted: deliberately
+linking `EV_P33_KENNEFICK_INTERPRETATION` to a claim aborts Stage A with
+`phase33 stage A: an analytical observation was promoted into a claim` and Stage B with
+`phase33 stage B: 1 scholarly observations back a claim`, and activating the title-only Astronomer
+Royal mapping aborts Stage A with
+`phase33 stage A: expected 8 justified active source-identity mappings, found 9`.
 
 ## 8. Determinism, replay, and idempotence
 

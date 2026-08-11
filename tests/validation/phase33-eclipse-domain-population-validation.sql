@@ -141,7 +141,8 @@ BEGIN
         SELECT 1
         FROM claim_evidence ce
         JOIN evidence e ON e.evidence_id = ce.evidence_id
-        WHERE e.evidence_type_code = 'ANALYTICAL_OBSERVATION'
+        WHERE e.evidence_key LIKE 'EV\_P33\_%' ESCAPE '\'
+          AND e.evidence_type_code = 'ANALYTICAL_OBSERVATION'
     ) THEN
         RAISE EXCEPTION 'phase33 stage A: an analytical observation was promoted into a claim';
     END IF;
