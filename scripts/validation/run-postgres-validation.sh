@@ -255,6 +255,20 @@ run "$root/tests/validation/phase36-seneca-falls-domain-population-validation.sq
 run "$root/tests/validation/phase36-seneca-falls-independent-query-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 37 repeats the independent two-stage lifecycle for a new, bounded historical domain: the
+# 1893 World's Columbian Exposition. Population stays question-free; later read-only interrogation
+# traverses only persisted substrate to derive previously unstored multi-hop relationships.
+echo "--- Phase 37 World's Columbian Exposition independent research lifecycle (first run) ---"
+run "$root/tests/fixtures/144-phase37-worlds-columbian-exposition-population-fixture.sql"
+run "$root/tests/validation/phase37-worlds-columbian-exposition-population-validation.sql"
+run "$root/tests/validation/phase37-worlds-columbian-exposition-independent-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+echo "--- Phase 37 World's Columbian Exposition independent research lifecycle (second run) ---"
+run "$root/tests/fixtures/144-phase37-worlds-columbian-exposition-population-fixture.sql"
+run "$root/tests/validation/phase37-worlds-columbian-exposition-population-validation.sql"
+run "$root/tests/validation/phase37-worlds-columbian-exposition-independent-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
