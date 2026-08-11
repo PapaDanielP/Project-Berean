@@ -81,6 +81,7 @@ beforeAll(async () => {
   await runSqlFile('tests/fixtures/120-phase27-genesis-1-50-fixture.sql');
   await runSqlFile('tests/fixtures/130-phase30-nephilim-research-fixture.sql');
   await runSqlFile('tests/fixtures/140-phase31-nephilim-research-demonstration-fixture.sql');
+  await runSqlFile('tests/fixtures/141-phase32-eclipse-research-generalization-fixture.sql');
 });
 
 describe('read-only API', () => {
@@ -728,6 +729,57 @@ describe('read-only API', () => {
     expect(termRelationships.rows).toEqual([
       { subject_key: 'nephilim_gen6', predicate: 'locatedAt', object_key: 'gen1_earth' }
     ]);
+  });
+
+  it('keeps Phase 32 eclipse research read-only while preserving storage-policy reporting', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const search = await request(app).get('/api/search').query({ q: 'Eddington', limit: 20 });
+    expect(search.status).toBe(200);
+    expect(search.body.results.some((r: { key?: string }) => r.key === 'phase32_arthur_eddington')).toBe(true);
+
+    const claimId = await getClaimIdByKey('CLAIM_P32_EDDINGTON_PARTICIPATES_IN_PRINCIPE_OBSERVATION');
+    const provenance = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+    expect(provenance.status).toBe(200);
+    expect(provenance.body.claims[0].citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
+    expect(provenance.body.claims[0].source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
+
+    const timeline = await request(app).get('/api/exploration/timeline').query({ entity_key: 'phase32_arthur_eddington' });
+    expect(timeline.status).toBe(200);
+    expect(timeline.body.limitations).toContain(
+      'NULL raw_content and NULL quoted_text are reported as NOT_STORED_BY_POLICY, never as source silence.'
+    );
+    expect(await snapshotPersistentTableCounts()).toEqual(before);
+  });
+
+  it('keeps Phase 32 ambiguous and scholarly eclipse evidence out of promoted claims', async () => {
+    const promoted = await pool.query(
+      `SELECT c.claim_key
+       FROM claim c
+       JOIN claim_evidence ce ON ce.claim_id = c.claim_id
+       JOIN evidence e ON e.evidence_id = ce.evidence_id
+       WHERE e.evidence_key IN (
+         'EV_ECLIPSE_1919_SOBRAL_ASTROGRAPHIC_AMBIGUITY_P32',
+         'EV_EARMAN_GLYMOUR_1980_INTERPRETATION_P32',
+         'EV_KENNEFICK_2007_INTERPRETATION_P32'
+       )`
+    );
+    expect(promoted.rowCount).toBe(0);
+
+    const theoryRelationships = await pool.query(
+      `SELECT p.predicate
+       FROM proposition p
+       LEFT JOIN entity s ON s.entity_id = p.subject_entity_id
+       LEFT JOIN entity o ON o.entity_id = p.object_entity_id
+       WHERE s.entity_key IN (
+         'phase32_general_relativity_deflection',
+         'phase32_newtonian_deflection'
+       )
+          OR o.entity_key IN (
+         'phase32_general_relativity_deflection',
+         'phase32_newtonian_deflection'
+       )`
+    );
+    expect(theoryRelationships.rowCount).toBe(0);
   });
 });
 

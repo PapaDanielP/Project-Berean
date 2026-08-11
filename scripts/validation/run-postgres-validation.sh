@@ -187,6 +187,19 @@ run "$root/tests/fixtures/140-phase31-nephilim-research-demonstration-fixture.sq
 run "$root/tests/validation/phase31-nephilim-research-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 32 generalizes the scholarly research demonstration to a non-Genesis historical
+# case: the 1919 solar-eclipse expedition. It adds only source-backed observation,
+# event/participation/chronology claims, and isolated scholarly observations using existing
+# schema and registries.
+echo '--- Phase 32 eclipse research generalization (first run) ---'
+run "$root/tests/fixtures/141-phase32-eclipse-research-generalization-fixture.sql"
+run "$root/tests/validation/phase32-eclipse-research-generalization-validation.sql"
+run "$root/scripts/validation/validate.sql"
+echo '--- Phase 32 eclipse research generalization (second run, determinism/idempotency) ---'
+run "$root/tests/fixtures/141-phase32-eclipse-research-generalization-fixture.sql"
+run "$root/tests/validation/phase32-eclipse-research-generalization-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
