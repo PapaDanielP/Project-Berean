@@ -242,6 +242,19 @@ run "$root/tests/validation/phase35-query-plan-validation.sql"
 run "$root/tests/validation/phase35-cross-domain-query-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 36 repeats the independent two-stage lifecycle for a new, bounded historical domain.
+# Population stays question-free; later read-only interrogation traverses only persisted substrate.
+echo '--- Phase 36 repeatable Seneca Falls domain lifecycle (first run) ---'
+run "$root/tests/fixtures/143-phase36-seneca-falls-domain-population-fixture.sql"
+run "$root/tests/validation/phase36-seneca-falls-domain-population-validation.sql"
+run "$root/tests/validation/phase36-seneca-falls-independent-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+echo '--- Phase 36 repeatable Seneca Falls domain lifecycle (second run) ---'
+run "$root/tests/fixtures/143-phase36-seneca-falls-domain-population-fixture.sql"
+run "$root/tests/validation/phase36-seneca-falls-domain-population-validation.sql"
+run "$root/tests/validation/phase36-seneca-falls-independent-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
