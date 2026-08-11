@@ -200,8 +200,11 @@ run "$root/tests/fixtures/141-phase32-eclipse-research-generalization-fixture.sq
 run "$root/tests/validation/phase32-eclipse-research-generalization-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
-# Phase 33 deliberately separates the prior source-scoped eclipse population from later,
-# withheld read-only research questions.  Both stages replay twice without changing data.
+# Phase 33 separates acquisition from interrogation. Stage A is an independently keyed,
+# source-driven population of the bounded 1919 eclipse domain that contains no research question
+# and no expected answer. Stage B introduces the withheld questions afterwards and answers them by
+# read-only traversal of the persisted substrate. Both stages replay twice: the population must not
+# create duplicates and the queries must not change persistent counts.
 echo '--- Phase 33 eclipse population and independent research (first run) ---'
 run "$root/tests/fixtures/142-phase33-eclipse-domain-population-fixture.sql"
 run "$root/tests/validation/phase33-eclipse-domain-population-validation.sql"
