@@ -187,6 +187,7 @@ const resultCard = (result) => {
     ['Claim', result.claim_key],
     ['Predicate', result.predicate],
     ['Claim status', result.claim_status_code],
+    ['Evidence relation', result.evidence_relation_type_code],
     ['Source', result.source_name],
     ['Dataset', result.dataset_name]
   ]);
@@ -245,6 +246,11 @@ const renderResearch = (payload) => {
     'Unresolved',
     'Status and uncertainty are preserved exactly as represented.',
     results.filter((result) => result.classification === 'UNRESOLVED')
+  );
+  addResearchSection(
+    'Evidence',
+    'Contradicting and qualifying evidence retains its stored ClaimEvidence relation and is not presented as support.',
+    results.filter((result) => result.classification === 'EVIDENCE_CONTRADICTS' || result.classification === 'EVIDENCE_QUALIFIES')
   );
 
   const sources = new Map();

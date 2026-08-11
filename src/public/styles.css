@@ -138,10 +138,12 @@ button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visibl
 .result-card.state-derived-from-persisted-graph { border-left-style: dashed; border-left-color: var(--warm); }
 .result-card.state-scholarly-candidate { border-left-style: dotted; border-left-color: var(--accent); }
 .result-card.state-unresolved { border-left-style: dashed; border-left-color: var(--danger); }
+.result-card.state-evidence-contradicts, .result-card.state-evidence-qualifies { border-left-style: dotted; border-left-color: var(--warm); }
 .badge-directly-supported, .badge-established { color: #245941; }
 .badge-derived-from-persisted-graph, .badge-derived { color: var(--warm); border-style: dashed; }
 .badge-scholarly-candidate { color: var(--accent); border-style: dotted; }
 .badge-unresolved, .badge-not-represented { color: var(--danger); border-style: dashed; }
+.badge-evidence-contradicts, .badge-evidence-qualifies { color: var(--warm); border-style: dotted; }
 .badge-matched { color: var(--accent); }
 .metadata {
   display: grid;

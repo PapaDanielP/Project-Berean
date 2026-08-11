@@ -147,6 +147,30 @@ describe('read-only API', () => {
     expect(multiple.body.results.every((result: { dataset_id: number | string }) => datasetIds.includes(Number(result.dataset_id)))).toBe(true);
   });
 
+  it('preserves evidence relations and inactive claim lifecycle states in research results', async () => {
+    const scope = await request(app).get('/api/research/scope');
+    const lxxDatasetId = Number(scope.body.datasets.find((dataset: { dataset_key: string }) => dataset.dataset_key === 'GEN_LXX_REF').dataset_id);
+    const mtDatasetId = Number(scope.body.datasets.find((dataset: { dataset_key: string }) => dataset.dataset_key === 'GEN_MT_REF').dataset_id);
+
+    const lxx = await request(app)
+      .post('/api/research')
+      .send({ question: 'ageAtFatherhoodYears', datasetIds: [lxxDatasetId] });
+    const contradictedMtClaim = lxx.body.results.find(
+      (result: { claim_key: string }) => result.claim_key === 'CLAIM_MT_ADAM_AGE_AT_SETH'
+    );
+    expect(contradictedMtClaim.evidence_relation_type_code).toBe('CONTRADICTS');
+    expect(contradictedMtClaim.classification).toBe('EVIDENCE_CONTRADICTS');
+
+    const mt = await request(app)
+      .post('/api/research')
+      .send({ question: 'ageAtFatherhoodYears', datasetIds: [mtDatasetId] });
+    const superseded = mt.body.results.find(
+      (result: { claim_key: string }) => result.claim_key === 'CLAIM_MT_ADAM_AGE_AT_SETH_DRAFT'
+    );
+    expect(superseded.claim_status_code).toBe('SUPERSEDED');
+    expect(superseded.classification).toBe('UNRESOLVED');
+  });
+
   it('does not represent requests for proof as a Berean fact', async () => {
     const response = await request(app)
       .post('/api/research')

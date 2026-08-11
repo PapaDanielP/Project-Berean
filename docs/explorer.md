@@ -33,10 +33,13 @@ capability values:
 - `NO_MATCH`: a supported retrieval found no claims in the selected scope.
 
 Result classifications remain more specific: `DIRECTLY_SUPPORTED`,
-`DERIVED_FROM_PERSISTED_GRAPH`, `SCHOLARLY_CANDIDATE`, and `UNRESOLVED`. Requests to establish truth
-or proof, and questions with no matching registered predicate, return `NOT_REPRESENTED` rather than an
-invented answer. Existing claim and provenance endpoints remain the authoritative path for complete
-Claim → ClaimEvidence → Evidence → Citation → SourceRecord → Dataset → Source inspection.
+`DERIVED_FROM_PERSISTED_GRAPH`, `SCHOLARLY_CANDIDATE`, `UNRESOLVED`, `EVIDENCE_CONTRADICTS`, and
+`EVIDENCE_QUALIFIES`. Under-review, superseded, and retracted claims remain unresolved rather than
+being presented as established. Contradicting or qualifying ClaimEvidence is displayed in Evidence
+and is never relabeled as support. Requests to establish truth or proof, and questions with no matching
+registered predicate, return `NOT_REPRESENTED` rather than an invented answer. Existing claim and
+provenance endpoints remain the authoritative path for complete Claim → ClaimEvidence → Evidence →
+Citation → SourceRecord → Dataset → Source inspection.
 
 `GET /api/search` is the separate keyword operation. It accepts `q` (1–200 characters) and a positive
 `limit`, bounded by the repository to 50. Its results are labeled `MATCHED` in the UI so a text match

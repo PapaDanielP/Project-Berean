@@ -94,6 +94,7 @@ export class BereanRepository {
     const { rows } = await this.pool.query(
       `SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
               c.proposition_id, cr.rendered_proposition, p.predicate,
+              ce.relation_type_code AS evidence_relation_type_code,
               s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
        FROM claim c
        JOIN proposition p ON p.proposition_id = c.proposition_id
@@ -111,13 +112,19 @@ export class BereanRepository {
     );
     const results = rows.map((row) => ({
       ...row,
-      classification: row.claim_status_code === 'UNDER_REVIEW'
+      classification: ['UNDER_REVIEW', 'SUPERSEDED', 'RETRACTED'].includes(row.claim_status_code)
         ? 'UNRESOLVED'
         : row.claim_type_code === 'DERIVED_CLAIM'
           ? 'DERIVED_FROM_PERSISTED_GRAPH'
           : row.claim_type_code === 'INTERPRETIVE_CLAIM'
             ? 'SCHOLARLY_CANDIDATE'
-            : 'DIRECTLY_SUPPORTED'
+            : row.evidence_relation_type_code === 'SUPPORTS'
+              ? 'DIRECTLY_SUPPORTED'
+              : row.evidence_relation_type_code === 'CONTRADICTS'
+                ? 'EVIDENCE_CONTRADICTS'
+                : row.evidence_relation_type_code === 'QUALIFIES'
+                  ? 'EVIDENCE_QUALIFIES'
+                  : 'UNRESOLVED'
     }));
     const capability = results.some((row) => row.classification === 'UNRESOLVED')
       ? 'UNRESOLVED'
@@ -125,6 +132,8 @@ export class BereanRepository {
         ? 'SCHOLARLY_CANDIDATE'
         : results.some((row) => row.classification === 'DERIVED_FROM_PERSISTED_GRAPH')
           ? 'DERIVED'
+          : results.some((row) => row.classification.startsWith('EVIDENCE_'))
+            ? 'UNRESOLVED'
           : results.length
             ? 'ESTABLISHED'
             : 'NO_MATCH';
