@@ -269,6 +269,21 @@ run "$root/tests/validation/phase37-worlds-columbian-exposition-population-valid
 run "$root/tests/validation/phase37-worlds-columbian-exposition-independent-query-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 37R/37B preserves Phase 37 and independently expands the same domain from an auditable,
+# discovery-driven candidate review. Stage A remains question-free; Stage B introduces the withheld
+# synthesis prompt and tests established, derived, scholarly, unresolved, and absent boundaries.
+"$root/tests/validation/phase37r-candidate-audit-validation.sh"
+echo "--- Phase 37R/37B expanded exposition lifecycle (first run) ---"
+run "$root/tests/fixtures/145-phase37r-worlds-columbian-exposition-expanded-population-fixture.sql"
+run "$root/tests/validation/phase37r-worlds-columbian-exposition-population-validation.sql"
+run "$root/tests/validation/phase37b-worlds-columbian-exposition-withheld-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+echo "--- Phase 37R/37B expanded exposition lifecycle (second run) ---"
+run "$root/tests/fixtures/145-phase37r-worlds-columbian-exposition-expanded-population-fixture.sql"
+run "$root/tests/validation/phase37r-worlds-columbian-exposition-population-validation.sql"
+run "$root/tests/validation/phase37b-worlds-columbian-exposition-withheld-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
