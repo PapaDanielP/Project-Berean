@@ -168,6 +168,13 @@ else
     echo 'skip: Phase 28 ingestion requires Node dependencies (npm ci).'
 fi
 
+# Phase 30 is a bounded scholarly research validation rather than another ingestion mechanism.
+# It adds only the directly representable Genesis 6:4 assertion and separately cited textual,
+# later-tradition, and scholarly observations. No interpretation is promoted to a biblical claim.
+run "$root/tests/fixtures/130-phase30-nephilim-research-fixture.sql"
+run "$root/tests/validation/phase30-nephilim-research-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
