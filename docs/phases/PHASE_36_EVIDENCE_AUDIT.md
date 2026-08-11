@@ -130,6 +130,49 @@ Before and after endpoint calls:
 - Same count vector as above
 - `countsEqual=true`
 
+Exact count query used:
+
+```sql
+SELECT (SELECT count(*) FROM source) AS source,
+       (SELECT count(*) FROM dataset) AS dataset,
+       (SELECT count(*) FROM source_record) AS source_record,
+       (SELECT count(*) FROM citation) AS citation,
+       (SELECT count(*) FROM source_identity) AS source_identity,
+       (SELECT count(*) FROM entity_source_mapping) AS entity_source_mapping,
+       (SELECT count(*) FROM entity) AS entity,
+       (SELECT count(*) FROM event) AS event,
+       (SELECT count(*) FROM proposition) AS proposition,
+       (SELECT count(*) FROM claim) AS claim,
+       (SELECT count(*) FROM evidence) AS evidence,
+       (SELECT count(*) FROM claim_evidence) AS claim_evidence,
+       (SELECT count(*) FROM claim_relation) AS claim_relation;
+```
+
+Exact Phase 36 interpretation-predicate scan:
+
+```sql
+WITH p36_props AS (
+  SELECT p.proposition_id, p.predicate
+  FROM proposition p
+  LEFT JOIN entity se ON se.entity_id=p.subject_entity_id
+  LEFT JOIN event sv ON sv.event_id=p.subject_event_id
+  LEFT JOIN entity oe ON oe.entity_id=p.object_entity_id
+  LEFT JOIN event ov ON ov.event_id=p.object_event_id
+  WHERE coalesce(se.entity_key,sv.event_key,'') LIKE 'phase36_%'
+     OR coalesce(oe.entity_key,ov.event_key,'') LIKE 'phase36_%'
+),
+scan(predicate_name) AS (
+  VALUES ('sameAs'),('contradicts'),('preferredOver'),('strongerThan'),
+         ('supportsTheory'),('confirmsTheory'),('refutesTheory'),
+         ('occursOnDate'),('yearsFromCreation')
+)
+SELECT s.predicate_name, count(p.proposition_id) AS proposition_occurrences
+FROM scan s
+LEFT JOIN p36_props p ON p.predicate = s.predicate_name
+GROUP BY s.predicate_name
+ORDER BY s.predicate_name;
+```
+
 Result: **PASS**
 
 ## 11. Replay and Idempotence
@@ -183,4 +226,3 @@ Result: **PASS WITH INTENTIONAL LIMITATION** (because novel independent research
 - **WHAT REMAINS UNPROVEN:** A genuine withheld novel graph-derived Stage B query outcome for Phase 36 comparable to Phase 33 anti-contamination probes.
 
 Final classification: **PASS WITH INTENTIONAL LIMITATION**.
-
