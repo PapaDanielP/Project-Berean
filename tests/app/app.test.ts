@@ -79,6 +79,7 @@ beforeAll(async () => {
   await runSqlFile('tests/fixtures/100-phase24-berean-in-action-fixture.sql');
   await runSqlFile('tests/fixtures/110-phase26-biblical-entity-coverage-fixture.sql');
   await runSqlFile('tests/fixtures/120-phase27-genesis-1-50-fixture.sql');
+  await runSqlFile('tests/fixtures/130-phase30-nephilim-research-fixture.sql');
 });
 
 describe('read-only API', () => {
@@ -594,6 +595,32 @@ describe('read-only API', () => {
 
     expect(response.body.entity_claims_without_event.length).toBeGreaterThan(0);
     expect(response.body.entity_source_mappings.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the Genesis 6:4 direct claim distinct from scholarly and later-tradition observations', async () => {
+    const claimId = await getClaimIdByKey('CLAIM_MT_GEN_6_4_NEPHILIM_ON_EARTH_P30');
+    const before = await snapshotPersistentTableCounts();
+    const response = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(response.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(response.body.claims).toHaveLength(1);
+    expect(response.body.claims[0].claim.claim_type_code).toBe('DIRECT_SOURCE_CLAIM');
+    expect(response.body.claims[0].proposition.predicate).toBe('locatedAt');
+    expect(response.body.claims[0].supporting_evidence[0].evidence_key).toBe('EV_MT_GEN_6_1_4_P30');
+    expect(response.body.claims[0].source[0].source_key).toBe('GEN_MT');
+
+    const promotedScholarlyOrLaterClaims = await pool.query(
+      `SELECT c.claim_key
+       FROM claim c
+       JOIN claim_evidence ce ON ce.claim_id = c.claim_id
+       JOIN evidence e ON e.evidence_id = ce.evidence_id
+       WHERE e.evidence_key IN (
+         'EV_HENDEL_2004_P30', 'EV_KLINE_1962_P30', 'EV_WENHAM_1987_P30', 'EV_1EN_ETH_6_7_P30'
+       )`
+    );
+    expect(promotedScholarlyOrLaterClaims.rowCount).toBe(0);
   });
 
   it('keeps Joshua 3, 2 Samuel 6, and Hebrews 9 descriptions distinct and unclassified', async () => {
