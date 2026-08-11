@@ -80,6 +80,7 @@ beforeAll(async () => {
   await runSqlFile('tests/fixtures/110-phase26-biblical-entity-coverage-fixture.sql');
   await runSqlFile('tests/fixtures/120-phase27-genesis-1-50-fixture.sql');
   await runSqlFile('tests/fixtures/130-phase30-nephilim-research-fixture.sql');
+  await runSqlFile('tests/fixtures/140-phase31-nephilim-research-demonstration-fixture.sql');
 });
 
 describe('read-only API', () => {
@@ -672,6 +673,61 @@ describe('read-only API', () => {
     expect(response.body.limitations).toContain(
       'This operation assembles existing Berean knowledge. It does not create, evaluate, or promote knowledge.'
     );
+  });
+
+  it('keeps Phase 31 Nephilim research exploration read-only while preserving storage-policy reporting', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const search = await request(app).get('/api/search').query({ q: 'nephilim', limit: 20 });
+    expect(search.status).toBe(200);
+    expect(search.body.results.some((r: { key?: string }) => r.key === 'nephilim_gen6')).toBe(true);
+
+    const claimId = await getClaimIdByKey('CLAIM_MT_GEN_6_4_NEPHILIM_ON_EARTH_P30');
+    const provenance = await request(app).get('/api/provenance/explain').query({ claim_id: claimId });
+    expect(provenance.status).toBe(200);
+    expect(provenance.body.claims[0].citations[0].quoted_text_status).toBe('NOT_STORED_BY_POLICY');
+    expect(provenance.body.claims[0].source_records[0].raw_content_status).toBe('NOT_STORED_BY_POLICY');
+
+    const timeline = await request(app).get('/api/exploration/timeline').query({ entity_key: 'nephilim_gen6' });
+    expect(timeline.status).toBe(200);
+    expect(timeline.body.limitations).toContain(
+      'NULL raw_content and NULL quoted_text are reported as NOT_STORED_BY_POLICY, never as source silence.'
+    );
+    expect(await snapshotPersistentTableCounts()).toEqual(before);
+  });
+
+  it('keeps Phase 31 scholarly, textual-comparison, and later-tradition evidence out of promoted claims', async () => {
+    const promoted = await pool.query(
+      `SELECT c.claim_key
+       FROM claim c
+       JOIN claim_evidence ce ON ce.claim_id = c.claim_id
+       JOIN evidence e ON e.evidence_id = ce.evidence_id
+       WHERE e.evidence_key IN (
+         'EV_LXX_GEN_6_1_4_DISTINCT_TRADITION_P31',
+         'EV_MT_NUM_13_33_INDEPENDENT_REPORT_P31',
+         'EV_1EN_ETH_6_7_LATER_TRADITION_P31',
+         'EV_HENDEL_2004_DIVINE_BEING_P31',
+         'EV_KLINE_1962_ROYAL_HUMAN_P31',
+         'EV_WENHAM_1987_WATCHERS_GIANTS_CONTEXT_P31'
+       )`
+    );
+    expect(promoted.rowCount).toBe(0);
+
+    const termRelationships = await pool.query(
+      `SELECT s.entity_key AS subject_key, p.predicate, o.entity_key AS object_key
+       FROM proposition p
+       JOIN entity s ON s.entity_id = p.subject_entity_id
+       LEFT JOIN entity o ON o.entity_id = p.object_entity_id
+       WHERE s.entity_key IN (
+         'sons_of_god_gen6',
+         'daughters_of_man_gen6',
+         'mighty_men_gen6',
+         'men_of_renown_gen6',
+         'nephilim_gen6'
+       )`
+    );
+    expect(termRelationships.rows).toEqual([
+      { subject_key: 'nephilim_gen6', predicate: 'locatedAt', object_key: 'gen1_earth' }
+    ]);
   });
 });
 

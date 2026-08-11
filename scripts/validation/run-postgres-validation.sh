@@ -175,6 +175,18 @@ run "$root/tests/fixtures/130-phase30-nephilim-research-fixture.sql"
 run "$root/tests/validation/phase30-nephilim-research-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 31 runs an end-to-end scholarly research demonstration over the Phase 30 corpus:
+# explicit term-level observations, preserved MT/LXX distinction, independent Numbers retrieval,
+# later-tradition and scholarship isolation, and deterministic synthesis constraints.
+echo '--- Phase 31 scholarly demonstration (first run) ---'
+run "$root/tests/fixtures/140-phase31-nephilim-research-demonstration-fixture.sql"
+run "$root/tests/validation/phase31-nephilim-research-validation.sql"
+run "$root/scripts/validation/validate.sql"
+echo '--- Phase 31 scholarly demonstration (second run, determinism/idempotency) ---'
+run "$root/tests/fixtures/140-phase31-nephilim-research-demonstration-fixture.sql"
+run "$root/tests/validation/phase31-nephilim-research-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
