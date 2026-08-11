@@ -216,6 +216,18 @@ run "$root/tests/validation/phase33-eclipse-domain-population-validation.sql"
 run "$root/tests/validation/phase33-eclipse-independent-query-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 34 reuses the persisted Phase 33 eclipse substrate and validates natural-language
+# scholarly-question interpretation into normalized, deterministic, capability-bounded
+# BEREAN_ONLY query plans and bounded read-only answer retrieval. No schema or fixture changes.
+echo '--- Phase 34 natural-language scholarly query interpretation (first run) ---'
+run "$root/tests/validation/phase34-query-plan-validation.sql"
+run "$root/tests/validation/phase34-natural-language-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+echo '--- Phase 34 natural-language scholarly query interpretation (second run) ---'
+run "$root/tests/validation/phase34-query-plan-validation.sql"
+run "$root/tests/validation/phase34-natural-language-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"
