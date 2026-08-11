@@ -228,6 +228,20 @@ run "$root/tests/validation/phase34-query-plan-validation.sql"
 run "$root/tests/validation/phase34-natural-language-query-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 35 reuses the persisted Phase 30-31 Genesis substrate and the persisted Phase 32-33 eclipse
+# substrate without repopulating either, and drives both through one generic semantic interpreter.
+# It proves that natural-language interrogation generalizes across independently populated domains:
+# plans stay domain-neutral, materially different wordings normalize identically, capability checks
+# precede retrieval, and interrogation stays read-only and deterministic.
+echo '--- Phase 35 cross-domain natural-language research (first run) ---'
+run "$root/tests/validation/phase35-query-plan-validation.sql"
+run "$root/tests/validation/phase35-cross-domain-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+echo '--- Phase 35 cross-domain natural-language research (second run) ---'
+run "$root/tests/validation/phase35-query-plan-validation.sql"
+run "$root/tests/validation/phase35-cross-domain-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"

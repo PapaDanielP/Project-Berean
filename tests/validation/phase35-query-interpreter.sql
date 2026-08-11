@@ -681,11 +681,19 @@ SELECT pl.question_key,
             ELSE agent.canonical_name || ' ' || ppart.predicate || ' ' || ev.event_key
                  || ' ' || ploc.predicate || ' ' || place.canonical_name END AS result_label,
        'DERIVED_FROM_PERSISTED_GRAPH'::text AS result_classification,
-       (SELECT string_agg('Claim ' || pv.claim_key || ' -> Evidence ' || pv.evidence_key
-                          || ' -> Citation ' || pv.citation_key || ' -> Source ' || pv.source_key, '; '
-                          ORDER BY pv.claim_key, pv.evidence_key, pv.citation_key)
+       (SELECT string_agg(DISTINCT 'Claim ' || pv.claim_key || ' -> Evidence ' || pv.evidence_key
+                          || ' -> Citation ' || pv.citation_key || ' -> Source ' || pv.source_key, '; ')
         FROM p35_claim_provenance pv
-        WHERE pv.claim_id IN (cpart.claim_id, cloc.claim_id)) AS provenance_chain
+        WHERE (pl.semantic_target = 'EVENT_SET'
+               AND pv.claim_id IN (
+                   SELECT cany.claim_id
+                   FROM claim cany
+                   JOIN proposition pany ON pany.proposition_id = cany.proposition_id
+                   JOIN p35_predicate_semantics psany ON psany.predicate_code = pany.predicate
+                   WHERE (psany.semantic_role = 'PARTICIPATION' AND pany.object_event_id = ev.event_id)
+                      OR (psany.semantic_role = 'LOCATION' AND pany.subject_event_id = ev.event_id)))
+           OR (pl.semantic_target <> 'EVENT_SET'
+               AND pv.claim_id IN (cpart.claim_id, cloc.claim_id))) AS provenance_chain
 FROM p35_plan pl
 JOIN claim cpart ON true
 JOIN proposition ppart ON ppart.proposition_id = cpart.proposition_id
@@ -993,25 +1001,27 @@ FROM interpretive_candidate;
 -- limitation row instead of fabricated content.
 -- ---------------------------------------------------------------------------
 
+-- UNION (not UNION ALL) so that a knowledge object reached through several resolved anchors is
+-- reported once; answers are sets of retrieved knowledge, not traversal tallies.
 CREATE TEMP VIEW p35_answer AS
 SELECT * FROM p35_op_single_predicate
-UNION ALL
+UNION
 SELECT * FROM p35_op_composition
-UNION ALL
+UNION
 SELECT * FROM p35_op_provenance
-UNION ALL
+UNION
 SELECT * FROM p35_op_interpretive_candidates
-UNION ALL
+UNION
 SELECT * FROM p35_op_evidence_classification
-UNION ALL
+UNION
 SELECT * FROM p35_op_identity_equivalence
-UNION ALL
+UNION
 SELECT * FROM p35_op_identity_reconciliation
-UNION ALL
+UNION
 SELECT * FROM p35_op_capability_inventory
-UNION ALL
+UNION
 SELECT * FROM p35_op_boundary_example
-UNION ALL
+UNION
 SELECT pl.question_key,
        'CONTROLLED_LIMITATION'::text,
        pl.semantic_relationship || ' / ' || pl.capability_status,
