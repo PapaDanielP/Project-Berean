@@ -49,7 +49,7 @@ export class BereanRepository {
   async research(question: string, datasetIds: number[] = []): Promise<Record<string, unknown>> {
     const normalizedQuestion = question.trim();
     const requestedTruthAssertion = /\b(prove|proved|true|truth|confirm(?:ed|s)?)\b/i.test(normalizedQuestion);
-    const relationshipTerms = /\b(participat|who\b.*\bevent|event.*\bwho)\b/i.test(normalizedQuestion);
+    const relationshipTerms = /\b(participat\w*|who\b.*\bevents?\b|events?\b.*\bwho)\b/i.test(normalizedQuestion);
     const predicateResult = await this.pool.query(
       relationshipTerms
         ? `SELECT predicate_code FROM predicate WHERE event_participation_role_code IS NOT NULL ORDER BY predicate_code`
@@ -57,14 +57,15 @@ export class BereanRepository {
            WHERE $1 ILIKE '%' || lower(predicate_code) || '%'
               OR $1 ILIKE '%' || lower(description) || '%'
            ORDER BY predicate_code`,
-      [normalizedQuestion.toLowerCase()]
+      relationshipTerms ? [] : [normalizedQuestion.toLowerCase()]
     );
     const candidatePredicates = predicateResult.rows.map((row) => row.predicate_code as string);
     const plan = {
       classification: requestedTruthAssertion ? 'TRUTH_ASSERTION' : relationshipTerms ? 'PARTICIPATION' : 'PERSISTED_LABEL_SEARCH',
       scope: { dataset_ids: datasetIds, retrieval_scope: 'BEREAN_ONLY' },
       candidate_predicates: candidatePredicates,
-      traversal: relationshipTerms ? 'claim_asserted_proposition -> ClaimEvidence -> Evidence -> Citation -> SourceRecord -> Dataset -> Source' : 'bounded keyword retrieval',
+      traversal_shape: relationshipTerms ? 'CLAIM_ASSERTED_EVENT_PARTICIPATION' : 'REGISTERED_PREDICATE_MATCH',
+      traversal: relationshipTerms ? 'Claim → Proposition → ClaimEvidence → Evidence → Citation → SourceRecord → Dataset → Source' : 'Claim → Proposition → ClaimEvidence → Evidence → SourceRecord → Dataset → Source',
       output_constraints: requestedTruthAssertion ? ['NO_INVENTED_PREDICATE', 'NO_TRUTH_ASSERTION'] : ['BOUNDED_RESULTS'],
       provenance_requirement: 'FULL_CHAIN'
     };
@@ -78,13 +79,26 @@ export class BereanRepository {
         limitation: 'Absence of representation is not a denial; retrieval remains limited to Berean.'
       };
     }
+    if (!candidatePredicates.length) {
+      return {
+        question: normalizedQuestion,
+        interpretation: 'No registered predicate matched this question. Berean cannot represent an answer from the available query capability.',
+        capability: 'NOT_REPRESENTED',
+        plan: { ...plan, output_constraints: ['NO_INVENTED_PREDICATE', 'BOUNDED_RESULTS'] },
+        results: [],
+        limitation: 'Absence of representation is not a denial. Try keyword search to find persisted records.'
+      };
+    }
 
     const scoped = datasetIds.length > 0;
     const { rows } = await this.pool.query(
       `SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
-              p.predicate, s.source_key, s.name AS source_name, d.dataset_key, d.name AS dataset_name
+              c.proposition_id, cr.rendered_proposition, p.predicate,
+              ce.relation_type_code AS evidence_relation_type_code,
+              s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
        FROM claim c
        JOIN proposition p ON p.proposition_id = c.proposition_id
+       LEFT JOIN claim_rendering cr ON cr.claim_id = c.claim_id
        LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
        LEFT JOIN evidence e ON e.evidence_id = ce.evidence_id
        LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
@@ -98,14 +112,37 @@ export class BereanRepository {
     );
     const results = rows.map((row) => ({
       ...row,
-      classification: row.claim_type_code === 'DERIVED_CLAIM' ? 'DERIVED_FROM_PERSISTED_GRAPH' : 'DIRECTLY_SUPPORTED'
+      classification: ['UNDER_REVIEW', 'SUPERSEDED', 'RETRACTED'].includes(row.claim_status_code)
+        ? 'UNRESOLVED'
+        : row.claim_type_code === 'DERIVED_CLAIM'
+          ? 'DERIVED_FROM_PERSISTED_GRAPH'
+          : row.claim_type_code === 'INTERPRETIVE_CLAIM'
+            ? 'SCHOLARLY_CANDIDATE'
+            : row.evidence_relation_type_code === 'SUPPORTS'
+              ? 'DIRECTLY_SUPPORTED'
+              : row.evidence_relation_type_code === 'CONTRADICTS'
+                ? 'EVIDENCE_CONTRADICTS'
+                : row.evidence_relation_type_code === 'QUALIFIES'
+                  ? 'EVIDENCE_QUALIFIES'
+                  : 'UNRESOLVED'
     }));
+    const capability = results.some((row) => row.classification === 'UNRESOLVED')
+      ? 'UNRESOLVED'
+      : results.some((row) => row.classification === 'SCHOLARLY_CANDIDATE')
+        ? 'SCHOLARLY_CANDIDATE'
+        : results.some((row) => row.classification === 'DERIVED_FROM_PERSISTED_GRAPH')
+          ? 'DERIVED'
+          : results.some((row) => row.classification.startsWith('EVIDENCE_'))
+            ? 'UNRESOLVED'
+          : results.length
+            ? 'ESTABLISHED'
+            : 'NO_MATCH';
     return {
       question: normalizedQuestion,
       interpretation: relationshipTerms
         ? 'Requested participation is resolved through registered predicate roles and persisted claim assertions.'
         : 'The question was checked against registered predicates; no independent frontend interpretation is used.',
-      capability: results.length ? (results.some((row) => row.classification === 'DERIVED_FROM_PERSISTED_GRAPH') ? 'DERIVED_FROM_PERSISTED_GRAPH' : 'ESTABLISHED') : 'NO_MATCH',
+      capability,
       plan,
       results,
       limitation: results.length ? null : 'No matching persisted claims were found in the selected scope.'
