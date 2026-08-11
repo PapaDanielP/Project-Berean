@@ -9,6 +9,109 @@ const boundedLimit = (value: number | undefined, fallback: number, max: number):
 export class BereanRepository {
   constructor(private readonly pool: Pool) {}
 
+  async getResearchScope(): Promise<Record<string, unknown>> {
+    const [sources, datasets, inventory] = await Promise.all([
+      this.pool.query(
+        `SELECT s.source_id, s.source_key, s.name, s.source_type_code,
+                COUNT(DISTINCT d.dataset_id)::int AS dataset_count
+         FROM source s
+         LEFT JOIN dataset d ON d.source_id = s.source_id
+         GROUP BY s.source_id
+         ORDER BY s.name, s.source_key`
+      ),
+      this.pool.query(
+        `SELECT d.dataset_id, d.dataset_key, d.name, d.source_id, s.source_key, s.name AS source_name,
+                COUNT(DISTINCT sr.source_record_id)::int AS source_record_count,
+                COUNT(DISTINCT e.evidence_id)::int AS evidence_count,
+                COUNT(DISTINCT c.claim_id)::int AS claim_count
+         FROM dataset d
+         JOIN source s ON s.source_id = d.source_id
+         LEFT JOIN source_record sr ON sr.dataset_id = d.dataset_id
+         LEFT JOIN evidence e ON e.source_record_id = sr.source_record_id
+         LEFT JOIN claim_evidence ce ON ce.evidence_id = e.evidence_id
+         LEFT JOIN claim c ON c.claim_id = ce.claim_id
+         GROUP BY d.dataset_id, s.source_id
+         ORDER BY s.name, d.name, d.dataset_key`
+      ),
+      this.pool.query(
+        `SELECT (SELECT COUNT(*)::int FROM entity) AS entities,
+                (SELECT COUNT(*)::int FROM event) AS events,
+                (SELECT COUNT(*)::int FROM claim) AS claims,
+                (SELECT COUNT(*)::int FROM evidence) AS evidence,
+                (SELECT COUNT(*)::int FROM source) AS sources,
+                (SELECT COUNT(*)::int FROM dataset) AS datasets`
+      )
+    ]);
+
+    return { sources: sources.rows, datasets: datasets.rows, inventory: inventory.rows[0] };
+  }
+
+  async research(question: string, datasetIds: number[] = []): Promise<Record<string, unknown>> {
+    const normalizedQuestion = question.trim();
+    const requestedTruthAssertion = /\b(prove|proved|true|truth|confirm(?:ed|s)?)\b/i.test(normalizedQuestion);
+    const relationshipTerms = /\b(participat|who\b.*\bevent|event.*\bwho)\b/i.test(normalizedQuestion);
+    const predicateResult = await this.pool.query(
+      relationshipTerms
+        ? `SELECT predicate_code FROM predicate WHERE event_participation_role_code IS NOT NULL ORDER BY predicate_code`
+        : `SELECT predicate_code FROM predicate
+           WHERE $1 ILIKE '%' || lower(predicate_code) || '%'
+              OR $1 ILIKE '%' || lower(description) || '%'
+           ORDER BY predicate_code`,
+      [normalizedQuestion.toLowerCase()]
+    );
+    const candidatePredicates = predicateResult.rows.map((row) => row.predicate_code as string);
+    const plan = {
+      classification: requestedTruthAssertion ? 'TRUTH_ASSERTION' : relationshipTerms ? 'PARTICIPATION' : 'PERSISTED_LABEL_SEARCH',
+      scope: { dataset_ids: datasetIds, retrieval_scope: 'BEREAN_ONLY' },
+      candidate_predicates: candidatePredicates,
+      traversal: relationshipTerms ? 'claim_asserted_proposition -> ClaimEvidence -> Evidence -> Citation -> SourceRecord -> Dataset -> Source' : 'bounded keyword retrieval',
+      output_constraints: requestedTruthAssertion ? ['NO_INVENTED_PREDICATE', 'NO_TRUTH_ASSERTION'] : ['BOUNDED_RESULTS'],
+      provenance_requirement: 'FULL_CHAIN'
+    };
+    if (requestedTruthAssertion) {
+      return {
+        question: normalizedQuestion,
+        interpretation: 'The request asks Berean to establish truth or proof. That relation is not represented by the predicate registry.',
+        capability: 'NOT_REPRESENTED',
+        plan,
+        results: [],
+        limitation: 'Absence of representation is not a denial; retrieval remains limited to Berean.'
+      };
+    }
+
+    const scoped = datasetIds.length > 0;
+    const { rows } = await this.pool.query(
+      `SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
+              p.predicate, s.source_key, s.name AS source_name, d.dataset_key, d.name AS dataset_name
+       FROM claim c
+       JOIN proposition p ON p.proposition_id = c.proposition_id
+       LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
+       LEFT JOIN evidence e ON e.evidence_id = ce.evidence_id
+       LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
+       LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
+       LEFT JOIN source s ON s.source_id = d.source_id
+       WHERE ($1::text[] = '{}'::text[] OR p.predicate = ANY($1))
+         AND (NOT $2::boolean OR d.dataset_id = ANY($3::bigint[]))
+       ORDER BY c.claim_id
+       LIMIT 50`,
+      [candidatePredicates, scoped, datasetIds]
+    );
+    const results = rows.map((row) => ({
+      ...row,
+      classification: row.claim_type_code === 'DERIVED_CLAIM' ? 'DERIVED_FROM_PERSISTED_GRAPH' : 'DIRECTLY_SUPPORTED'
+    }));
+    return {
+      question: normalizedQuestion,
+      interpretation: relationshipTerms
+        ? 'Requested participation is resolved through registered predicate roles and persisted claim assertions.'
+        : 'The question was checked against registered predicates; no independent frontend interpretation is used.',
+      capability: results.length ? (results.some((row) => row.classification === 'DERIVED_FROM_PERSISTED_GRAPH') ? 'DERIVED_FROM_PERSISTED_GRAPH' : 'ESTABLISHED') : 'NO_MATCH',
+      plan,
+      results,
+      limitation: results.length ? null : 'No matching persisted claims were found in the selected scope.'
+    };
+  }
+
   async search(q: string, limit?: number): Promise<SearchResult[]> {
     const safeLimit = boundedLimit(limit, 20, 50);
     const term = `%${q}%`;
