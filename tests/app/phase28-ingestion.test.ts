@@ -107,6 +107,32 @@ describe('Phase 28 manifest', () => {
     expect(baselineReport.totals.INVALID).toBe(0);
   });
 
+  it('declares the revised deterministic source and acceptance columns', () => {
+    expect(MANIFEST_COLUMNS).toEqual(
+      expect.arrayContaining([
+        'source_key',
+        'dataset_key',
+        'source_record_key',
+        'citation_key',
+        'entity_key',
+        'entity_type_code',
+        'entity_name',
+        'proposition_definition',
+        'predicate_code',
+        'subject_entity',
+        'object_entity',
+        'event_key',
+        'event_type_code',
+        'event_participation_role',
+        'typed_value',
+        'claim_key',
+        'claim_type_code',
+        'acceptance_tier',
+        'acceptance_basis'
+      ])
+    );
+  });
+
   it('reports a reason for every candidate that is not auto-accepted', () => {
     for (const entry of baselineReport.not_accepted_reasons) {
       expect(entry.reasons.length).toBeGreaterThan(0);
@@ -123,6 +149,17 @@ describe('Phase 28 manifest', () => {
     expect(
       totals.AUTO_ACCEPTED + totals.CANDIDATE_REQUIRES_REVIEW + totals.EXCLUDED + totals.INVALID
     ).toBe(totals.TOTAL_CANDIDATES);
+  });
+
+  it('reconciles every manifest row to an explicit acceptance tier and basis', () => {
+    const rows = parseManifest(manifestText);
+    expect(rows.every((row) => row.acceptance_tier !== '' && row.acceptance_basis !== '')).toBe(true);
+    expect(rows.filter((row) => row.acceptance_tier === 'AUTO_ADMISSIBLE').length).toBe(
+      baselineReport.totals.AUTO_ACCEPTED
+    );
+    expect(rows.some((row) => row.acceptance_tier === 'REQUIRES_HUMAN_REVIEW')).toBe(true);
+    expect(rows.some((row) => row.acceptance_tier === 'EXCLUDED')).toBe(true);
+    expect(rows.some((row) => row.acceptance_tier === 'NOT_YET_MODELED')).toBe(true);
   });
 });
 
@@ -423,7 +460,7 @@ describe('Phase 28 transaction and idempotency behaviour', () => {
       (row) => row.candidate_key === 'P28_GEN_5_18_JARED_FATHER_ENOCH'
     ) as ManifestRow;
     const report = await ingest(
-      toCsv([{ ...original, candidate_key: 'TEST_DUPLICATE_CLAIM' }]),
+      toCsv([{ ...original, candidate_key: 'TEST_DUPLICATE_CLAIM', claim_key: 'CLAIM_TEST_DUPLICATE_CLAIM' }]),
       'test:duplicate-claim'
     );
     const outcome = outcomeFor(report, 'TEST_DUPLICATE_CLAIM');
@@ -527,6 +564,18 @@ describe('Phase 28 boundary semantics', () => {
         baselineReport.delta_counts[key]
       );
     }
+  });
+
+  it('reports revised Phase 28 coverage aliases and second-run zero-record idempotency', () => {
+    expect(baselineReport.totals.ASSERTIONS_CONSIDERED).toBe(baselineReport.totals.TOTAL_CANDIDATES);
+    expect(baselineReport.totals.SOURCE_RECORDS_CONSIDERED).toBeGreaterThan(0);
+    expect(baselineReport.totals.SOURCE_BACKED_AUTO_ACCEPTED).toBe(baselineReport.totals.AUTO_ACCEPTED);
+    expect(baselineReport.totals.REQUIRES_HUMAN_REVIEW).toBe(
+      baselineReport.totals.CANDIDATE_REQUIRES_REVIEW
+    );
+    expect(baselineReport.totals.DUPLICATES_CREATED).toBe(0);
+    expect(secondReport.totals.NEW_RECORDS).toBe(0);
+    expect(secondReport.totals.DUPLICATES_CREATED).toBe(0);
   });
 
   it('distinguishes source-backed candidates from candidates that were not imported', () => {

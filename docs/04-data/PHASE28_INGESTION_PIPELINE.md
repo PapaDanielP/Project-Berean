@@ -60,6 +60,16 @@ and adds the machine-readable columns needed to construct a claim graph:
 ```text
 inference_flag,
 source_key, dataset_key, source_record_key, source_location,
+```
+
+The revised Phase 28 deterministic source contract also carries explicit replay/reporting keys:
+
+```text
+citation_key,
+entity_key, entity_type_code, entity_name,
+proposition_definition, predicate_code, subject_entity, object_entity,
+event_key, event_type_code, event_participation_role, typed_value,
+claim_key, claim_type_code, acceptance_tier, acceptance_basis,
 subject_kind, subject_key, subject_type, subject_name, subject_description,
 predicate,
 object_kind, object_key, object_type, object_name, object_description,
@@ -184,9 +194,16 @@ Against the accepted Genesis 1–11 baseline (`020-genesis-1-11-fixture.sql`):
 
 ```text
 TOTAL_CANDIDATES            53
+ASSERTIONS_CONSIDERED       53
+SOURCE_RECORDS_CONSIDERED   28
 AUTO_ACCEPTED               38
+SOURCE_BACKED_AUTO_ACCEPTED 38
+SOURCE_BACKED_MANUAL         0
+DERIVED_STRUCTURALLY         0
 CANDIDATE_REQUIRES_REVIEW    7
+REQUIRES_HUMAN_REVIEW        7
 EXCLUDED                     8
+NOT_YET_MODELED              5
 INVALID                      0
 ALREADY_PRESENT              0
 NEW_ENTITIES                19
@@ -201,6 +218,9 @@ NEW_MAPPINGS                19
 COMPLETE_PROVENANCE         38
 INCOMPLETE_PROVENANCE        0
 DUPLICATES_PREVENTED         0
+DUPLICATES_CREATED           0
+NEW_RECORDS                256
+PROJECTED_EVENT_PARTICIPATION 16
 ```
 
 Before/after counts for that run:
@@ -219,15 +239,34 @@ Before/after counts for that run:
 | source_record | 38 | 55 | +17 |
 | source_identity | 9 | 28 | +19 |
 | entity_source_mapping | 9 | 28 | +19 |
+| source | 2 | 2 | 0 |
+| dataset | 2 | 2 | 0 |
+| source_type | 4 | 4 | 0 |
+| entity_type | 5 | 5 | 0 |
+| claim_type | 3 | 3 | 0 |
+| claim_status | 4 | 4 | 0 |
+| evidence_type | 2 | 2 | 0 |
+| claim_evidence_relation_type | 3 | 3 | 0 |
+| mapping_status | 4 | 4 | 0 |
+| event_type | 8 | 8 | 0 |
+| event_participation_role | 5 | 5 | 0 |
+| claim_relation_type | 5 | 5 | 0 |
+| value_type | 6 | 6 | 0 |
+| term_kind | 3 | 3 | 0 |
+| predicate | 22 | 22 | 0 |
+| derivation | 3 | 3 | 0 |
+| derivation_input | 6 | 6 | 0 |
 
 A second execution of the same manifest reports `ALREADY_PRESENT = 38`, all `NEW_*` counters at 0,
-and zero deltas.
+`NEW_RECORDS = 0`, `DUPLICATES_CREATED = 0`, and zero deltas. This demonstrates rerun safety on a
+clean database: repeated execution creates no duplicate entities, source records, citations,
+evidence, propositions, claims, events, typed values, or source identity mappings.
 
 Against the full accepted Phase 19–27 validation state, the same manifest reports
-`AUTO_ACCEPTED = 38`, `ALREADY_PRESENT = 38`, `DUPLICATES_PREVENTED = 38`, no new claims, and one
-newly available source-backed addition: an `ACTIVE`, evidence-backed `GEN_MT` source identity
-mapping for `noah`, which the manual corpus had not reconciled. A second run there is also a
-complete no-op.
+`AUTO_ACCEPTED = 38`, `ALREADY_PRESENT = 38`, `DUPLICATES_CREATED = 0`, no new claims, and two
+new records for the remaining source-backed reconciliation: a `GEN_MT` source identity plus its
+`ACTIVE`, evidence-backed entity source mapping for `noah`, which the manual corpus had not
+reconciled. A second run there is also a complete no-op.
 
 ## Limitations and obstacle classification
 
@@ -250,9 +289,13 @@ or identity reconciliation beyond an explicit source statement declared in the m
 
 ```text
 AUTO_ACCEPT               != TRUE
+SOURCE_BACKED_AUTO_ACCEPTED != TRUE
+SOURCE_BACKED_MANUAL      != TRUE
+DERIVED_STRUCTURALLY      != TRUE
 CANDIDATE_REQUIRES_REVIEW != FALSE
-EXCLUDED                  != refuted
-NOT_YET_MODELED           != source silence
+REQUIRES_HUMAN_REVIEW     != FALSE
+EXCLUDED                  != FALSE
+NOT_YET_MODELED           != ABSENT
 NOT_STORED_BY_POLICY      != source silence
 ```
 

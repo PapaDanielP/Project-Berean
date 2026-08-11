@@ -32,9 +32,16 @@ export interface IngestionOptions {
 
 const emptyTotals = (): IngestionTotals => ({
   TOTAL_CANDIDATES: 0,
+  ASSERTIONS_CONSIDERED: 0,
+  SOURCE_RECORDS_CONSIDERED: 0,
   AUTO_ACCEPTED: 0,
+  SOURCE_BACKED_AUTO_ACCEPTED: 0,
+  SOURCE_BACKED_MANUAL: 0,
+  DERIVED_STRUCTURALLY: 0,
   CANDIDATE_REQUIRES_REVIEW: 0,
+  REQUIRES_HUMAN_REVIEW: 0,
   EXCLUDED: 0,
+  NOT_YET_MODELED: 0,
   INVALID: 0,
   ALREADY_PRESENT: 0,
   NEW_ENTITIES: 0,
@@ -48,13 +55,18 @@ const emptyTotals = (): IngestionTotals => ({
   NEW_MAPPINGS: 0,
   COMPLETE_PROVENANCE: 0,
   INCOMPLETE_PROVENANCE: 0,
-  DUPLICATES_PREVENTED: 0
+  DUPLICATES_PREVENTED: 0,
+  DUPLICATES_CREATED: 0,
+  NEW_RECORDS: 0,
+  PROJECTED_EVENT_PARTICIPATION: 0
 });
 
 const BOUNDARY_NOTES = [
   'AUTO_ACCEPT means source-backed and automatically importable; it does not mean TRUE.',
   'CANDIDATE_REQUIRES_REVIEW means not automatically importable; it does not mean FALSE.',
   'EXCLUDED and NOT_YET_MODELED describe Berean representation status, not silence in the source.',
+  'SOURCE_BACKED_AUTO_ACCEPTED != TRUE; SOURCE_BACKED_MANUAL != TRUE; DERIVED_STRUCTURALLY != TRUE.',
+  'REQUIRES_HUMAN_REVIEW != FALSE; EXCLUDED != FALSE; NOT_YET_MODELED != ABSENT.',
   'NOT_STORED_BY_POLICY marks locator-only source storage; it does not mean the source says nothing.',
   'External sources and external identifiers are discovery metadata only and are never persisted as facts.'
 ];
@@ -76,6 +88,7 @@ const loadRegistry = async (client: PoolClient): Promise<RegistrySnapshot> => {
   const entityTypes = await client.query('SELECT entity_type_code FROM entity_type');
   const eventTypes = await client.query('SELECT event_type_code FROM event_type');
   const valueTypes = await client.query('SELECT value_type_code FROM value_type');
+  const claimTypes = await client.query('SELECT claim_type_code FROM claim_type');
   const sources = await client.query('SELECT source_key FROM source');
   const datasets = await client.query(
     `SELECT d.dataset_key, s.source_key FROM dataset d JOIN source s ON s.source_id = d.source_id`
@@ -86,6 +99,7 @@ const loadRegistry = async (client: PoolClient): Promise<RegistrySnapshot> => {
     entityTypes: new Set(entityTypes.rows.map((row) => row.entity_type_code)),
     eventTypes: new Set(eventTypes.rows.map((row) => row.event_type_code)),
     valueTypes: new Set(valueTypes.rows.map((row) => row.value_type_code)),
+    claimTypes: new Set(claimTypes.rows.map((row) => row.claim_type_code)),
     sourceKeys: new Set(sources.rows.map((row) => row.source_key)),
     datasetSourceKeys: new Map(datasets.rows.map((row) => [row.dataset_key, row.source_key]))
   };
@@ -166,7 +180,7 @@ const ensureCitation = async (
   const inserted = await client.query(
     `INSERT INTO citation (citation_key, source_record_id, locator)
      VALUES ($1, $2, $3) RETURNING citation_id`,
-    [`CITE_${row.source_record_key}`, sourceRecordId, row.source_location]
+    [row.citation_key || `CITE_${row.source_record_key}`, sourceRecordId, row.source_location]
   );
   counters.citations += 1;
   return Number(inserted.rows[0].citation_id);
@@ -456,7 +470,7 @@ const persistCandidate = async (
   }
 
   const propositionId = await ensureProposition(client, row, terms, counters);
-  const claimKey = `CLAIM_${row.candidate_key}`;
+  const claimKey = row.claim_key || `CLAIM_${row.candidate_key}`;
 
   const existingClaim = await client.query(
     'SELECT claim_id, proposition_id FROM claim WHERE claim_key = $1',
@@ -489,8 +503,14 @@ const persistCandidate = async (
     } else {
       const inserted = await client.query(
         `INSERT INTO claim (claim_key, proposition_id, claim_type_code, claim_status_code, statement, notes)
-         VALUES ($1, $2, 'DIRECT_SOURCE_CLAIM', 'ACTIVE', $3, $4) RETURNING claim_id`,
-        [claimKey, propositionId, renderStatement(row), `Phase 28 automated ingestion of ${row.candidate_key}.`]
+         VALUES ($1, $2, $3, 'ACTIVE', $4, $5) RETURNING claim_id`,
+        [
+          claimKey,
+          propositionId,
+          row.claim_type_code,
+          renderStatement(row),
+          `Phase 28 automated ingestion of ${row.candidate_key}.`
+        ]
       );
       counters.claims += 1;
       claimId = Number(inserted.rows[0].claim_id);
@@ -543,9 +563,12 @@ export const runIngestion = async (pool: Pool, options: IngestionOptions): Promi
     const registry = await loadRegistry(client);
     const graph = await loadGraph(client);
     const seenCandidateKeys = new Set<string>();
+    const sourceRecordsConsidered = new Set<string>();
 
     for (const row of rows) {
       totals.TOTAL_CANDIDATES += 1;
+      totals.ASSERTIONS_CONSIDERED += 1;
+      if (row.source_record_key !== '') sourceRecordsConsidered.add(row.source_record_key);
       const classification = classifyCandidate(row, registry, graph, seenCandidateKeys);
       seenCandidateKeys.add(row.candidate_key);
 
@@ -554,6 +577,8 @@ export const runIngestion = async (pool: Pool, options: IngestionOptions): Promi
 
       if (classification.classification !== 'AUTO_ACCEPT') {
         totals[classification.classification] += 1;
+        if (classification.classification === 'CANDIDATE_REQUIRES_REVIEW') totals.REQUIRES_HUMAN_REVIEW += 1;
+        if (row.acceptance_tier === 'NOT_YET_MODELED') totals.NOT_YET_MODELED += 1;
         outcomes.push({
           ...classification,
           claim_key: null,
@@ -562,7 +587,9 @@ export const runIngestion = async (pool: Pool, options: IngestionOptions): Promi
           duplicate_prevented: false,
           provenance_status: 'NOT_PERSISTED',
           source_backed_status: 'NOT_AUTOMATICALLY_IMPORTED',
-          external_metadata_status: externalMetadataStatus
+          external_metadata_status: externalMetadataStatus,
+          acceptance_tier: row.acceptance_tier,
+          acceptance_basis: row.acceptance_basis
         });
         continue;
       }
@@ -573,20 +600,23 @@ export const runIngestion = async (pool: Pool, options: IngestionOptions): Promi
         const result = await persistCandidate(client, row, counters);
         await client.query('RELEASE SAVEPOINT candidate');
         registerCandidateTerms(row, graph);
-        graph.claimKeys.add(`CLAIM_${row.candidate_key}`);
+        graph.claimKeys.add(row.claim_key || `CLAIM_${row.candidate_key}`);
         totals.AUTO_ACCEPTED += 1;
+        totals.SOURCE_BACKED_AUTO_ACCEPTED += 1;
         totals.COMPLETE_PROVENANCE += 1;
         if (result.alreadyPresent) totals.ALREADY_PRESENT += 1;
         if (result.duplicatePrevented) totals.DUPLICATES_PREVENTED += 1;
         outcomes.push({
           ...classification,
-          claim_key: `CLAIM_${row.candidate_key}`,
+          claim_key: row.claim_key || `CLAIM_${row.candidate_key}`,
           persisted: !result.alreadyPresent,
           already_present: result.alreadyPresent,
           duplicate_prevented: result.duplicatePrevented,
           provenance_status: 'COMPLETE_PROVENANCE',
           source_backed_status: 'SOURCE_BACKED',
-          external_metadata_status: externalMetadataStatus
+          external_metadata_status: externalMetadataStatus,
+          acceptance_tier: row.acceptance_tier,
+          acceptance_basis: row.acceptance_basis
         });
       } catch (error) {
         // The candidate graph is rolled back completely; nothing partial survives, so the new-row
@@ -608,11 +638,14 @@ export const runIngestion = async (pool: Pool, options: IngestionOptions): Promi
           duplicate_prevented: false,
           provenance_status: incomplete ? 'INCOMPLETE_PROVENANCE' : 'NOT_PERSISTED',
           source_backed_status: 'NOT_AUTOMATICALLY_IMPORTED',
-          external_metadata_status: externalMetadataStatus
+          external_metadata_status: externalMetadataStatus,
+          acceptance_tier: row.acceptance_tier,
+          acceptance_basis: row.acceptance_basis
         });
       }
     }
 
+    totals.SOURCE_RECORDS_CONSIDERED = sourceRecordsConsidered.size;
     totals.NEW_ENTITIES = counters.entities;
     totals.NEW_EVENTS = counters.events;
     totals.NEW_TYPED_VALUES = counters.typedValues;
@@ -622,10 +655,18 @@ export const runIngestion = async (pool: Pool, options: IngestionOptions): Promi
     totals.NEW_CITATIONS = counters.citations;
     totals.NEW_SOURCE_RECORDS = counters.sourceRecords;
     totals.NEW_MAPPINGS = counters.mappings;
+    const projectedParticipation = await client.query(
+      `SELECT count(*)::int AS count
+       FROM event_participation ep
+       JOIN claim c ON c.claim_id = ep.asserting_claim_id
+       WHERE c.claim_key LIKE 'CLAIM_P28_%'`
+    );
+    totals.PROJECTED_EVENT_PARTICIPATION = Number(projectedParticipation.rows[0].count);
 
     const afterCounts = await countTables(client);
     const deltaCounts = {} as Record<CountedTable, number>;
     for (const table of COUNTED_TABLES) deltaCounts[table] = afterCounts[table] - beforeCounts[table];
+    totals.NEW_RECORDS = Object.values(deltaCounts).reduce((total, delta) => total + delta, 0);
 
     if (options.dryRun) {
       await client.query('ROLLBACK');

@@ -79,6 +79,25 @@ export const parseManifest = (text: string): ManifestRow[] => {
     MANIFEST_COLUMNS.forEach((column: ManifestColumn, index) => {
       row[column] = values[index].trim();
     });
+    if (row.proposition_definition === '') row.proposition_definition = row.proposed_proposition;
+    if (row.proposed_proposition === '') row.proposed_proposition = row.proposition_definition;
+    if (row.predicate_code === '') row.predicate_code = row.predicate;
+    if (row.predicate === '') row.predicate = row.predicate_code;
+    if (row.claim_key === '' && row.candidate_key !== '') row.claim_key = `CLAIM_${row.candidate_key}`;
+    if (row.claim_type_code === '' && row.review_status === 'PROPOSED_AUTO_ACCEPT') {
+      row.claim_type_code = 'DIRECT_SOURCE_CLAIM';
+    }
+    if (row.acceptance_tier === '') {
+      if (row.review_status === 'PROPOSED_AUTO_ACCEPT') row.acceptance_tier = 'AUTO_ADMISSIBLE';
+      else if (row.review_status === 'REQUIRES_REVIEW') row.acceptance_tier = 'REQUIRES_HUMAN_REVIEW';
+      else if (row.review_status === 'EXCLUDED') row.acceptance_tier = 'EXCLUDED';
+    }
+    if (row.acceptance_basis === '') {
+      row.acceptance_basis =
+        row.review_status === 'PROPOSED_AUTO_ACCEPT'
+          ? 'Explicit source assertion with registered vocabulary and deterministic no-interpretation mapping.'
+          : row.review_notes || row.exclusion_reason;
+    }
     return row;
   });
 };

@@ -1,4 +1,5 @@
 import {
+  ACCEPTANCE_TIER_VALUES,
   INFERENCE_FLAG_VALUES,
   OBJECT_KIND_VALUES,
   REVIEW_STATUS_VALUES,
@@ -21,6 +22,7 @@ import {
  */
 
 const NUMERIC_VALUE_TYPES = new Set(['INTEGER', 'DECIMAL', 'YEAR']);
+const SOURCE_LOCATOR_PATTERN = /^Genesis \d+:\d+(?:-\d+)?$/;
 
 const isBlank = (value: string): boolean => value.trim() === '';
 
@@ -58,6 +60,18 @@ export const classifyCandidate = (
   if (!(INFERENCE_FLAG_VALUES as readonly string[]).includes(row.inference_flag)) {
     reasons.push('UNKNOWN_ENUM_VALUE:inference_flag');
   }
+  if (row.acceptance_tier !== '' && !(ACCEPTANCE_TIER_VALUES as readonly string[]).includes(row.acceptance_tier)) {
+    reasons.push('UNKNOWN_ENUM_VALUE:acceptance_tier');
+  }
+  if (row.proposition_definition !== '' && row.proposed_proposition !== row.proposition_definition) {
+    reasons.push('PROPOSITION_DEFINITION_MISMATCH');
+  }
+  if (row.predicate_code !== '' && row.predicate !== row.predicate_code) {
+    reasons.push('PREDICATE_CODE_MISMATCH');
+  }
+  if (row.claim_key !== '' && row.candidate_key !== '' && row.claim_key !== `CLAIM_${row.candidate_key}`) {
+    reasons.push('CLAIM_KEY_MISMATCH');
+  }
   if (reasons.length > 0) return invalid();
 
   if (row.review_status === 'EXCLUDED') {
@@ -67,6 +81,7 @@ export const classifyCandidate = (
     }
     reasons.push('EXCLUDED_BY_MANIFEST');
     if (row.inference_flag !== 'NONE') reasons.push(`PROHIBITED_INFERENCE_FLAG:${row.inference_flag}`);
+    if (row.acceptance_tier !== 'EXCLUDED') reasons.push('ACCEPTANCE_TIER_MISMATCH');
     reasons.push(`EXCLUSION_REASON:${row.exclusion_reason}`);
     return { candidate_key: row.candidate_key, classification: 'EXCLUDED', reasons };
   }
@@ -78,6 +93,9 @@ export const classifyCandidate = (
     }
     reasons.push('REVIEW_REQUESTED_BY_MANIFEST');
     if (row.inference_flag !== 'NONE') reasons.push(`PROHIBITED_INFERENCE_FLAG:${row.inference_flag}`);
+    if (row.acceptance_tier !== 'REQUIRES_HUMAN_REVIEW' && row.acceptance_tier !== 'NOT_YET_MODELED') {
+      reasons.push('ACCEPTANCE_TIER_MISMATCH');
+    }
     reasons.push(`REVIEW_NOTE:${row.review_notes}`);
     return { candidate_key: row.candidate_key, classification: 'CANDIDATE_REQUIRES_REVIEW', reasons };
   }
@@ -87,6 +105,14 @@ export const classifyCandidate = (
   if (isBlank(row.dataset_key)) reasons.push('MISSING_REQUIRED_FIELD:dataset_key');
   if (isBlank(row.source_record_key)) reasons.push('MISSING_REQUIRED_FIELD:source_record_key');
   if (isBlank(row.source_location)) reasons.push('MISSING_REQUIRED_FIELD:source_location');
+  else if (!SOURCE_LOCATOR_PATTERN.test(row.source_location)) reasons.push('INVALID_SOURCE_LOCATOR');
+  if (!isBlank(row.source_record_key) && !isBlank(row.source_location)) {
+    const expectedRecordKey = `MT_${row.source_location.toUpperCase().replace(/ESIS /, '_').replace(':', '_')}`;
+    if (row.source_record_key !== expectedRecordKey) reasons.push('SOURCE_RECORD_LOCATOR_MISMATCH');
+  }
+  if (!isBlank(row.citation_key) && !isBlank(row.source_record_key) && row.citation_key !== `CITE_${row.source_record_key}`) {
+    reasons.push('CITATION_KEY_MISMATCH');
+  }
   if (!isBlank(row.source_key) && !registry.sourceKeys.has(row.source_key)) {
     reasons.push('UNKNOWN_SOURCE_REFERENCE');
   }
@@ -99,6 +125,12 @@ export const classifyCandidate = (
   const predicate = registry.predicates.get(row.predicate);
   if (isBlank(row.predicate)) reasons.push('MISSING_REQUIRED_FIELD:predicate');
   else if (!predicate) reasons.push('UNREGISTERED_PREDICATE');
+  if (isBlank(row.claim_key)) reasons.push('MISSING_REQUIRED_FIELD:claim_key');
+  if (isBlank(row.claim_type_code)) reasons.push('MISSING_REQUIRED_FIELD:claim_type_code');
+  else if (!registry.claimTypes.has(row.claim_type_code)) reasons.push('UNKNOWN_CLAIM_TYPE');
+  else if (row.claim_type_code !== 'DIRECT_SOURCE_CLAIM') reasons.push('UNSUPPORTED_CLAIM_TYPE');
+  if (row.acceptance_tier !== 'AUTO_ADMISSIBLE') reasons.push('ACCEPTANCE_TIER_MISMATCH');
+  if (isBlank(row.acceptance_basis)) reasons.push('MISSING_REQUIRED_FIELD:acceptance_basis');
 
   if (!(SUBJECT_KIND_VALUES as readonly string[]).includes(row.subject_kind)) {
     reasons.push('UNKNOWN_ENUM_VALUE:subject_kind');
@@ -110,9 +142,16 @@ export const classifyCandidate = (
     if (predicate.subject_kind_code !== row.subject_kind || predicate.object_kind_code !== row.object_kind) {
       reasons.push('PREDICATE_TERM_KIND_MISMATCH');
     }
+    const role = predicate.event_participation_role_code ?? '';
+    if (row.event_participation_role !== '' && row.event_participation_role !== role) {
+      reasons.push('EVENT_PARTICIPATION_ROLE_MISMATCH');
+    }
   }
 
   if (isBlank(row.subject_key)) reasons.push('MISSING_REQUIRED_FIELD:subject_key');
+  if (row.subject_kind === 'ENTITY' && row.subject_entity !== '' && row.subject_entity !== row.subject_key) {
+    reasons.push('SUBJECT_ENTITY_MISMATCH');
+  }
   if (row.subject_kind === 'ENTITY') {
     reasons.push(...validateEntityTerm(row.subject_key, row.subject_type, row.subject_name, 'subject', registry, graph));
   } else if (row.subject_kind === 'EVENT') {
@@ -121,17 +160,39 @@ export const classifyCandidate = (
 
   if (row.object_kind === 'ENTITY') {
     if (isBlank(row.object_key)) reasons.push('MISSING_REQUIRED_FIELD:object_key');
+    if (row.object_entity !== '' && row.object_entity !== row.object_key) reasons.push('OBJECT_ENTITY_MISMATCH');
     reasons.push(...validateEntityTerm(row.object_key, row.object_type, row.object_name, 'object', registry, graph));
   } else if (row.object_kind === 'EVENT') {
     if (isBlank(row.object_key)) reasons.push('MISSING_REQUIRED_FIELD:object_key');
     reasons.push(...validateEventTerm(row.object_key, row.object_type, 'object', registry, graph));
   } else if (row.object_kind === 'VALUE') {
     if (!registry.valueTypes.has(row.object_value_type)) reasons.push('UNKNOWN_VALUE_TYPE');
+    if (row.typed_value !== '' && row.typed_value !== row.object_value) reasons.push('TYPED_VALUE_MISMATCH');
     if (isBlank(row.object_value)) reasons.push('MISSING_REQUIRED_FIELD:object_value');
     else if (NUMERIC_VALUE_TYPES.has(row.object_value_type) && !/^-?\d+(\.\d+)?$/.test(row.object_value)) {
       reasons.push('INVALID_TYPED_VALUE');
     }
   }
+
+  const manifestEventKey =
+    row.subject_kind === 'EVENT' ? row.subject_key : row.object_kind === 'EVENT' ? row.object_key : '';
+  const manifestEventType =
+    row.subject_kind === 'EVENT' ? row.subject_type : row.object_kind === 'EVENT' ? row.object_type : '';
+  if (row.event_key !== '' && row.event_key !== manifestEventKey) reasons.push('EVENT_KEY_MISMATCH');
+  if (row.event_type_code !== '' && row.event_type_code !== manifestEventType) {
+    reasons.push('EVENT_TYPE_CODE_MISMATCH');
+  }
+  const manifestEntityKey =
+    row.subject_kind === 'ENTITY' ? row.subject_key : row.object_kind === 'ENTITY' ? row.object_key : '';
+  const manifestEntityType =
+    row.subject_kind === 'ENTITY' ? row.subject_type : row.object_kind === 'ENTITY' ? row.object_type : '';
+  const manifestEntityName =
+    row.subject_kind === 'ENTITY' ? row.subject_name : row.object_kind === 'ENTITY' ? row.object_name : '';
+  if (row.entity_key !== '' && row.entity_key !== manifestEntityKey) reasons.push('ENTITY_KEY_MISMATCH');
+  if (row.entity_type_code !== '' && row.entity_type_code !== manifestEntityType) {
+    reasons.push('ENTITY_TYPE_CODE_MISMATCH');
+  }
+  if (row.entity_name !== '' && row.entity_name !== manifestEntityName) reasons.push('ENTITY_NAME_MISMATCH');
 
   if (!isBlank(row.mapping_source_identity_key) || !isBlank(row.mapping_justification)) {
     if (isBlank(row.mapping_source_identity_key)) reasons.push('MISSING_REQUIRED_FIELD:mapping_source_identity_key');
