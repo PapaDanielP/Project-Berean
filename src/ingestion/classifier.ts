@@ -66,6 +66,8 @@ export const classifyCandidate = (
       return invalid();
     }
     reasons.push('EXCLUDED_BY_MANIFEST');
+    if (row.inference_flag !== 'NONE') reasons.push(`PROHIBITED_INFERENCE_FLAG:${row.inference_flag}`);
+    reasons.push(`EXCLUSION_REASON:${row.exclusion_reason}`);
     return { candidate_key: row.candidate_key, classification: 'EXCLUDED', reasons };
   }
 
@@ -76,6 +78,7 @@ export const classifyCandidate = (
     }
     reasons.push('REVIEW_REQUESTED_BY_MANIFEST');
     if (row.inference_flag !== 'NONE') reasons.push(`PROHIBITED_INFERENCE_FLAG:${row.inference_flag}`);
+    reasons.push(`REVIEW_NOTE:${row.review_notes}`);
     return { candidate_key: row.candidate_key, classification: 'CANDIDATE_REQUIRES_REVIEW', reasons };
   }
 

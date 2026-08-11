@@ -47,6 +47,8 @@ The fixture demonstrates shared evidence, multiple evidence for a claim, contrar
 
 `tests/validation/genesis-1-1-5-slice.sql` runs after the Genesis fixture and checks the conservative Genesis 1:1–5 slice specifically. It verifies five verse source-record boundaries, citation-compatible structural records with no stored source text, evidence-to-source provenance, claim-to-evidence provenance, multiple records attached to Genesis 1:1, and direct source claims only.
 
+`tests/validation/phase28-ingestion-validation.sql` runs after the Phase 28 automated Tier-1 ingestion step and checks that every ingested claim is a direct source claim with a complete provenance chain, that deferred and excluded candidates stayed outside the graph, that locator-only source storage held, that ingested source-identity mappings are `ACTIVE`, justified, and evidence-backed, and that ingestion produced no duplicate assertion. The ingestion step itself requires the Node toolchain and is skipped when dependencies are absent.
+
 ## Genesis regression
 
 Genesis 1–11 should include tests for:
