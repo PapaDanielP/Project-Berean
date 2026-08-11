@@ -200,6 +200,19 @@ run "$root/tests/fixtures/141-phase32-eclipse-research-generalization-fixture.sq
 run "$root/tests/validation/phase32-eclipse-research-generalization-validation.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 33 deliberately separates the prior source-scoped eclipse population from later,
+# withheld read-only research questions.  Both stages replay twice without changing data.
+echo '--- Phase 33 eclipse population and independent research (first run) ---'
+run "$root/tests/fixtures/142-phase33-eclipse-domain-population-fixture.sql"
+run "$root/tests/validation/phase33-eclipse-domain-population-validation.sql"
+run "$root/tests/validation/phase33-eclipse-independent-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+echo '--- Phase 33 eclipse population and independent research (second run) ---'
+run "$root/tests/fixtures/142-phase33-eclipse-domain-population-fixture.sql"
+run "$root/tests/validation/phase33-eclipse-domain-population-validation.sql"
+run "$root/tests/validation/phase33-eclipse-independent-query-validation.sql"
+run "$root/scripts/validation/validate.sql"
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"

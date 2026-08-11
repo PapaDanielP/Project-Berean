@@ -1,0 +1,7 @@
+candidate_key,entity_type,candidate_name,source_scope,classification,disposition,notes
+P33_PRINCIPE_STATION,EVENT,Principe 1919 eclipse observation,"Dyson, Eddington, and Davidson 1920",SOURCE_BACKED,INGESTED_DIRECT_SOURCE_CLAIM,"Bounded source discovery identifies an observation event, its station, and its reported participant."
+P33_SOBRAL_STATION,EVENT,Sobral 1919 eclipse observation,"Dyson, Eddington, and Davidson 1920",SOURCE_BACKED,INGESTED_DIRECT_SOURCE_CLAIM,"Bounded source discovery identifies an observation event, its station, and its reported participants."
+P33_JOINT_ANNOUNCEMENT,EVENT,1919 joint eclipse announcement,"The Observatory 1919",SOURCE_BACKED,INGESTED_DIRECT_SOURCE_CLAIM,"The contemporary report supports only observation-before-announcement chronology."
+P33_SOBRAL_ASTROGRAPHIC,CONCEPT,Sobral astrographic plate handling,"Dyson, Eddington, and Davidson 1920",SOURCE_BACKED,UNRESOLVED,"Data weighting or motive requires a relationship not faithfully available in the predicate registry."
+P33_EARMAN_GLYMOUR,CONCEPT,Earman and Glymour reassessment,"Earman and Glymour 1980",ANALYTICAL_OBSERVATION,SCHOLARLY_POSITION_CANDIDATE,"Retained as later scholarship; never promoted to a primary-source claim."
+P33_KENNEFICK,CONCEPT,Kennefick reassessment,"Kennefick 2007",ANALYTICAL_OBSERVATION,SCHOLARLY_POSITION_CANDIDATE,"Retained as later scholarship; never promoted to a primary-source claim."
