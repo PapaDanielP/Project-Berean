@@ -150,6 +150,24 @@ echo '--- Phase 27 Genesis 1-50 coverage AFTER ingestion ---'
 run "$root/tests/validation/phase27-genesis-coverage-report.sql"
 run "$root/scripts/validation/validate.sql"
 
+# Phase 28 converts the manual Phase 26-27 ingestion workflow into a deterministic, transactional,
+# idempotent Tier-1 pipeline. It runs the shipped manifest twice against the state established
+# above: the first run reports every classification, the second must change nothing. The step needs
+# the Node toolchain, so it is skipped when dependencies are absent; the SQL validation above is
+# unaffected either way.
+if command -v node >/dev/null 2>&1 && [ -d "$root/node_modules" ]; then
+    echo '--- Phase 28 automated Tier-1 ingestion (first run) ---'
+    (cd "$root" && node_modules/.bin/tsx src/ingestion/run-ingestion.ts \
+        data/ingestion/phase28-genesis-manifest.csv --fail-on-invalid)
+    echo '--- Phase 28 automated Tier-1 ingestion (second run, idempotency) ---'
+    (cd "$root" && node_modules/.bin/tsx src/ingestion/run-ingestion.ts \
+        data/ingestion/phase28-genesis-manifest.csv --fail-on-invalid)
+    run "$root/tests/validation/phase28-ingestion-validation.sql"
+    run "$root/scripts/validation/validate.sql"
+else
+    echo 'skip: Phase 28 ingestion requires Node dependencies (npm ci).'
+fi
+
 run "$root/tests/fixtures/030-negative-integrity-fixture.sql"
 run "$root/scripts/validation/validate.sql"
 "$root/tests/validation/blocking-cases.sh"

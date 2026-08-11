@@ -62,6 +62,14 @@ npm run lint
 npm run build
 ```
 
+### Run the Phase 28 Tier-1 ingestion pipeline
+
+```sh
+npm run ingest -- data/ingestion/phase28-genesis-manifest.csv --dry-run
+```
+
+The pipeline is transactional and idempotent: it persists only auto-accepted manifest rows, reports every classification with reasons, and changes nothing on a second execution. See `docs/04-data/PHASE28_INGESTION_PIPELINE.md`.
+
 ### Start the web app
 
 ```sh
