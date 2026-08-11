@@ -19,40 +19,62 @@ const homeHtml = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Project Berean Explorer (Read-only MVP)</title>
+  <title>Project Berean Explorer</title>
   <link rel="stylesheet" href="/public/styles.css" />
 </head>
 <body>
+  <a class="skip-link" href="#research-heading">Skip to research</a>
   <header>
+    <p class="eyebrow">Provenance-aware scholarly research</p>
     <h1>Project Berean Explorer</h1>
-    <p class="subtitle">Read-only research over claims, evidence, provenance, and registered relationships.</p>
+    <p class="subtitle">Inspect what represented sources, evidence, claims, relationships, and provenance can establish—and what remains unresolved or unrepresented.</p>
+    <span class="read-only">Read-only</span>
   </header>
   <main>
     <aside class="integrity" aria-label="Research integrity">
       <strong>Research integrity.</strong> Source-backed claims, graph-derived results, scholarly observations, and unresolved material remain distinct. Results are not truth declarations.
     </aside>
-    <section aria-labelledby="research-heading">
-      <h2 id="research-heading">Ask Berean</h2>
-      <label for="researchQuestion">Ask a question over the selected persisted datasets</label>
-      <div class="row">
-        <input id="researchQuestion" type="search" maxlength="1000" placeholder="Who participated in observations?" />
-        <button id="researchButton" type="button">Research</button>
+    <section class="research-workspace" aria-labelledby="research-heading">
+      <div>
+        <p class="eyebrow">Natural-language research</p>
+        <h2 id="research-heading">Ask Berean</h2>
+        <p>Berean answers only from represented, persisted structures. It does not generate conclusions.</p>
+        <form id="researchForm">
+          <label for="researchQuestion">Research question</label>
+          <div class="row">
+            <input id="researchQuestion" type="search" maxlength="1000" required placeholder="Who participated in represented events?" />
+            <button id="researchButton" type="submit">Research</button>
+          </div>
+        </form>
+        <p id="researchStatus" class="status" role="status" aria-live="polite"></p>
       </div>
-      <details>
-        <summary>Research scope <span id="scopeCount"></span></summary>
-        <p>Sources and datasets are discovered from persisted Berean records; this selection never creates a domain or reconciles identities.</p>
-        <div id="scopeOptions" aria-live="polite">Loading scope…</div>
+      <details class="scope-panel" open>
+        <summary>Active research scope <span id="scopeCount">Loading…</span></summary>
+        <p>Persisted datasets only. Scope selection never creates a domain or reconciles identities.</p>
+        <label for="scopeFilter">Filter scopes</label>
+        <input id="scopeFilter" type="search" placeholder="Filter by source or dataset" autocomplete="off" />
+        <div class="scope-actions">
+          <button id="selectAllScopes" type="button">Select all</button>
+          <button id="clearScopes" type="button">Clear all</button>
+        </div>
+        <div id="scopeOptions" class="scope-options" aria-live="polite" aria-busy="true">Loading persisted scopes…</div>
+        <p id="scopeEmpty" class="muted" hidden>No persisted scopes match this filter.</p>
       </details>
-      <div id="researchResults" aria-live="polite"></div>
+      <div id="researchResults" class="research-results" aria-live="polite"></div>
     </section>
     <section aria-labelledby="search-heading">
-      <h2 id="search-heading">Global search</h2>
-      <label for="searchInput">Search entities, events, claims, propositions, evidence, sources, datasets, citations, and locators</label>
-      <div class="row">
-        <input id="searchInput" type="search" placeholder="Try: Adam, Gen.1.1, CLAIM_MT..." />
-        <button id="searchButton" type="button">Search</button>
-      </div>
-      <ul id="searchResults" aria-live="polite"></ul>
+      <p class="eyebrow">Keyword search</p>
+      <h2 id="search-heading">Find represented records</h2>
+      <p>Matched records are search hits—not established claims.</p>
+      <form id="searchForm">
+        <label for="searchInput">Entities, events, claims, propositions, evidence, sources, datasets, citations, and locators</label>
+        <div class="row">
+          <input id="searchInput" type="search" maxlength="200" required placeholder="Try: Adam, Gen.1.1, CLAIM_MT…" />
+          <button id="searchButton" type="submit">Search</button>
+        </div>
+      </form>
+      <p id="searchStatus" class="status" role="status" aria-live="polite"></p>
+      <ul id="searchResults" class="result-list"></ul>
     </section>
 
     <nav aria-label="Explorer sections">
@@ -63,7 +85,7 @@ const homeHtml = `<!doctype html>
 
     <section aria-labelledby="detail-heading">
       <h2 id="detail-heading">Details</h2>
-      <div id="detail"></div>
+      <div id="detail"><p class="muted">Select a matched record or research result to inspect it.</p></div>
     </section>
 
     <section aria-labelledby="graph-heading">
@@ -76,6 +98,7 @@ const homeHtml = `<!doctype html>
       <label for="relationFilter">Relation filter</label>
       <input id="relationFilter" type="text" placeholder="Filter relation text" />
       <ul id="graphText" aria-live="polite"></ul>
+      <button id="loadMoreGraph" type="button" hidden>Load more relationships</button>
     </section>
   </main>
   <script type="module" src="/public/app.js"></script>
@@ -87,7 +110,14 @@ export const createApp = (databaseUrl: string): express.Express => {
   const pool = new Pool({ connectionString: databaseUrl });
   const repository = new BereanRepository(pool);
 
-  app.use(express.json());
+  app.disable('x-powered-by');
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
+  app.use(express.json({ limit: '16kb' }));
   app.use('/public', express.static(path.resolve('src/public')));
 
   app.get('/health', (_req, res) => {
@@ -114,7 +144,11 @@ export const createApp = (databaseUrl: string): express.Express => {
         res.status(400).json({ error: 'datasetIds must contain positive integer identifiers' });
         return;
       }
-      res.json(await repository.research(question, rawDatasetIds));
+      if (rawDatasetIds.length > 100) {
+        res.status(400).json({ error: 'datasetIds must contain at most 100 identifiers' });
+        return;
+      }
+      res.json(await repository.research(question, [...new Set<number>(rawDatasetIds)]));
     } catch (error) {
       next(error);
     }
@@ -127,8 +161,16 @@ export const createApp = (databaseUrl: string): express.Express => {
         res.status(400).json({ error: 'query parameter q is required' });
         return;
       }
-      const limit = req.query.limit ? Number.parseInt(String(req.query.limit), 10) : undefined;
-      const results = await repository.search(q, limit);
+      if (q.length > 200) {
+        res.status(400).json({ error: 'query parameter q must be at most 200 characters' });
+        return;
+      }
+      const limit = req.query.limit === undefined ? undefined : toStrictInt(req.query.limit);
+      if (req.query.limit !== undefined && !limit) {
+        res.status(400).json({ error: 'limit must be a positive integer' });
+        return;
+      }
+      const results = await repository.search(q, limit ?? undefined);
       res.json({ query: q, results });
     } catch (error) {
       next(error);
@@ -356,8 +398,8 @@ export const createApp = (databaseUrl: string): express.Express => {
     try {
       const nodeType = String(req.query.nodeType ?? '').trim();
       const nodeId = toInt(String(req.query.nodeId ?? ''));
-      if (!nodeType || !nodeId) {
-        res.status(400).json({ error: 'nodeType and nodeId are required' });
+      if (!['entity', 'claim'].includes(nodeType) || !nodeId) {
+        res.status(400).json({ error: 'nodeType must be entity or claim and nodeId must be a positive integer' });
         return;
       }
       const graph = await repository.getGraphNeighborhood(nodeType, nodeId);
@@ -371,8 +413,8 @@ export const createApp = (databaseUrl: string): express.Express => {
     res.type('html').send(homeHtml);
   });
 
-  app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    res.status(500).json({ error: 'internal_error', message: error.message });
+  app.use((_error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    res.status(500).json({ error: 'internal_error', message: 'The request could not be completed.' });
   });
 
   return app;

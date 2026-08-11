@@ -85,6 +85,17 @@ beforeAll(async () => {
 });
 
 describe('read-only API', () => {
+  it('serves an accessible Explorer shell with distinct search and research workflows', async () => {
+    const response = await request(app).get('/');
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('id="scopeFilter"');
+    expect(response.text).toContain('id="selectAllScopes"');
+    expect(response.text).toContain('id="clearScopes"');
+    expect(response.text).toContain('id="researchStatus"');
+    expect(response.text).toContain('Keyword search');
+    expect(response.text).toContain('Natural-language research');
+  });
+
   it('discovers research scope from persisted sources and datasets', async () => {
     const response = await request(app).get('/api/research/scope');
     expect(response.status).toBe(200);
@@ -106,6 +117,36 @@ describe('read-only API', () => {
     expect(response.body.results.length).toBeLessThanOrEqual(50);
   });
 
+  it('supports all, single, and multiple persisted dataset scopes', async () => {
+    const scope = await request(app).get('/api/research/scope');
+    const all = await request(app).post('/api/research').send({ question: 'Who participated in events?' });
+    expect(all.status).toBe(200);
+    expect(all.body.plan.scope.dataset_ids).toEqual([]);
+    expect(all.body.results.length).toBeGreaterThan(0);
+
+    const representedDatasetId = Number(all.body.results[0].dataset_id);
+    const otherDatasetId = scope.body.datasets
+      .map((dataset: { dataset_id: number | string }) => Number(dataset.dataset_id))
+      .find((datasetId: number) => datasetId !== representedDatasetId);
+    expect(otherDatasetId).toBeTruthy();
+    const datasetIds = [representedDatasetId, otherDatasetId];
+
+    const single = await request(app)
+      .post('/api/research')
+      .send({ question: 'Who participated in events?', datasetIds: datasetIds.slice(0, 1) });
+    expect(single.status).toBe(200);
+    expect(single.body.plan.scope.dataset_ids).toEqual(datasetIds.slice(0, 1));
+    expect(single.body.results.length).toBeGreaterThan(0);
+    expect(single.body.results.every((result: { dataset_id: number | string }) => Number(result.dataset_id) === datasetIds[0])).toBe(true);
+
+    const multiple = await request(app)
+      .post('/api/research')
+      .send({ question: 'Who participated in events?', datasetIds });
+    expect(multiple.status).toBe(200);
+    expect(multiple.body.plan.scope.dataset_ids).toEqual(datasetIds);
+    expect(multiple.body.results.every((result: { dataset_id: number | string }) => datasetIds.includes(Number(result.dataset_id)))).toBe(true);
+  });
+
   it('does not represent requests for proof as a Berean fact', async () => {
     const response = await request(app)
       .post('/api/research')
@@ -113,6 +154,14 @@ describe('read-only API', () => {
     expect(response.status).toBe(200);
     expect(response.body.capability).toBe('NOT_REPRESENTED');
     expect(response.body.results).toEqual([]);
+  });
+
+  it('validates bounded research and keyword-search input', async () => {
+    expect((await request(app).post('/api/research').send({ question: 'x', datasetIds: [1, '2'] })).status).toBe(400);
+    expect((await request(app).post('/api/research').send({ question: 'x', datasetIds: Array.from({ length: 101 }, (_, index) => index + 1) })).status).toBe(400);
+    expect((await request(app).get('/api/search').query({ q: 'x'.repeat(201) })).status).toBe(400);
+    expect((await request(app).get('/api/search').query({ q: 'adam', limit: 'not-a-number' })).status).toBe(400);
+    expect((await request(app).get('/api/graph').query({ nodeType: 'dataset', nodeId: 1 })).status).toBe(400);
   });
 
   it('searches across entities and locators', async () => {
