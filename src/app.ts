@@ -25,9 +25,26 @@ const homeHtml = `<!doctype html>
 <body>
   <header>
     <h1>Project Berean Explorer</h1>
-    <p class="subtitle">Read-only exploration of claims, propositions, evidence, and provenance.</p>
+    <p class="subtitle">Read-only research over claims, evidence, provenance, and registered relationships.</p>
   </header>
   <main>
+    <aside class="integrity" aria-label="Research integrity">
+      <strong>Research integrity.</strong> Source-backed claims, graph-derived results, scholarly observations, and unresolved material remain distinct. Results are not truth declarations.
+    </aside>
+    <section aria-labelledby="research-heading">
+      <h2 id="research-heading">Ask Berean</h2>
+      <label for="researchQuestion">Ask a question over the selected persisted datasets</label>
+      <div class="row">
+        <input id="researchQuestion" type="search" maxlength="1000" placeholder="Who participated in observations?" />
+        <button id="researchButton" type="button">Research</button>
+      </div>
+      <details>
+        <summary>Research scope <span id="scopeCount"></span></summary>
+        <p>Sources and datasets are discovered from persisted Berean records; this selection never creates a domain or reconciles identities.</p>
+        <div id="scopeOptions" aria-live="polite">Loading scope…</div>
+      </details>
+      <div id="researchResults" aria-live="polite"></div>
+    </section>
     <section aria-labelledby="search-heading">
       <h2 id="search-heading">Global search</h2>
       <label for="searchInput">Search entities, events, claims, propositions, evidence, sources, datasets, citations, and locators</label>
@@ -75,6 +92,32 @@ export const createApp = (databaseUrl: string): express.Express => {
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', mode: 'read-only' });
+  });
+
+  app.get('/api/research/scope', async (_req, res, next) => {
+    try {
+      res.json(await repository.getResearchScope());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/research', async (req, res, next) => {
+    try {
+      const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+      const rawDatasetIds = Array.isArray(req.body?.datasetIds) ? req.body.datasetIds : [];
+      if (!question || question.length > 1000) {
+        res.status(400).json({ error: 'question is required and must be at most 1000 characters' });
+        return;
+      }
+      if (!rawDatasetIds.every((id: unknown) => typeof id === 'number' && Number.isSafeInteger(id) && id > 0)) {
+        res.status(400).json({ error: 'datasetIds must contain positive integer identifiers' });
+        return;
+      }
+      res.json(await repository.research(question, rawDatasetIds));
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get('/api/search', async (req, res, next) => {

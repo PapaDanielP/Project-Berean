@@ -85,6 +85,36 @@ beforeAll(async () => {
 });
 
 describe('read-only API', () => {
+  it('discovers research scope from persisted sources and datasets', async () => {
+    const response = await request(app).get('/api/research/scope');
+    expect(response.status).toBe(200);
+    expect(response.body.sources.length).toBeGreaterThan(0);
+    expect(response.body.datasets.length).toBeGreaterThan(0);
+    expect(response.body.inventory.claims).toBeGreaterThan(0);
+  });
+
+  it('returns an inspectable bounded participation plan without persisting research', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const response = await request(app)
+      .post('/api/research')
+      .send({ question: 'Who participated in observations?' });
+    const after = await snapshotPersistentTableCounts();
+    expect(response.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(response.body.plan.scope.retrieval_scope).toBe('BEREAN_ONLY');
+    expect(response.body.plan.candidate_predicates.length).toBeGreaterThan(0);
+    expect(response.body.results.length).toBeLessThanOrEqual(50);
+  });
+
+  it('does not represent requests for proof as a Berean fact', async () => {
+    const response = await request(app)
+      .post('/api/research')
+      .send({ question: 'Did an observation prove a theory?' });
+    expect(response.status).toBe(200);
+    expect(response.body.capability).toBe('NOT_REPRESENTED');
+    expect(response.body.results).toEqual([]);
+  });
+
   it('searches across entities and locators', async () => {
     const response = await request(app).get('/api/search').query({ q: 'Gen.1.1', limit: 20 });
     expect(response.status).toBe(200);
