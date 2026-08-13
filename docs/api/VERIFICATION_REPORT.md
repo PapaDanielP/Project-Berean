@@ -12,7 +12,7 @@ A local PostgreSQL 16 service was started and a disposable `berean_test` databas
 
 - `PGUSER=runner`
 - `PGPASSWORD=runner`
-- `DATABASE_URL=******localhost:5432/berean_test`
+- `DATABASE_URL=postgresql://runner@localhost:5432/berean_test` (with `PGPASSWORD` supplied separately)
 
 ## Automated command results
 
