@@ -85,6 +85,36 @@ beforeAll(async () => {
 });
 
 describe('read-only API', () => {
+  it('exposes a versioned read-only API with documented schema boundaries', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const [health, capabilities, entities, predicates, openapi] = await Promise.all([
+      request(app).get('/api/v1/health'),
+      request(app).get('/api/v1/capabilities'),
+      request(app).get('/api/v1/entities').query({ limit: 5 }),
+      request(app).get('/api/v1/registry/predicates'),
+      request(app).get('/openapi.json')
+    ]);
+    const after = await snapshotPersistentTableCounts();
+
+    expect(health.body).toMatchObject({ status: 'ok', api_version: 'v1', mode: 'read-only' });
+    expect(capabilities.body.limitations.some((item: { status: string }) => item.status === 'NOT_REPRESENTED')).toBe(true);
+    expect(entities.status).toBe(200);
+    expect(entities.body.results.length).toBeGreaterThan(0);
+    expect(predicates.body.results.length).toBeGreaterThan(0);
+    expect(openapi.body.openapi).toBe('3.1.0');
+    expect(after).toEqual(before);
+  });
+
+  it('rejects unavailable v1 writes with a structured limitation instead of mutating knowledge', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const response = await request(app).post('/api/v1/corpora').send({ name: 'Not persisted' });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(response.status).toBe(501);
+    expect(response.body.error.code).toBe('NOT_REPRESENTED');
+    expect(after).toEqual(before);
+  });
+
   it('serves an accessible Explorer shell with distinct search and research workflows', async () => {
     const response = await request(app).get('/');
     expect(response.status).toBe(200);
