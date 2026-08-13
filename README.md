@@ -52,4 +52,5 @@ bash scripts/validation/run-postgres-validation.sh
 
 - Ingestion manifests and guidance: [`data/ingestion/README.md`](data/ingestion/README.md)
 - Candidate review inputs: [`data/candidates/README.md`](data/candidates/README.md)
-- Historical phase records: [`docs/04-data/`](docs/04-data/) and [`docs/phases/`](docs/phases/)
+- Historical phase records: [`docs/04-data/`](docs/04-data/) and [`docs/phases/`](docs/phases/) (see [`docs/phases/README.md`](docs/phases/README.md) for the canonical index)
+- Repository consolidation / structural audit: [`docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md`](docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md)

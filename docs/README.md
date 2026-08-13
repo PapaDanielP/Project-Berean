@@ -35,8 +35,14 @@ This index defines documentation authority and placement for the current reposit
 - [`06-decisions/ADR-0003-reference-schema-boundaries.md`](./06-decisions/ADR-0003-reference-schema-boundaries.md)
 
 ### PHASE RECORD (historical, non-authoritative for current architecture)
-- Phase implementation history in [`04-data/`](./04-data/)
-- Later independent phase studies in [`phases/`](./phases/)
+- [`phases/README.md`](./phases/README.md) — canonical phase-history index (Phase 6–37R/37B).
+- Legacy Phase 6–32 implementation history in [`04-data/`](./04-data/) (see [`04-data/README.md`](./04-data/README.md) for its index).
+- Later independent phase studies (Phase 33–37R/37B) in [`phases/`](./phases/).
+
+### REVIEW / AUDIT
+- [`07-review/REPOSITORY_CONSOLIDATION_REPORT.md`](./07-review/REPOSITORY_CONSOLIDATION_REPORT.md) — repository-wide documentation and structural integrity audit.
+- [`07-review/REMEDIATION-REPORT.md`](./07-review/REMEDIATION-REPORT.md) — architecture alignment and remediation record.
+- [`07-review/WEB_APP_MVP_REPORT.md`](./07-review/WEB_APP_MVP_REPORT.md) — MVP review record.
 
 ### GENERATED / TEST ARTIFACTS
 - SQL fixtures: `tests/fixtures/`
