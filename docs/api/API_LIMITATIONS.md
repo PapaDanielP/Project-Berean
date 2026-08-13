@@ -122,20 +122,34 @@ asserts that a stale update leaves the name, status, version, and audit-event co
 
 Classification: **IMPLEMENTED** as a documented, tested divergence. Evidence: `tests/app/app.test.ts`.
 
-## 8. Capability classes by domain concern
+## 8. Capability maturity by API area
 
-| Concern | Current state |
-|---|---|
-| Read-only exploration of persisted knowledge | IMPLEMENTED |
-| Controlled workflow state | IMPLEMENTED |
-| Source-backed authoring | IMPLEMENTED |
-| Identity proposal and review | IMPLEMENTED + REQUIRES_HUMAN_REVIEW |
-| Background execution queue persistence | IMPLEMENTED (queueing) + REQUIRES_SYSTEM_WORKER (execution) |
-| Full OpenAPI contract | IMPLEMENTED (drift-tested) |
-| Automatic truth / contradiction / causal inference | NOT_IMPLEMENTED / INTENTIONALLY_NOT_REPRESENTED |
-| External network acquisition via API | NOT_IMPLEMENTED / REQUIRES_FUTURE_ARCHITECTURE |
+| Area | Maturity | Evidence |
+|---|---|---|
+| Read | IMPLEMENTED | `GET /api/search`, `GET /api/v1/:resource`, `GET /api/v1/:resource/:id`, coverage in `tests/app/app.test.ts` |
+| Research | IMPLEMENTED (bounded) | `POST /api/research`, `POST /api/v1/research`, capability classifications and provenance-aware limits |
+| Administration | IMPLEMENTED | `GET /api/v1/admin/:resource`, role-gated, audited reads |
+| Discovery | PARTIAL | Request/candidate/review are implemented; automatic discovery execution requires separate worker |
+| Ingestion | PARTIAL | Queueing + CLI ingestion are implemented; durable asynchronous execution is external |
+| Knowledge authoring | IMPLEMENTED + REQUIRES_HUMAN_REVIEW | source registration, source records, evidence, claims, and explicit review boundaries |
+| Identity reconciliation | IMPLEMENTED + REQUIRES_HUMAN_REVIEW | `POST /api/v1/identity-mappings` + explicit review transition |
+| Scholarly review | PARTIAL | Scholarly observations and candidate review are represented; no truth adjudication API |
+| Derivation | IMPLEMENTED (structural) | derivation creation + eligibility check; no automatic claim promotion |
+| Validation | PARTIAL | validation queueing and SQL validation are implemented; worker execution is external |
+| Operations | PARTIAL | job queue status/retry/cancel and audit are implemented; no in-process durable worker |
+| Security | IMPLEMENTED | bearer auth, ordered roles, parameterized SQL, bounded inputs, transaction+audit coupling |
+| Production readiness | PARTIAL | strong boundaries and validation exist; no shipped worker/external retrieval subsystem |
 
-## 9. What should deliberately remain non-automatic
+## 9. What Berean APIs cannot currently do
+
+- adjudicate truth, prove claims, or pick a single "correct" scholarly interpretation;
+- infer contradiction, superiority, winner/loser, causation, or membership from co-participation;
+- auto-promote discovery candidates to evidence, evidence to claims, or derivations to claims;
+- auto-promote `PROPOSED` identity mappings to `ACTIVE`;
+- execute queued jobs end-to-end without an external SYSTEM worker;
+- perform arbitrary external URL retrieval, filesystem reads, SQL execution, or registry mutation.
+
+## 10. What should deliberately remain non-automatic
 
 The current architecture and tests explicitly argue against turning these into automatic API decisions:
 
@@ -146,7 +160,7 @@ The current architecture and tests explicitly argue against turning these into a
 - superiority / victory / causation narratives,
 - treating absence or `NOT_REPRESENTED` as falsity.
 
-## 10. Related documents
+## 11. Related documents
 
 - [`API_EPISTEMIC_BOUNDARIES.md`](./API_EPISTEMIC_BOUNDARIES.md) — the distinctions above and where each is enforced.
 - [`API_SECURITY_MODEL.md`](./API_SECURITY_MODEL.md) — authentication, roles, transactionality, and audit.

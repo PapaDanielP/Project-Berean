@@ -40,6 +40,14 @@ Express path to its OpenAPI form, and asserts:
 | No test detecting drift | **Closed** — `tests/app/openapi-coverage.test.ts` |
 | Registry capabilities redirect response omitted | **Closed** — `GET /api/v1/registry/capabilities` documents its `307` redirect |
 
+## Explicit current gap status
+
+- **Implemented but undocumented endpoints:** none identified.
+- **Implemented but untested endpoints:** none identified at route-surface level; route/documentation drift is enforced by `tests/app/openapi-coverage.test.ts`.
+- **Remaining OpenAPI gaps:** none at route-surface level for implemented non-static routes.
+
+Note: route-surface completeness does not replace behavior-level testing for every response shape.
+
 ## Deliberate documentation boundaries
 
 - The Explorer shell (`GET *`) and the `/api/v1` catch-all are described as fallback behaviours rather than as
