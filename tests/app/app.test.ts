@@ -205,6 +205,11 @@ describe('read-only API', () => {
     expect(first.status).toBe(202);
     expect(replay.status).toBe(202);
     expect(replay.body.job_id).toBe(first.body.job_id);
+    const conflict = await authorized('post', '/api/v1/validation-runs')
+      .set('Idempotency-Key', 'wce-validation-1')
+      .send({ corpusId, validationTypes: ['SCHEMA'] });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.error.code).toBe('IDEMPOTENCY_CONFLICT');
 
     await expect(pool.query(`UPDATE audit_event SET detail = 'changed'`)).rejects.toThrow(/append-only/);
   });
@@ -230,6 +235,12 @@ describe('read-only API', () => {
     expect(unauthenticated.status).toBe(401);
     expect(invalid.status).toBe(401);
     expect(forbidden.status).toBe(403);
+    expect(() => createApp(databaseUrl, [{
+      key: 'invalid-role',
+      displayName: 'Invalid Role',
+      role: 'UNRECOGNIZED' as 'READER',
+      tokenHash: createHash('sha256').update('invalid-role-token').digest('hex')
+    }])).toThrow(/Invalid administrative API credential/);
   });
 
   it('keeps analytical evidence out of direct claims and derivations out of claims', async () => {
@@ -287,15 +298,22 @@ describe('read-only API', () => {
   });
 
   it('preserves proposed identity state until explicit review', async () => {
-    const identity = await pool.query('SELECT source_identity_id FROM source_identity ORDER BY source_identity_id LIMIT 1');
+    const identity = await pool.query(
+      `SELECT si.source_identity_id, e.evidence_id
+       FROM source_identity si
+       JOIN dataset d ON d.source_id = si.source_id
+       JOIN source_record sr ON sr.dataset_id = d.dataset_id
+       JOIN evidence e ON e.source_record_id = sr.source_record_id
+       ORDER BY si.source_identity_id, e.evidence_id
+       LIMIT 1`
+    );
     const entity = await pool.query('SELECT entity_id FROM entity ORDER BY entity_id DESC LIMIT 1');
-    const evidence = await pool.query('SELECT evidence_id FROM evidence ORDER BY evidence_id DESC LIMIT 1');
     const proposed = await authorized('post', '/api/v1/identity-mappings').send({
       sourceIdentityId: Number(identity.rows[0].source_identity_id),
       entityId: Number(entity.rows[0].entity_id),
       confidence: 0.5,
       justification: 'Provisional test reconciliation requiring reviewer action.',
-      supportingEvidenceId: Number(evidence.rows[0].evidence_id)
+      supportingEvidenceId: Number(identity.rows[0].evidence_id)
     });
     expect(proposed.status).toBe(201);
     expect(proposed.body.mapping_status_code).toBe('PROPOSED');

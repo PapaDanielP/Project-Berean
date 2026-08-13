@@ -53,6 +53,7 @@ CREATE TABLE asynchronous_job (
     status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN
         ('QUEUED', 'RUNNING', 'WAITING_FOR_REVIEW', 'COMPLETED', 'FAILED', 'CANCELLED')),
     idempotency_key TEXT NOT NULL,
+    request_fingerprint CHAR(64) NOT NULL CHECK (request_fingerprint ~ '^[0-9a-f]{64}$'),
     requested_by_actor_id BIGINT NOT NULL REFERENCES workflow_actor(actor_id),
     correlation_id UUID NOT NULL,
     attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),

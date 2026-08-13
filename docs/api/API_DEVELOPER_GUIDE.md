@@ -233,8 +233,9 @@ validations|audits|exports}?limit=1..100`. They require at least `READER`.
 | `REVIEWER` | review candidates/mappings; author validated claims; queue validation |
 | `ADMINISTRATOR` | create/archive/version corpora; queue controlled exports |
 
-Jobs require `Idempotency-Key`; duplicate replay by actor and job type returns
-the existing job. Corpus updates require numeric `If-Match` and return
+Jobs require `Idempotency-Key`; exact duplicate replay by actor and job type
+returns the existing job, while a different payload returns
+`IDEMPOTENCY_CONFLICT`. Corpus updates require numeric `If-Match` and return
 `STALE_VERSION` on conflict. Mutations return an `X-Correlation-Id` and append
 an audit event in the same transaction. Audit and validation results are
 database-immutable.

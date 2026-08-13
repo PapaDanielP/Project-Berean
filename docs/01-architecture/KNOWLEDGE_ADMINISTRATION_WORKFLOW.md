@@ -73,8 +73,10 @@ server-side. When credentials are absent, administration returns
 `AUTH_NOT_CONFIGURED`, rather than trusting identity headers.
 
 PostgreSQL transactions couple each mutation with audit. Stable unique keys and
-job idempotency prevent duplicate replay. Corpus updates require `If-Match` and
-reject stale versions. SQL is parameterized; body, string, array, identifier,
+payload-bound job idempotency prevent duplicate or ambiguous replay. Reusing a
+key with a different request returns `IDEMPOTENCY_CONFLICT`. Corpus updates
+require `If-Match` and reject stale versions. SQL is parameterized; body,
+string, array, identifier,
 and result bounds are enforced. Errors do not disclose SQL. Validation and
 audit rows reject update/delete at the database layer.
 

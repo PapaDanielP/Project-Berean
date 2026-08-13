@@ -113,13 +113,15 @@ export class AdministrationRepository {
       const actorId = await this.actorId(client, actor);
       const job = await client.query(
         `INSERT INTO asynchronous_job
-           (job_type, idempotency_key, requested_by_actor_id, correlation_id)
-         VALUES ('DISCOVERY', $1, $2, $3)
+           (job_type, idempotency_key, request_fingerprint, requested_by_actor_id, correlation_id)
+         VALUES ('DISCOVERY', $1, $2, $3, $4)
          ON CONFLICT (requested_by_actor_id, job_type, idempotency_key)
          DO UPDATE SET updated_at = asynchronous_job.updated_at
+         WHERE asynchronous_job.request_fingerprint = EXCLUDED.request_fingerprint
          RETURNING *`,
-        [input.idempotencyKey, actorId, correlationId]
+        [input.idempotencyKey, input.requestFingerprint, actorId, correlationId]
       );
+      if (!job.rowCount) throw new Error('IDEMPOTENCY_KEY_REUSED');
       const jobRow = job.rows[0];
       const request = await client.query(
         `INSERT INTO discovery_request
@@ -282,7 +284,15 @@ export class AdministrationRepository {
     return this.transaction(async (client) => {
       const actorId = await this.actorId(client, actor);
       const evidenceIds = input.evidenceIds as number[];
-      if (input.claimType !== 'DERIVED_CLAIM') {
+      if (input.claimType === 'DERIVED_CLAIM') {
+        const derivation = await client.query(
+          `SELECT 1 FROM derivation d
+           WHERE d.derivation_id = $1
+             AND EXISTS (SELECT 1 FROM derivation_input di WHERE di.derivation_id = d.derivation_id)`,
+          [input.derivationId]
+        );
+        if (!derivation.rowCount) throw new Error('DERIVATION_INPUT_REQUIRED');
+      } else {
         const eligible = await client.query(
           `SELECT count(*)::int AS count
            FROM evidence e
@@ -333,6 +343,16 @@ export class AdministrationRepository {
   async createIdentityMapping(input: Values, actor: AuthenticatedActor, correlationId: string): Promise<Values> {
     return this.transaction(async (client) => {
       const actorId = await this.actorId(client, actor);
+      const ancestry = await client.query(
+        `SELECT 1
+         FROM source_identity si
+         JOIN evidence e ON e.evidence_id = $2
+         JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         JOIN dataset d ON d.dataset_id = sr.dataset_id
+         WHERE si.source_identity_id = $1 AND si.source_id = d.source_id`,
+        [input.sourceIdentityId, input.supportingEvidenceId]
+      );
+      if (!ancestry.rowCount) throw new Error('IDENTITY_EVIDENCE_SOURCE_MISMATCH');
       const result = await client.query(
         `INSERT INTO entity_source_mapping
            (source_identity_id, entity_id, mapping_status_code, confidence,
@@ -358,6 +378,17 @@ export class AdministrationRepository {
   ): Promise<Values | null> {
     return this.transaction(async (client) => {
       const actorId = await this.actorId(client, actor);
+      const ancestry = await client.query(
+        `SELECT 1
+         FROM entity_source_mapping esm
+         JOIN source_identity si ON si.source_identity_id = esm.source_identity_id
+         JOIN evidence e ON e.evidence_id = esm.supporting_evidence_id
+         JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         JOIN dataset d ON d.dataset_id = sr.dataset_id
+         WHERE esm.entity_source_mapping_id = $1 AND si.source_id = d.source_id`,
+        [mappingId]
+      );
+      if (!ancestry.rowCount) throw new Error('IDENTITY_EVIDENCE_SOURCE_MISMATCH');
       const result = await client.query(
         `UPDATE entity_source_mapping
          SET mapping_status_code = $2, notes = concat_ws(E'\n', notes, $3::text)
@@ -402,13 +433,15 @@ export class AdministrationRepository {
       const actorId = await this.actorId(client, actor);
       const result = await client.query(
         `INSERT INTO asynchronous_job
-           (job_type, idempotency_key, requested_by_actor_id, correlation_id)
-         VALUES ($1,$2,$3,$4)
+           (job_type, idempotency_key, request_fingerprint, requested_by_actor_id, correlation_id)
+         VALUES ($1,$2,$3,$4,$5)
          ON CONFLICT (requested_by_actor_id, job_type, idempotency_key)
          DO UPDATE SET updated_at = asynchronous_job.updated_at
+         WHERE asynchronous_job.request_fingerprint = EXCLUDED.request_fingerprint
          RETURNING *`,
-        [jobType, input.idempotencyKey, actorId, correlationId]
+        [jobType, input.idempotencyKey, input.requestFingerprint, actorId, correlationId]
       );
+      if (!result.rowCount) throw new Error('IDEMPOTENCY_KEY_REUSED');
       const job = result.rows[0];
       if (jobType === 'INGESTION') {
         await client.query(
@@ -442,6 +475,24 @@ export class AdministrationRepository {
   async changeJob(jobId: number, action: 'cancel' | 'retry', actor: AuthenticatedActor, correlationId: string): Promise<Values | null> {
     return this.transaction(async (client) => {
       const actorId = await this.actorId(client, actor);
+      const job = await client.query(
+        'SELECT job_type, requested_by_actor_id FROM asynchronous_job WHERE job_id = $1',
+        [jobId]
+      );
+      if (!job.rowCount) return null;
+      const requiredRole = job.rows[0].job_type === 'EXPORT'
+        ? 'ADMINISTRATOR'
+        : job.rows[0].job_type === 'VALIDATION'
+          ? 'REVIEWER'
+          : 'CONTENT_EDITOR';
+      const roleRank: Record<string, number> = {
+        READER: 0, RESEARCHER: 1, CONTENT_EDITOR: 2, REVIEWER: 3, ADMINISTRATOR: 4, SYSTEM: 5
+      };
+      const ownsJob = Number(job.rows[0].requested_by_actor_id) === actorId;
+      if (roleRank[actor.role] < roleRank[requiredRole] ||
+          (!ownsJob && actor.role !== 'ADMINISTRATOR' && actor.role !== 'SYSTEM')) {
+        throw new Error('JOB_ACTION_FORBIDDEN');
+      }
       const result = action === 'cancel'
         ? await client.query(
             `UPDATE asynchronous_job

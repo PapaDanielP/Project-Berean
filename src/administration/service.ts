@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { AuthenticatedActor } from '../auth.js';
 import { AdministrationRepository } from './repository.js';
 
@@ -46,6 +47,8 @@ const key = (value: unknown, field: string): string => {
 };
 
 const idempotencyKey = (value: unknown): string => key(value, 'Idempotency-Key');
+const fingerprint = (value: Values): string =>
+  createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 export class AdministrationService {
   constructor(private readonly repository: AdministrationRepository) {}
@@ -82,7 +85,7 @@ export class AdministrationService {
     if (!Array.isArray(requestedTypes) || requestedTypes.length > 10) {
       throw new AdministrationError(400, 'INVALID_REQUEST', 'requestedTypes must be an array of at most 10 values.');
     }
-    return this.repository.createDiscovery({
+    const request: Values = {
       corpusId: identifier(body.corpusId, 'corpusId'),
       researchTopicId: body.researchTopicId === undefined ? undefined : identifier(body.researchTopicId, 'researchTopicId'),
       requestKind: oneOf(body.requestKind, 'requestKind', ['SOURCE_DISCOVERY', 'CANDIDATE_DISCOVERY', 'GAP_DISCOVERY'] as const),
@@ -93,7 +96,9 @@ export class AdministrationService {
         'CONCEPT', 'RELATIONSHIP', 'SOURCE_IDENTITY', 'SOURCE'
       ] as const)),
       idempotencyKey: idempotencyKey(requestIdempotencyKey)
-    }, actor, correlationId);
+    };
+    request.requestFingerprint = fingerprint(request);
+    return this.repository.createDiscovery(request, actor, correlationId);
   }
 
   addCandidate(requestId: number, body: Values, actor: AuthenticatedActor, correlationId: string) {
@@ -188,15 +193,23 @@ export class AdministrationService {
         Number(objectEntityId !== undefined) + Number(objectEventId !== undefined) + Number(objectTypedValueId !== undefined) !== 1) {
       throw new AdministrationError(400, 'INVALID_PROPOSITION', 'Exactly one subject and one object are required.');
     }
+    const claimType = oneOf(body.claimType, 'claimType', ['DIRECT_SOURCE_CLAIM', 'INTERPRETIVE_CLAIM', 'DERIVED_CLAIM'] as const);
+    const derivationId = body.derivationId === undefined ? undefined : identifier(body.derivationId, 'derivationId');
+    if (claimType === 'DERIVED_CLAIM' && derivationId === undefined) {
+      throw new AdministrationError(422, 'DERIVATION_REQUIRED', 'A derived claim requires a derivation with explicit inputs.');
+    }
+    if (claimType !== 'DERIVED_CLAIM' && derivationId !== undefined) {
+      throw new AdministrationError(422, 'DERIVATION_NOT_ALLOWED', 'A non-derived claim cannot reference a derivation.');
+    }
     return this.repository.createClaim({
       key: key(body.key, 'key'),
       predicate: key(body.predicate, 'predicate'),
       subjectEntityId, subjectEventId, objectEntityId, objectEventId, objectTypedValueId,
-      claimType: oneOf(body.claimType, 'claimType', ['DIRECT_SOURCE_CLAIM', 'INTERPRETIVE_CLAIM', 'DERIVED_CLAIM'] as const),
+      claimType,
       status: body.status === undefined ? 'UNDER_REVIEW' : oneOf(body.status, 'status', ['ACTIVE', 'UNDER_REVIEW'] as const),
       statement: optionalText(body.statement, 'statement', 4000),
       notes: optionalText(body.notes, 'notes', 4000),
-      derivationId: body.derivationId === undefined ? undefined : identifier(body.derivationId, 'derivationId'),
+      derivationId,
       evidenceIds: body.evidenceIds.map((value, index) => identifier(value, `evidenceIds[${index}]`)),
       evidenceRelation: body.evidenceRelation === undefined ? 'SUPPORTS' : oneOf(
         body.evidenceRelation, 'evidenceRelation', ['SUPPORTS', 'CONTRADICTS', 'QUALIFIES'] as const
@@ -273,6 +286,7 @@ export class AdministrationService {
       includeRawContent: body.includeRawContent === true,
       reproducibilityNote: text(body.reproducibilityNote, 'reproducibilityNote', 4000)
     });
+    common.requestFingerprint = fingerprint(common);
     return this.repository.createJob(type, common, actor, correlationId);
   }
 }

@@ -28,6 +28,7 @@ const rank: Record<Role, number> = {
   ADMINISTRATOR: 4,
   SYSTEM: 5
 };
+const roles = new Set<Role>(Object.keys(rank) as Role[]);
 
 const digest = (token: string): Buffer => createHash('sha256').update(token, 'utf8').digest();
 
@@ -35,10 +36,13 @@ export class BearerAuthenticator {
   private readonly credentials: Array<ApiCredential & { digest: Buffer }>;
 
   constructor(credentials: ApiCredential[]) {
-    this.credentials = credentials.map((credential) => ({
-      ...credential,
-      digest: Buffer.from(credential.tokenHash, 'hex')
-    })).filter((credential) => credential.digest.length === 32);
+    this.credentials = credentials.map((credential) => {
+      if (!roles.has(credential.role) || !credential.key || !credential.displayName ||
+          !/^[0-9a-f]{64}$/.test(credential.tokenHash)) {
+        throw new Error('Invalid administrative API credential configuration.');
+      }
+      return { ...credential, digest: Buffer.from(credential.tokenHash, 'hex') };
+    });
   }
 
   require(minimumRole: Role) {
@@ -80,5 +84,8 @@ export const credentialsFromEnvironment = (): ApiCredential[] => {
   if (!encoded) return [];
   const value: unknown = JSON.parse(encoded);
   if (!Array.isArray(value)) throw new Error('BEREAN_API_CREDENTIALS must be a JSON array.');
-  return value as ApiCredential[];
+  return value.map((entry) => {
+    if (!entry || typeof entry !== 'object') throw new Error('Each API credential must be an object.');
+    return entry as ApiCredential;
+  });
 };

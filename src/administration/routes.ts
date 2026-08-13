@@ -25,7 +25,9 @@ export const registerAdministrationRoutes = (
 
   router.use((req, res, next) => {
     const supplied = req.get('x-correlation-id');
-    req.correlationId = supplied && /^[A-Za-z0-9_.:-]{1,100}$/.test(supplied) ? supplied : randomUUID();
+    req.correlationId = supplied && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supplied)
+      ? supplied
+      : randomUUID();
     res.setHeader('X-Correlation-Id', req.correlationId);
     next();
   });
@@ -202,6 +204,28 @@ export const administrationErrorHandler = (
         message: 'Direct and interpretive claims require cited SOURCE_OBSERVATION evidence; analytical observations are not promoted automatically.'
       }
     });
+    return;
+  }
+  if (error.message === 'IDEMPOTENCY_KEY_REUSED') {
+    res.status(409).json({
+      error: { code: 'IDEMPOTENCY_CONFLICT', message: 'The idempotency key was already used with a different request.' }
+    });
+    return;
+  }
+  if (error.message === 'DERIVATION_INPUT_REQUIRED') {
+    res.status(422).json({
+      error: { code: error.message, message: 'A derived claim requires an existing derivation with explicit inputs.' }
+    });
+    return;
+  }
+  if (error.message === 'IDENTITY_EVIDENCE_SOURCE_MISMATCH') {
+    res.status(422).json({
+      error: { code: error.message, message: 'Identity reconciliation evidence must originate from the source that supplied the identity.' }
+    });
+    return;
+  }
+  if (error.message === 'JOB_ACTION_FORBIDDEN') {
+    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'The actor cannot change this job.' } });
     return;
   }
   if (error.code === '23505') {
