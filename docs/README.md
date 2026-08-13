@@ -2,6 +2,19 @@
 
 This index defines documentation authority and placement for the current repository.
 
+## Authority hierarchy and conflict resolution
+
+When repository materials disagree, resolve conflicts in this order:
+
+1. **Implementation, schema, code, and executable tests** — `src/`, `schema/sql/`, `tests/`, and `scripts/validation/` define current behavior.
+2. **Authoritative current documentation** — architecture, schema, domain, API, security, workflow, and repository-structure documents listed below explain the current system.
+3. **Reference documentation** — developer guides, capability matrices, OpenAPI gap status, verification notes, and adapter notes support current work but do not override authoritative docs or code.
+4. **Phase records** — historical implementation and validation reports record what was done and concluded at a point in time.
+5. **Validation records** — validation methodology and executable validation evidence support current and historical claims about integrity.
+6. **Historical/archive/review material** — review prompts, remediation notes, proposals, and older reports provide context only.
+
+If a phase or validation record conflicts with current implementation or authoritative documentation, preserve the record as historical evidence and update/link the authoritative documentation instead of rewriting the historical conclusion into a current specification.
+
 ## Documentation authority map
 
 ### AUTHORITATIVE
@@ -35,7 +48,8 @@ This index defines documentation authority and placement for the current reposit
 - [`06-decisions/ADR-0003-reference-schema-boundaries.md`](./06-decisions/ADR-0003-reference-schema-boundaries.md)
 
 ### PHASE RECORD (historical, non-authoritative for current architecture)
-- Phase implementation history in [`04-data/`](./04-data/)
+- Phase index and placement rule: [`phases/README.md`](./phases/README.md)
+- Legacy phase implementation history in [`04-data/README.md`](./04-data/README.md)
 - Later independent phase studies in [`phases/`](./phases/)
 
 ### GENERATED / TEST ARTIFACTS
