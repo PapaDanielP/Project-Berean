@@ -12,7 +12,7 @@ Authoritative architecture references:
 | Method / path | Auth / minimum role | Sync / async | Idempotent? | Concurrency control | Authoritative-knowledge impact | Classification | Tests / evidence |
 |---|---|---|---|---|---|---|---|
 | GET `/health` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
-| GET `/openapi.json` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
+| GET `/openapi.json` | none | sync | n/a | none | none | IMPLEMENTED (complete for the implemented route surface) | `tests/app/app.test.ts`, `tests/app/openapi-coverage.test.ts` |
 | GET `/api-docs` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/research/scope` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts`, manual 2026-08-13 |
 | POST `/api/research` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts`, manual 2026-08-13 |
@@ -23,7 +23,7 @@ Authoritative architecture references:
 | GET `/api/events/:eventId` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/sources` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/sources/:sourceId` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
-| GET `/api/provenance/claims/:claimId` | none | sync | n/a | none | none | IMPLEMENTED | manual 2026-08-13 |
+| GET `/api/provenance/claims/:claimId` | none | sync | n/a | none | none | IMPLEMENTED (intentional compatibility difference: 200 + empty traversal for a missing claim) | `tests/app/app.test.ts` |
 | GET `/api/provenance/explain` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/derivations/check-eligibility` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/exploration/timeline` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
@@ -35,17 +35,17 @@ Authoritative architecture references:
 | GET `/api/v1/capabilities` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/v1/schema` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/v1/registry/:registry` | none | sync | n/a | none | none | IMPLEMENTED | manual 2026-08-13 |
-| GET `/api/v1/search/:resource?` | none | sync | n/a | none | none | PARTIALLY_IMPLEMENTED | manual 2026-08-13; unfiltered search works, some resource filters fail |
+| GET `/api/v1/search/:resource?` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (every supported filter, unknown filter 404, unindexed 501, `NO_MATCH`) |
 | POST `/api/v1/research` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/v1/research/capabilities` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
-| GET `/api/v1/provenance/claim/:id` | none | sync | n/a | none | none | IMPLEMENTED | manual 2026-08-13 |
+| GET `/api/v1/provenance/claim/:id` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (missing claim returns 404) |
 | GET `/api/v1/graph/entity/:id` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/v1/:resource/:id` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts`, code-traced |
 | GET `/api/v1/:resource` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts`, code-traced |
-| wildcard other `/api/v1/*` methods/paths | none | sync | n/a | none | none | IMPLEMENTED | manual 2026-08-13 (`501 NOT_REPRESENTED` for unmatched methods/paths) |
-| GET `/api/v1/admin/:resource` | bearer / `READER` | sync | n/a | none | none | PARTIALLY_IMPLEMENTED | code-traced, manual 2026-08-13; invalid resources return 500 |
+| wildcard other `/api/v1/*` methods/paths | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (`501 NOT_REPRESENTED` for unmatched methods/paths) |
+| GET `/api/v1/admin/:resource` | bearer / `READER` | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (unsupported resource returns 404 without leakage) |
 | POST `/api/v1/corpora` | bearer / `ADMINISTRATOR` | sync | no | none | none (workflow only) | IMPLEMENTED | `tests/app/app.test.ts`, manual 2026-08-13 |
-| PATCH `/api/v1/corpora/:id` | bearer / `ADMINISTRATOR` | sync | no | `If-Match` integer version; stale => `409 STALE_VERSION` | none (workflow only) | IMPLEMENTED | `tests/app/app.test.ts`, manual 2026-08-13 |
+| PATCH `/api/v1/corpora/:id` | bearer / `ADMINISTRATOR` | sync | no | `If-Match` integer version; stale => `409 STALE_VERSION`, no partial commit | none (workflow only) | IMPLEMENTED | `tests/app/app.test.ts` (stale write leaves name, status, version, and audit count unchanged) |
 | POST `/api/v1/research-topics` | bearer / `RESEARCHER` | sync | no | none | none (workflow only) | IMPLEMENTED | code-traced, manual 2026-08-13 |
 | POST `/api/v1/discovery-requests` | bearer / `RESEARCHER` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none (workflow only) | IMPLEMENTED, REQUIRES_SYSTEM_WORKER | `tests/app/app.test.ts`, manual 2026-08-13 |
 | POST `/api/v1/discovery-requests/:id/candidates` | bearer / `RESEARCHER` | sync | no | none | proposed workflow only | IMPLEMENTED, REQUIRES_HUMAN_REVIEW | `tests/app/app.test.ts`, manual 2026-08-13 |
@@ -57,9 +57,9 @@ Authoritative architecture references:
 | POST `/api/v1/identity-mappings` | bearer / `CONTENT_EDITOR` | sync | no | none | proposed reconciliation only | IMPLEMENTED, REQUIRES_HUMAN_REVIEW | `tests/app/app.test.ts`, manual 2026-08-13 |
 | POST `/api/v1/identity-mappings/:id/review` | bearer / `REVIEWER` | sync | no | only `PROPOSED` rows may transition | reviewed/active-or-rejected reconciliation | IMPLEMENTED, REQUIRES_HUMAN_REVIEW | `tests/app/app.test.ts`, manual 2026-08-13 |
 | POST `/api/v1/derivations` | bearer / `RESEARCHER` | sync | no | none | active authoritative derivation metadata only; no claim auto-created | IMPLEMENTED, REQUIRES_HUMAN_REVIEW | `tests/app/app.test.ts` |
-| POST `/api/v1/ingestion-jobs` | bearer / `CONTENT_EDITOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | PARTIALLY_IMPLEMENTED, REQUIRES_SYSTEM_WORKER | code-traced |
-| POST `/api/v1/validation-runs` | bearer / `REVIEWER` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | PARTIALLY_IMPLEMENTED, REQUIRES_SYSTEM_WORKER, REQUIRES_HUMAN_REVIEW | `tests/app/app.test.ts`, manual 2026-08-13 |
-| POST `/api/v1/export-jobs` | bearer / `ADMINISTRATOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | PARTIALLY_IMPLEMENTED, REQUIRES_SYSTEM_WORKER | code-traced |
+| POST `/api/v1/ingestion-jobs` | bearer / `CONTENT_EDITOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | IMPLEMENTED (queue persistence), REQUIRES_SYSTEM_WORKER (execution) | code-traced |
+| POST `/api/v1/validation-runs` | bearer / `REVIEWER` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | IMPLEMENTED (queue persistence), REQUIRES_SYSTEM_WORKER (execution) | `tests/app/app.test.ts` |
+| POST `/api/v1/export-jobs` | bearer / `ADMINISTRATOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | IMPLEMENTED (queue persistence), REQUIRES_SYSTEM_WORKER (execution) | code-traced |
 | POST `/api/v1/jobs/:id/cancel` | bearer / `CONTENT_EDITOR` plus job-type/ownership checks | sync | no | job status gate | none (workflow only) | IMPLEMENTED | manual 2026-08-13 |
 | POST `/api/v1/jobs/:id/retry` | bearer / `CONTENT_EDITOR` plus job-type/ownership checks | sync | no | job status gate | none (workflow only) | IMPLEMENTED | manual 2026-08-13 |
 
@@ -101,3 +101,36 @@ These routes persist queue state immediately, but execution beyond `QUEUED` is o
 - Generalized inference or contradiction classification not already persisted by humans
 - Person-to-organization membership inference from co-participation
 - Treating `NOT_REPRESENTED`, `NO_MATCH`, or locator-only storage as falsity or source silence
+
+## Administrative completeness matrix
+
+For each administrative domain: how it is represented in the database, whether the API exposes it, whether it is
+SQL/script-only, whether exposing more of it would be architecturally safe, and the controls that apply.
+
+| Domain | Database representation | API exposure | SQL / script only | Safe to expose further? | Persistence required | Authorization | Audited | Async / idempotent | Human review |
+|---|---|---|---|---|---|---|---|---|---|
+| Corpus | `corpus`, `corpus_dataset` | `POST /api/v1/corpora`, `PATCH /api/v1/corpora/:id`, `GET /api/v1/admin/corpora` | Deletion is SQL-only by design | Yes for read expansion; **no** for delete — corpora are referenced by discovery, jobs, and exports | Yes | `ADMINISTRATOR` (write), `READER` (read) | Yes | Sync; `If-Match` version | No |
+| Dataset | `dataset` | Created through `POST /api/v1/source-registrations`; read through `GET /api/v1/datasets` | Licence changes are SQL-only | Only with reviewed licence workflow; licence status must not be editable casually | Yes | `CONTENT_EDITOR` | Yes | Sync | No |
+| Source | `source`, `source_type` | `POST /api/v1/source-registrations`, `GET /api/v1/sources` | `source_type` registry is migration-only | Registry mutation must stay migration-only | Yes | `CONTENT_EDITOR` | Yes | Sync; stable-key reuse | No |
+| Source record / citation | `source_record`, `citation`, `evidence_citation` | `POST /api/v1/source-records`, `GET /api/v1/source-records`, `GET /api/v1/citations` | Bulk load via `src/ingestion` | Yes for reads; bulk import must stay a controlled job | Yes | `CONTENT_EDITOR` | Yes | Sync; stable-key reuse | No |
+| Discovery | `discovery_request`, `asynchronous_job` | `POST /api/v1/discovery-requests`, `GET /api/v1/admin/discoveries` | Execution is worker-only (absent) | Yes for status reads; execution requires a `SYSTEM` worker | Yes | `RESEARCHER` | Yes | `202`; `Idempotency-Key` | Downstream review required |
+| Candidate | `discovery_candidate`, `candidate_review` | `POST /api/v1/discovery-requests/:id/candidates`, `POST /api/v1/candidates/:id/review`, `GET /api/v1/admin/candidates` | — | **No** automatic promotion to evidence | Yes | `RESEARCHER` / `REVIEWER` | Yes | Sync; review upserts | **Yes** |
+| Identity | `source_identity`, `entity_source_mapping` | `POST /api/v1/identity-mappings`, `POST /api/v1/identity-mappings/:id/review`, `GET /api/v1/identities`, `GET /api/v1/identity-mappings` | `source_identity` creation is ingestion/SQL-only | Creating identities over HTTP is acceptable only with source provenance; activation must stay reviewed | Yes | `CONTENT_EDITOR` / `REVIEWER` | Yes | Sync; `409 INVALID_MAPPING_STATE` | **Yes** |
+| Ingestion | `asynchronous_job`, `ingestion_job`, `ingestion_result` | `POST /api/v1/ingestion-jobs`, `GET /api/v1/admin/jobs` | Actual ingestion runs through `npm run ingest` (`src/ingestion`) | Yes for queueing and status; arbitrary import endpoints must never exist | Yes | `CONTENT_EDITOR` | Yes | `202`; `Idempotency-Key` | Manifest review |
+| Claim / evidence | `proposition`, `claim`, `claim_evidence`, `evidence`, `derivation`, `derivation_input` | `POST /api/v1/evidence`, `POST /api/v1/claims`, `POST /api/v1/derivations`, plus read routes | Claim retraction and supersession are SQL-only | Retraction could be exposed **only** as a reviewed, audited status transition that preserves the original claim | Yes | `CONTENT_EDITOR` (evidence), `REVIEWER` (claims), `RESEARCHER` (derivations) | Yes | Sync | **Yes** |
+| Validation | `validation_run`, `validation_result` (append-only) | `POST /api/v1/validation-runs`, `GET /api/v1/admin/validations` | Full validation runs via `scripts/validation/run-postgres-validation.sh` | Yes for queue and read; results must remain append-only | Yes | `REVIEWER` | Yes | `202`; `Idempotency-Key` | Interpretation is human |
+| Audit | `audit_event` (append-only) | `GET /api/v1/admin/audits` | — | Read-only forever; no write route may exist | Yes | `READER` | Is the audit | Sync | No |
+| Job control | `asynchronous_job` | `POST /api/v1/jobs/:id/cancel`, `/retry`, `GET /api/v1/admin/jobs` | Worker execution absent | Yes; already state-gated and ownership-checked | Yes | `CONTENT_EDITOR` plus ownership | Yes | Sync; `409 INVALID_JOB_STATE` | No |
+| Export | `export_job` | `POST /api/v1/export-jobs`, `GET /api/v1/admin/exports` | Artifact production is worker-only (absent) | Yes for queueing; artifact delivery needs licence-aware storage design | Yes | `ADMINISTRATOR` | Yes | `202`; `Idempotency-Key` | Licence review |
+
+Capabilities deliberately **not** implemented after this review, with reasons:
+
+| Missing capability | Why it was not added |
+|---|---|
+| Corpus / topic / candidate deletion | Deleting workflow rows would break audit and job references. Archival status already exists. |
+| Claim retraction or supersession route | Requires a reviewed status-transition design that preserves the superseded claim and its provenance. Classification: **REQUIRES_HUMAN_REVIEW**. |
+| Registry (predicate, type) mutation | Registries are controlled vocabularies changed by reviewed migration. Classification: **INTENTIONALLY_NOT_REPRESENTED**. |
+| Single-resource `GET /api/v1/admin/:resource/:id` | No workflow need is demonstrated by tests or fixtures; list plus filter already serves review. Classification: **NOT_IMPLEMENTED**. |
+| Job execution, `validation_result` and `ingestion_result` production | Requires a durable worker. Classification: **REQUIRES_SYSTEM_WORKER**. |
+| Export artifact download | Requires licence-aware artifact storage. Classification: **REQUIRES_SYSTEM_WORKER** and **REQUIRES_EXTERNAL_SOURCE_ACCESS**. |
+| `source_identity` creation over HTTP | Identities must arrive with source provenance through ingestion. Classification: **REQUIRES_HUMAN_REVIEW**. |

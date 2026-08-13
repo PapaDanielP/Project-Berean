@@ -156,9 +156,11 @@ For the complete setup and contribution rules, see [`docs/00-project/DEVELOPER_G
 - [Knowledge administration and research workflow architecture](docs/01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md)
 - [`docs/api/API_DEVELOPER_GUIDE.md`](docs/api/API_DEVELOPER_GUIDE.md) — complete implemented API surface, boundaries, workflows, and roadmap.
 - [`docs/api/API_CAPABILITY_MATRIX.md`](docs/api/API_CAPABILITY_MATRIX.md) — route-by-route capability classification matrix.
-- [`docs/api/API_COMPOSITION_GUIDE.md`](docs/api/API_COMPOSITION_GUIDE.md) — composition recipes across implemented administration lifecycle routes.
+- [`docs/api/API_WORKFLOWS.md`](docs/api/API_WORKFLOWS.md) — workflow and composition recipes across implemented administration lifecycle routes, including asynchronous and conflict semantics.
+- [`docs/api/API_SECURITY_MODEL.md`](docs/api/API_SECURITY_MODEL.md) — authentication, roles, input handling, transactionality, and audit.
+- [`docs/api/API_EPISTEMIC_BOUNDARIES.md`](docs/api/API_EPISTEMIC_BOUNDARIES.md) — epistemic distinctions and where each is enforced.
 - [`docs/api/API_LIMITATIONS.md`](docs/api/API_LIMITATIONS.md) — exhaustive API limitations and non-capabilities.
-- [`docs/api/OPENAPI_GAP_REPORT.md`](docs/api/OPENAPI_GAP_REPORT.md) — gaps between `/openapi.json` and the implemented API surface.
+- [`docs/api/OPENAPI_GAP_REPORT.md`](docs/api/OPENAPI_GAP_REPORT.md) — OpenAPI coverage status against the implemented API surface.
 - [`docs/api/VERIFICATION_REPORT.md`](docs/api/VERIFICATION_REPORT.md) — commands run and manual verification evidence for this audit.
 - [`docs/00-project/CHARTER.md`](docs/00-project/CHARTER.md) — mission and architectural principles.
 - [`docs/00-project/PROJECT_OVERVIEW.md`](docs/00-project/PROJECT_OVERVIEW.md) — project purpose, capabilities, and non-goals.

@@ -1,6 +1,8 @@
-# API Composition / Workflow Guide
+# API Workflows and Composition Recipes
 
 This guide describes **actual implemented route sequences**. It does not introduce new endpoints, new predicates, or automatic promotions.
+
+Related documents: [`API_DEVELOPER_GUIDE.md`](./API_DEVELOPER_GUIDE.md), [`API_CAPABILITY_MATRIX.md`](./API_CAPABILITY_MATRIX.md), [`API_SECURITY_MODEL.md`](./API_SECURITY_MODEL.md), [`API_EPISTEMIC_BOUNDARIES.md`](./API_EPISTEMIC_BOUNDARIES.md).
 
 Cross-reference the architectural workflow decision in [`../01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md`](../01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md).
 
@@ -208,3 +210,42 @@ What is **not** implemented as an automatic chain:
 - candidate review does not auto-create source records, evidence, claims, or mappings;
 - derivation eligibility does not auto-create a derived claim;
 - queued validation/export/ingestion work does not auto-complete without a worker.
+
+## Asynchronous semantics
+
+| Route | Status | What is persisted synchronously | What requires a SYSTEM worker |
+|---|---|---|---|
+| `POST /api/v1/discovery-requests` | `202` | `discovery_request` + `asynchronous_job` (`QUEUED`) | Candidate production |
+| `POST /api/v1/ingestion-jobs` | `202` | `asynchronous_job` (`QUEUED`) | Ingestion execution and `ingestion_result` rows |
+| `POST /api/v1/validation-runs` | `202` | `validation_run` + `asynchronous_job` (`QUEUED`) | Validation execution and append-only `validation_result` rows |
+| `POST /api/v1/export-jobs` | `202` | `export_job` + `asynchronous_job` (`QUEUED`) | Export artifact production |
+
+Rules:
+
+1. `202` means *the queue state is durably persisted*, never *the work is done*.
+2. Poll `GET /api/v1/admin/jobs` for status; a job may legitimately remain `QUEUED` forever in this repository, which ships no worker.
+3. Every queueing route requires `Idempotency-Key`. Replaying the same key with the same request fingerprint returns the original job; replaying it with a different fingerprint returns `409 IDEMPOTENCY_CONFLICT` and writes nothing.
+4. `POST /api/v1/jobs/:id/cancel` and `/retry` change workflow state only and return `409 INVALID_JOB_STATE` when the transition is not allowed.
+
+## Conflict handling recipe
+
+Berean reports every write conflict as `409`, so one branch handles them all:
+
+| Code | Meaning | Correct client action |
+|---|---|---|
+| `STALE_VERSION` | The `If-Match` version is not current | Re-read the resource, re-apply the change, retry |
+| `IDEMPOTENCY_CONFLICT` | The key was reused with a different body | Use a new `Idempotency-Key` |
+| `INVALID_MAPPING_STATE` | The mapping is no longer `PROPOSED` | Re-read the mapping; do not force activation |
+| `INVALID_JOB_STATE` | The job cannot make that transition | Re-read job status |
+| `DUPLICATE` | The stable key already exists | Reuse the existing row |
+
+No `409` ever commits a partial write: each mutation runs in a single transaction together with its audit row.
+
+## Search and provenance composition
+
+1. `GET /api/v1/search/{resource}?q=...` — normalized, filtered lookup. `NO_MATCH` means nothing persisted matched; it is not falsity.
+2. `GET /api/v1/{resource}/{id}` — expanded detail for the matched record.
+3. `GET /api/v1/provenance/claim/{id}` — structured provenance with explicit gap reporting (`404` when the claim is not represented).
+4. `GET /api/v1/graph/entity/{id}` — bounded neighborhood projected from claim-asserted propositions; a projected edge is never a new claim.
+
+`GET /api/provenance/claims/{id}` remains available for the Explorer interface and intentionally returns `200` with an empty `traversal` and `classification:"CLAIM_NOT_REPRESENTED"` for an unrepresented claim. New integrations should use the versioned route.

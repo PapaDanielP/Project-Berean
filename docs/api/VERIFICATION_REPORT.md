@@ -70,16 +70,35 @@ A built server was then run locally on port `3110` with two configured credentia
 | Worker/job dependency behavior | PASS | Manual `POST /api/v1/validation-runs` returned queued job `{ "job_id": "4", "status": "QUEUED" }`; direct DB query showed validation run still `QUEUED` with `result_count: 0`. Cancel/retry routes changed workflow state only. |
 | `NOT_REPRESENTED` behavior | PASS | Manual `DELETE /api/v1/entities/1` returned `501 NOT_REPRESENTED`. `POST /api/research {"question":"Did an observation prove a theory?"}` is already covered by automated tests and returns `capability: "NOT_REPRESENTED"`. |
 | `NO_MATCH` behavior | PASS | Manual `POST /api/research` with question `ageAtFatherhoodYears` scoped to dataset `WCE_OFFICIAL_DIRECTORY_P37R` returned `200` with `capability: "NO_MATCH"`, `results: []`, and limitation `No matching persisted claims were found in the selected scope.` |
-| Unmatched search behavior | PASS | `/api/search?q=Nikola%20Tesla&limit=5` returned regular search hits; `/api/v1/search/entities?q=adam&limit=3` returned an empty result set because of the current pluralization bug documented below. |
+| Unmatched search behavior | PASS | `/api/search?q=Nikola%20Tesla&limit=5` returned regular search hits; `/api/v1/search/entities?q=adam&limit=3` originally returned an empty result set because of the pluralization defect; after the fix it returns entity results, and genuinely empty result sets are classified `NO_MATCH`. |
 
-## Discrepancies found between implementation and expected or previously implied behavior
+## Remediation verification (2026-08-13, second pass)
 
-1. **Stale `If-Match` returns 409, not 412.** The code uses `409 STALE_VERSION` for optimistic-concurrency failure.
-2. **No semantic ETag contract exists.** `If-Match` is accepted, but the API does not return a resource-version `ETag` for concurrency.
-3. **`GET /api/v1/search/:resource?` resource filtering is buggy for several plurals.** Example: `/api/v1/search/entities?q=adam&limit=3` returned `classification: "MATCHED"` and `results: []` because `entities` is singularized to `entitie`.
-4. **Unsupported admin list resources return 500.** `GET /api/v1/admin/not-real?limit=5` returned the generic `internal_error` envelope.
-5. **Missing-claim behavior differs across provenance routes.** `/api/provenance/claims/:id` returned `200 { traversal: [] }`, while `/api/v1/provenance/claim/:id` returned `404 NOT_FOUND`.
-6. **OpenAPI is incomplete relative to implementation.** See [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md).
+After the five discrepancies were addressed in code and documentation, the full command set was re-run from clean
+schemas.
+
+| Command | Exit code | Result |
+|---|---:|---|
+| `npm run typecheck` | 0 | Passed. |
+| `npm run lint` | 0 | Passed. |
+| `npm run build` | 0 | Passed. |
+| `npm test` | 0 | Passed: **3 test files, 101 tests** (`app.test.ts` 61, `phase28-ingestion.test.ts` 35, `openapi-coverage.test.ts` 5). The 90-test baseline is preserved; 11 tests are new. |
+| `bash scripts/validation/run-postgres-validation.sh` | 0 | Full PostgreSQL validation passed, including the Phase 28/36/37/37R notices listed above and all closing self-tests. |
+
+Ordering note: `npm test` creates objects in `public` and in `phase28_ingestion`. The validation script inspects
+`information_schema.tables` without a schema filter, so `phase28_ingestion` and `public` must both be dropped and
+`public` recreated before running the script after a test run. This is an environment-sequencing requirement, not a
+product defect.
+
+## Status of the five reported discrepancies
+
+| # | Discrepancy | Status | Evidence |
+|---|---|---|---|
+| 1 | Stale `If-Match` returns `409 STALE_VERSION`, not `412` | **INTENTIONAL — documented and tested.** No `ETag` is issued, `If-Match` carries an opaque integer version, and every Berean write conflict is `409`. The version guard runs inside the mutation transaction, so a stale write commits nothing. | `tests/app/app.test.ts` asserts the stale response and that name, status, version, and audit count are unchanged |
+| 2 | V1 search resource filtering | **FIXED.** Explicit normalization for all ten resources; unknown filters return `404`; `identity-mappings` returns `501 NOT_REPRESENTED`; empty results are classified `NO_MATCH`. | `src/api/v1.ts`; `tests/app/app.test.ts` covers every supported resource |
+| 3 | `GET /api/v1/admin/not-real` returned `500` | **FIXED.** Supported resources are validated up front and unknown ones return `404 NOT_FOUND` with no implementation leakage; the internal marker is also mapped to `404` in the error handler. | `src/administration/routes.ts`, `src/administration/repository.ts`; `tests/app/app.test.ts` |
+| 4 | Missing-claim provenance behaviour differed between routes | **FIXED as a documented compatibility difference.** V1 returns `404`; the legacy route keeps `200` with `traversal: []` but now states `claim_present`, `classification`, and `compatibility` explicitly. | `src/repository.ts`; `tests/app/app.test.ts` asserts both routes together, preventing accidental divergence |
+| 5 | OpenAPI incomplete | **FIXED.** `src/api/openapi.ts` documents every implemented route with parameters, bodies, enums, limits, security, roles, and error responses. | `tests/app/openapi-coverage.test.ts` enforces bidirectional coverage |
 
 ## Files and code areas audited for this documentation work
 
@@ -107,4 +126,10 @@ Implementation reviewed:
 
 ## Conclusion
 
-All required automated verification commands passed. The API documentation in `docs/api/*.md` was updated to match **current code behavior**, including the discrepancies above rather than idealized behavior.
+All required automated verification commands passed on both passes. Three defects were fixed in code, one was fixed as
+a documented compatibility difference, and one was retained deliberately with a stated rationale and a test proving no
+partial commit. The documentation under `docs/api/*.md` matches **current code behavior**.
+
+Final classification: **PASS WITH INTENTIONAL LIMITATION** — the remaining limitation is that queued jobs
+(`INGESTION`, `VALIDATION`, `EXPORT`, discovery) persist state but are never executed, because no `SYSTEM` worker
+exists. That is classified **REQUIRES_SYSTEM_WORKER** and is out of scope for an API-hardening change.
