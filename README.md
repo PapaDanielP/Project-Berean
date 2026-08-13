@@ -153,6 +153,7 @@ For the complete setup and contribution rules, see [`docs/00-project/DEVELOPER_G
 
 ## Documentation map
 
+- [`docs/api/API_DEVELOPER_GUIDE.md`](docs/api/API_DEVELOPER_GUIDE.md) — complete implemented API surface, boundaries, workflows, and roadmap.
 - [`docs/00-project/CHARTER.md`](docs/00-project/CHARTER.md) — mission and architectural principles.
 - [`docs/00-project/PROJECT_OVERVIEW.md`](docs/00-project/PROJECT_OVERVIEW.md) — project purpose, capabilities, and non-goals.
 - [`docs/00-project/DEVELOPER_GUIDE.md`](docs/00-project/DEVELOPER_GUIDE.md) — setup, validation, application checks, and contribution guidance.
