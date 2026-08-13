@@ -5,9 +5,10 @@ and the live Express route stack introspected by `tests/app/openapi-coverage.tes
 
 ## Status
 
-The earlier discovery stub has been replaced by a complete OpenAPI 3.1 contract in `src/api/openapi.ts`, served at
-`GET /openapi.json`. Every route registered by the application is documented, and every documented path corresponds to
-a registered route. This is enforced automatically rather than by review.
+The earlier discovery stub has been replaced by an OpenAPI 3.1 contract in `src/api/openapi.ts`, served at
+`GET /openapi.json`. Every non-static route registered by the application is documented, and every documented path
+corresponds to a registered route. This route-surface result is enforced automatically rather than by review; it is not
+by itself proof that every response or schema detail mirrors runtime behavior.
 
 ## How coverage is enforced
 
@@ -18,8 +19,8 @@ Express path to its OpenAPI form, and asserts:
    fallback layers, in `x-berean-fallback-routes`). A new route with no documentation fails the suite.
 2. **Documented → implemented.** Every documented path/method maps to a registered route, so the document cannot
    describe endpoints that do not exist.
-3. **Operation completeness.** Every operation has a `summary`, at least one non-`2xx` response, resolvable `$ref`s,
-   declared path parameters, and a request body where the route reads one.
+3. **Operation metadata.** Every operation has an operation ID, `summary`, `description`, at least one response,
+   read/write classification, and resolvable `$ref`s.
 4. **Mutation metadata.** Every write operation declares `security`, `x-berean-minimum-role`, `x-berean-audit`,
    `x-berean-transaction`, and an epistemic boundary note.
 5. **Serving.** The document is retrievable over HTTP and is byte-identical to the in-process object.
@@ -37,11 +38,13 @@ Express path to its OpenAPI form, and asserts:
 | Pagination and limits undocumented | **Closed** — `limit` parameters document their defaults and maximums |
 | Wildcard `NOT_REPRESENTED` behaviour undocumented | **Closed** — recorded under `x-berean-fallback-routes` |
 | No test detecting drift | **Closed** — `tests/app/openapi-coverage.test.ts` |
+| Registry capabilities redirect response omitted | **Closed** — `GET /api/v1/registry/capabilities` documents its `307` redirect |
 
 ## Deliberate documentation boundaries
 
 - The Explorer shell (`GET *`) and the `/api/v1` catch-all are described as fallback behaviours rather than as
-  addressable paths, because they match arbitrary URLs.
+  addressable paths, because they match arbitrary URLs. A generic V1 read route can return `404 NOT_FOUND` before the
+  V1 catch-all returns `501 NOT_REPRESENTED`; the fallback description does not override that route-specific result.
 - Response bodies are documented as shapes and required envelope fields; row-level column lists are not duplicated
   from [`docs/03-schema/INFORMATION_SCHEMA.md`](../03-schema/INFORMATION_SCHEMA.md).
 - Endpoints that do not exist are not documented, including anything that would adjudicate truth. See

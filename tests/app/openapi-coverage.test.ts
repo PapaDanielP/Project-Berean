@@ -137,4 +137,11 @@ describe('OpenAPI route-surface coverage', () => {
     expect(Object.keys(response.body.paths).length).toBe(Object.keys(document.paths).length);
     expect(response.body.components.securitySchemes.bearerAuth.scheme).toBe('bearer');
   });
+
+  it('documents the capabilities registry redirect', async () => {
+    const response = await request(app).get('/api/v1/registry/capabilities').redirects(0);
+    expect(response.status).toBe(307);
+    expect(response.headers.location).toBe('/api/v1/capabilities');
+    expect(document.paths['/api/v1/registry/{registry}'].get.responses['307']).toBeDefined();
+  });
 });

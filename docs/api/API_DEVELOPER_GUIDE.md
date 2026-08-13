@@ -664,7 +664,7 @@ Body:
 - `key`: identifier pattern
 - `sourceLocation`: required, max 2000
 - `rawContent`: optional, max 10000
-- `contentHash`: required iff `rawContent` is supplied; must be lowercase 64-char SHA-256 hex
+- `contentHash`: required when `rawContent` is supplied; when present, must be lowercase 64-char SHA-256 hex
 - `revisionLabel`: optional, max 200
 - `citationKey`: identifier pattern
 - `locator`: required, max 2000

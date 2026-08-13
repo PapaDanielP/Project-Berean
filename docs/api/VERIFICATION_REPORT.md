@@ -82,7 +82,7 @@ schemas.
 | `npm run typecheck` | 0 | Passed. |
 | `npm run lint` | 0 | Passed. |
 | `npm run build` | 0 | Passed. |
-| `npm test` | 0 | Passed: **3 test files, 101 tests** (`app.test.ts` 61, `phase28-ingestion.test.ts` 35, `openapi-coverage.test.ts` 5). The 90-test baseline is preserved; 11 tests are new. |
+| `npm test` | 0 | Passed: **3 test files, 102 tests** (`app.test.ts` 61, `phase28-ingestion.test.ts` 35, `openapi-coverage.test.ts` 6). The 90-test baseline is preserved; 12 tests are new. |
 | `bash scripts/validation/run-postgres-validation.sh` | 0 | Full PostgreSQL validation passed, including the Phase 28/36/37/37R notices listed above and all closing self-tests. |
 
 Ordering note: `npm test` creates objects in `public` and in `phase28_ingestion`. The validation script inspects
@@ -98,7 +98,7 @@ product defect.
 | 2 | V1 search resource filtering | **FIXED.** Explicit normalization for all ten resources; unknown filters return `404`; `identity-mappings` returns `501 NOT_REPRESENTED`; empty results are classified `NO_MATCH`. | `src/api/v1.ts`; `tests/app/app.test.ts` covers every supported resource |
 | 3 | `GET /api/v1/admin/not-real` returned `500` | **FIXED.** Supported resources are validated up front and unknown ones return `404 NOT_FOUND` with no implementation leakage; the internal marker is also mapped to `404` in the error handler. | `src/administration/routes.ts`, `src/administration/repository.ts`; `tests/app/app.test.ts` |
 | 4 | Missing-claim provenance behaviour differed between routes | **FIXED as a documented compatibility difference.** V1 returns `404`; the legacy route keeps `200` with `traversal: []` but now states `claim_present`, `classification`, and `compatibility` explicitly. | `src/repository.ts`; `tests/app/app.test.ts` asserts both routes together, preventing accidental divergence |
-| 5 | OpenAPI incomplete | **FIXED.** `src/api/openapi.ts` documents every implemented route with parameters, bodies, enums, limits, security, roles, and error responses. | `tests/app/openapi-coverage.test.ts` enforces bidirectional coverage |
+| 5 | OpenAPI incomplete | **FIXED for the implemented route surface.** `src/api/openapi.ts` documents every implemented non-static route, including the `307` registry-capabilities redirect. Route-surface coverage does not by itself prove every runtime response-body detail. | `tests/app/openapi-coverage.test.ts` enforces bidirectional route coverage and the registry redirect |
 
 ## Files and code areas audited for this documentation work
 

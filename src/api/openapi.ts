@@ -141,6 +141,7 @@ const readOperation = (operation: {
   responseDescription: string;
   responseSchema?: Values;
   errors?: string[];
+  additionalResponses?: Values;
   tag?: string;
   role?: string;
 }): Values => ({
@@ -152,6 +153,7 @@ const readOperation = (operation: {
   ...(operation.parameters ? { parameters: operation.parameters } : {}),
   responses: {
     '200': jsonResponse(operation.responseDescription, operation.responseSchema ?? { type: 'object' }),
+    ...(operation.additionalResponses ?? {}),
     ...errorRef(...(operation.errors ?? ['500']))
   },
   ...(operation.role ? { 'x-berean-minimum-role': operation.role } : {}),
@@ -587,6 +589,12 @@ const paths: Values = {
       parameters: [{ name: 'registry', in: 'path', required: true, schema: { type: 'string', enum: [...REGISTRIES, 'capabilities'] } }],
       responseDescription: 'Registry rows, capped at 100.',
       responseSchema: object({ results: { type: 'array', items: { type: 'object' } } }, ['results'], 'Registry rows.'),
+      additionalResponses: {
+        '307': {
+          description: '`registry=capabilities` redirects to `/api/v1/capabilities`.',
+          headers: { Location: { schema: { type: 'string', example: '/api/v1/capabilities' } } }
+        }
+      },
       errors: ['404', '500']
     })
   },
@@ -1200,7 +1208,7 @@ document['x-berean-fallback-routes'] = [
     method: 'ALL',
     path: '/api/v1/*',
     response: '501 NOT_REPRESENTED',
-    description: 'Any /api/v1 method or path that is not documented above returns 501 NOT_REPRESENTED. Absence of representation is not falsity.'
+    description: 'After more-specific V1 routes are considered, otherwise unmatched methods and paths return 501 NOT_REPRESENTED. Generic V1 GET resource routes can instead return 404 NOT_FOUND for an unknown resource. Absence of representation is not falsity.'
   },
   {
     method: 'GET',

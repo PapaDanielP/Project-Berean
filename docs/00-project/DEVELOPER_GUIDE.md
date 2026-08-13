@@ -77,4 +77,6 @@ npm run dev
 # open http://localhost:3000
 ```
 
-The app is read-only and exposes no write endpoints.
+The Explorer UI is read-only. Authenticated `/api/v1` administration routes expose
+bounded, audited workflow and knowledge-authoring writes; see
+[`../api/API_DEVELOPER_GUIDE.md`](../api/API_DEVELOPER_GUIDE.md).
