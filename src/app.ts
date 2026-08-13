@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { Pool } from 'pg';
+import { openApiDocument, registerV1Routes } from './api/v1.js';
 import { BereanRepository } from './repository.js';
 
 const toInt = (value: string): number | null => {
@@ -123,6 +124,16 @@ export const createApp = (databaseUrl: string): express.Express => {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', mode: 'read-only' });
   });
+
+  app.get('/openapi.json', (_req, res) => {
+    res.json(openApiDocument());
+  });
+
+  app.get('/api-docs', (_req, res) => {
+    res.type('html').send('<!doctype html><title>Project Berean API</title><h1>Project Berean API</h1><p>Machine-readable API documentation is available at <a href="/openapi.json">/openapi.json</a>.</p>');
+  });
+
+  app.use('/api/v1', registerV1Routes(repository));
 
   app.get('/api/research/scope', async (_req, res, next) => {
     try {

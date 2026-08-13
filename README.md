@@ -95,6 +95,15 @@ The web layer consumes the existing PostgreSQL model directly and does not creat
 
 There are no application write endpoints. The application is an explorer over persisted knowledge, not an ingestion or mutation service.
 
+The versioned interface is available under `/api/v1`. It exposes bounded reads of
+the existing source, dataset, record, citation, evidence, claim, proposition,
+entity, event, identity, mapping, and registry structures, along with transient
+research, graph, and provenance operations. `/openapi.json` and `/api-docs`
+describe that interface. Corpus administration, discovery workflows, candidate
+decisions, jobs, audit records, imports, exports, and knowledge mutations return
+an explicit `NOT_REPRESENTED` response: the authoritative schema has no
+corresponding workflow structures, and the API does not invent a second store.
+
 ## Validation
 
 The authoritative model validation command is:

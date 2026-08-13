@@ -9,6 +9,46 @@ const boundedLimit = (value: number | undefined, fallback: number, max: number):
 export class BereanRepository {
   constructor(private readonly pool: Pool) {}
 
+  async listApiResource(resource: string, limit = 50): Promise<Record<string, unknown>[]> {
+    const safeLimit = Math.max(1, Math.min(limit, 100));
+    const queries: Record<string, string> = {
+      entities: 'SELECT entity_id, entity_key, entity_type_code, canonical_name, description FROM entity ORDER BY entity_key LIMIT $1',
+      events: 'SELECT event_id, event_key, event_type_code, description FROM event ORDER BY event_key LIMIT $1',
+      claims: 'SELECT claim_id, claim_key, proposition_id, claim_type_code, claim_status_code, statement FROM claim ORDER BY claim_key LIMIT $1',
+      evidence: 'SELECT evidence_id, evidence_key, source_record_id, evidence_type_code, observation, notes FROM evidence ORDER BY evidence_key LIMIT $1',
+      sources: 'SELECT source_id, source_key, name, source_type_code, description FROM source ORDER BY source_key LIMIT $1',
+      datasets: 'SELECT dataset_id, source_id, dataset_key, name, edition_label, version, license_status FROM dataset ORDER BY dataset_key LIMIT $1',
+      'source-records': 'SELECT source_record_id, dataset_id, source_record_key, source_location, content_hash, revision_label FROM source_record ORDER BY dataset_id, source_record_key LIMIT $1',
+      citations: 'SELECT citation_id, citation_key, source_record_id, locator, quoted_text FROM citation ORDER BY citation_key LIMIT $1',
+      identities: 'SELECT source_identity_id, source_id, source_identity_key, display_name FROM source_identity ORDER BY source_id, source_identity_key LIMIT $1',
+      'identity-mappings': 'SELECT entity_source_mapping_id, source_identity_id, entity_id, mapping_status_code, confidence, justification, notes, supporting_evidence_id FROM entity_source_mapping ORDER BY entity_source_mapping_id LIMIT $1',
+      predicates: 'SELECT predicate_code, description, subject_kind_code, object_kind_code, event_participation_role_code FROM predicate ORDER BY predicate_code LIMIT $1',
+      'entity-types': 'SELECT entity_type_code, description FROM entity_type ORDER BY entity_type_code LIMIT $1',
+      'event-types': 'SELECT event_type_code, description FROM event_type ORDER BY event_type_code LIMIT $1',
+      'claim-types': 'SELECT claim_type_code, description FROM claim_type ORDER BY claim_type_code LIMIT $1',
+      'evidence-types': 'SELECT evidence_type_code, description FROM evidence_type ORDER BY evidence_type_code LIMIT $1',
+      'mapping-statuses': 'SELECT mapping_status_code, description FROM mapping_status ORDER BY mapping_status_code LIMIT $1'
+    };
+    const query = queries[resource];
+    if (!query) throw new Error(`Unsupported API resource: ${resource}`);
+    return (await this.pool.query(query, [safeLimit])).rows;
+  }
+
+  async getApiResource(resource: string, id: number): Promise<Record<string, unknown> | null> {
+    const queries: Record<string, string> = {
+      evidence: 'SELECT evidence_id, evidence_key, source_record_id, evidence_type_code, observation, notes FROM evidence WHERE evidence_id = $1',
+      datasets: 'SELECT dataset_id, source_id, dataset_key, name, edition_label, version, license_status, acquisition_method, transformation_notes FROM dataset WHERE dataset_id = $1',
+      'source-records': 'SELECT source_record_id, dataset_id, source_record_key, source_location, raw_content, content_hash, imported_at, revision_label, supersedes_source_record_id FROM source_record WHERE source_record_id = $1',
+      citations: 'SELECT citation_id, citation_key, source_record_id, locator, quoted_text FROM citation WHERE citation_id = $1',
+      identities: 'SELECT source_identity_id, source_id, source_identity_key, display_name FROM source_identity WHERE source_identity_id = $1',
+      'identity-mappings': 'SELECT entity_source_mapping_id, source_identity_id, entity_id, mapping_status_code, confidence, justification, notes, supporting_evidence_id FROM entity_source_mapping WHERE entity_source_mapping_id = $1'
+    };
+    const query = queries[resource];
+    if (!query) throw new Error(`Unsupported API resource: ${resource}`);
+    const result = await this.pool.query(query, [id]);
+    return result.rows[0] ?? null;
+  }
+
   async getResearchScope(): Promise<Record<string, unknown>> {
     const [sources, datasets, inventory] = await Promise.all([
       this.pool.query(
