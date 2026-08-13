@@ -1,48 +1,61 @@
-# Historical Phase Records
+# Phase History Index
 
-This index is the canonical entry point for Project Berean phase history. Phase records are retained as historical evidence of objectives, scope, implementation, validation, limitations, architectural conclusions, and verdicts at the time they were written. They do **not** supersede the current architecture, schema, API, validation, or repository-structure documents linked from [`../README.md`](../README.md).
+**Status:** ACTIVE — canonical phase-history index
+**Scope:** Historical phase and research record navigation only
+**Authority:** PHASE RECORD index (historical evidence; does not supersede current authoritative architecture, data model, or API documentation)
+**Last verified:** 2026-08-13
 
-## Authority boundary
+This file is the canonical index into Project Berean's phase history. Phase records are
+**historical evidence** of what was implemented, tested, and validated at a point in time.
+They do not override current authoritative documentation — see
+[`../README.md`](../README.md) for the authority map and
+[`../01-architecture/ARCHITECTURE.md`](../01-architecture/ARCHITECTURE.md),
+[`../02-domain/DOMAIN_MODEL.md`](../02-domain/DOMAIN_MODEL.md), and
+[`../api/API_DEVELOPER_GUIDE.md`](../api/API_DEVELOPER_GUIDE.md) for current architecture,
+data model, and API behavior respectively.
 
-Use this order when a phase record appears to conflict with current materials:
+Phase history is split across two directories for historical reasons:
 
-1. implementation/schema/tests/validation scripts;
-2. authoritative current documentation;
-3. reference documentation;
-4. phase records;
-5. validation records;
-6. archive/review material.
+- [`../04-data/`](../04-data/) — legacy Phase 6–32 data-population, capability, and
+  provenance-engine records (see [`../04-data/README.md`](../04-data/README.md) for that
+  index).
+- [`phases/`](.) (this directory) — later Phase 33–37R/37B independent-research and
+  domain-lifecycle validation records.
 
-Do not rewrite historical phase evidence into a current specification. Instead, update the authoritative document and leave a cross-reference from the historical record when necessary.
+## Phase 33–37R/37B index (this directory)
 
-## Canonical locations
-
-- Legacy Phase 6–32 records remain in [`../04-data/`](../04-data/) because existing data, ingestion, and Genesis documentation link to those paths and because those phases primarily document population/data-model growth.
-- Phase 33 and later independent domain/research/validation records live in this directory.
-- New phase reports belong in this directory unless they are direct continuations of a legacy `docs/04-data/` record.
-
-## Legacy Phase 6–32 records
-
-| Phase / record | Path | Historical purpose |
+| Phase | Title | Status |
 |---|---|---|
-| Genesis/data population setup | [`../04-data/GENESIS_1_1-5_SLICE.md`](../04-data/GENESIS_1_1-5_SLICE.md), [`../04-data/POPULATION_SPECIFICATION.md`](../04-data/POPULATION_SPECIFICATION.md), [`../04-data/DATA_POLICY.md`](../04-data/DATA_POLICY.md), [`../04-data/STEPBIBLE_ACQUISITION_REPORT.md`](../04-data/STEPBIBLE_ACQUISITION_REPORT.md) | Early source/data scope, policy, and acquisition evidence. |
-| Phase 6–19 reports | [`../04-data/PHASE6_REPORT.md`](../04-data/PHASE6_REPORT.md) through [`../04-data/PHASE19_REPORT.md`](../04-data/PHASE19_REPORT.md) | Incremental Genesis/entity/artifact/event/provenance population and validation records. |
-| Phase 20–25 reports | [`../04-data/PHASE20_REPORT.md`](../04-data/PHASE20_REPORT.md), [`../04-data/PHASE20_CAPABILITY_SPECIFICATION.md`](../04-data/PHASE20_CAPABILITY_SPECIFICATION.md), [`../04-data/PHASE21_EXPLAIN_PROVENANCE.md`](../04-data/PHASE21_EXPLAIN_PROVENANCE.md), [`../04-data/PHASE22_CAPABILITY_ASSESSMENT.md`](../04-data/PHASE22_CAPABILITY_ASSESSMENT.md), [`../04-data/PHASE23_CHECK_DERIVATION_ELIGIBILITY.md`](../04-data/PHASE23_CHECK_DERIVATION_ELIGIBILITY.md), [`../04-data/PHASE24_BEREAN_IN_ACTION.md`](../04-data/PHASE24_BEREAN_IN_ACTION.md), [`../04-data/PHASE25_EXPLORATION_API.md`](../04-data/PHASE25_EXPLORATION_API.md) | Capability, provenance explanation, derivation eligibility, demonstration, and Explorer/API-era records. Current API authority is under [`../api/`](../api/). |
-| Phase 26–32 reports | [`../04-data/PHASE26_BIBLICAL_ENTITY_COVERAGE_AND_INGESTION.md`](../04-data/PHASE26_BIBLICAL_ENTITY_COVERAGE_AND_INGESTION.md), [`../04-data/PHASE27_GENESIS_1_50.md`](../04-data/PHASE27_GENESIS_1_50.md), [`../04-data/PHASE28_INGESTION_PIPELINE.md`](../04-data/PHASE28_INGESTION_PIPELINE.md), [`../04-data/PHASE30_SCHOLARLY_RESEARCH_VALIDATION.md`](../04-data/PHASE30_SCHOLARLY_RESEARCH_VALIDATION.md), [`../04-data/PHASE31_END_TO_END_SCHOLARLY_RESEARCH_DEMONSTRATION.md`](../04-data/PHASE31_END_TO_END_SCHOLARLY_RESEARCH_DEMONSTRATION.md), [`../04-data/PHASE32_CROSS_DOMAIN_SCHOLARLY_RESEARCH_GENERALIZATION.md`](../04-data/PHASE32_CROSS_DOMAIN_SCHOLARLY_RESEARCH_GENERALIZATION.md) | Biblical entity coverage, ingestion, and research validation history. Current ingestion commands are in [`../../data/ingestion/README.md`](../../data/ingestion/README.md) and [`../00-project/DEVELOPER_GUIDE.md`](../00-project/DEVELOPER_GUIDE.md). |
+| 33 | [Eclipse Domain Population and Independent Scholarly Research](./PHASE_33_ECLIPSE_DOMAIN_POPULATION_AND_RESEARCH.md) | Historical record |
+| 34 | [Natural-Language Scholarly Query Interpretation over the Phase 33 Eclipse Substrate](./PHASE_34_NATURAL_LANGUAGE_RESEARCH_QUERY.md) | Historical record |
+| 35 | [Cross-Domain Natural-Language Scholarly Research](./PHASE_35_CROSS_DOMAIN_NATURAL_LANGUAGE_RESEARCH.md) | Historical record |
+| 36 | [Evidence Audit](./PHASE_36_EVIDENCE_AUDIT.md) | Historical record |
+| 36 | [Repeatable Domain Lifecycle and Independent Research Platform Validation](./PHASE_36_REPEATABLE_DOMAIN_LIFECYCLE.md) | Historical record |
+| 37 | [1893 World's Columbian Exposition Independent Graph-Derived Research](./PHASE_37_WORLD_COLUMBIAN_EXPOSITION_INDEPENDENT_RESEARCH.md) | Historical record |
+| 37R/37B | [World's Columbian Exposition Discovery-Driven Expansion](./PHASE_37R_37B_WORLD_COLUMBIAN_EXPOSITION_EXPANSION.md) | Historical record |
 
-## Later phase records
+Phase 28 (automated ingestion pipeline), Phase 36 (evidence audit and repeatable domain
+lifecycle), and Phase 37/37R/37B (independent research and discovery-driven expansion)
+conclusions are preserved verbatim above and in `docs/04-data/`; this index does not alter
+or reinterpret their findings.
 
-| Phase | Path | Historical purpose |
-|---|---|---|
-| Phase 33 | [`PHASE_33_ECLIPSE_DOMAIN_POPULATION_AND_RESEARCH.md`](./PHASE_33_ECLIPSE_DOMAIN_POPULATION_AND_RESEARCH.md) | Eclipse domain population and independent research validation. |
-| Phase 34 | [`PHASE_34_NATURAL_LANGUAGE_RESEARCH_QUERY.md`](./PHASE_34_NATURAL_LANGUAGE_RESEARCH_QUERY.md) | Natural-language research query validation. |
-| Phase 35 | [`PHASE_35_CROSS_DOMAIN_NATURAL_LANGUAGE_RESEARCH.md`](./PHASE_35_CROSS_DOMAIN_NATURAL_LANGUAGE_RESEARCH.md) | Cross-domain natural-language query validation. |
-| Phase 36 | [`PHASE_36_EVIDENCE_AUDIT.md`](./PHASE_36_EVIDENCE_AUDIT.md), [`PHASE_36_REPEATABLE_DOMAIN_LIFECYCLE.md`](./PHASE_36_REPEATABLE_DOMAIN_LIFECYCLE.md) | Evidence audit and Seneca Falls repeatable lifecycle validation. |
-| Phase 37 / 37R | [`PHASE_37_WORLD_COLUMBIAN_EXPOSITION_INDEPENDENT_RESEARCH.md`](./PHASE_37_WORLD_COLUMBIAN_EXPOSITION_INDEPENDENT_RESEARCH.md), [`PHASE_37R_37B_WORLD_COLUMBIAN_EXPOSITION_EXPANSION.md`](./PHASE_37R_37B_WORLD_COLUMBIAN_EXPOSITION_EXPANSION.md) | World's Columbian Exposition independent research, withheld-query, and candidate-audit validation. |
+## Legacy Phase 6–32 index
 
-## Current references
+See [`../04-data/README.md`](../04-data/README.md) for the full legacy index. Summary:
 
-- Architecture: [`../01-architecture/ARCHITECTURE.md`](../01-architecture/ARCHITECTURE.md)
-- Schema: [`../03-schema/INFORMATION_SCHEMA.md`](../03-schema/INFORMATION_SCHEMA.md)
-- API: [`../api/API_DEVELOPER_GUIDE.md`](../api/API_DEVELOPER_GUIDE.md)
-- Validation: [`../05-validation/VALIDATION.md`](../05-validation/VALIDATION.md)
+- Phases 6–19: Genesis 1–11 controlled population, object/artifact entity modeling, and
+  source-backed lifecycle/conflict validation.
+- Phase 20: Provenance engine capability specification (design contract, non-implementing).
+- Phase 21–23: Read-only provenance/derivation-eligibility operation records.
+- Phase 24–27: Berean-in-action demonstration, exploration API, and Genesis 1–50 corpus
+  expansion.
+- Phase 28: Automated Tier-1 ingestion pipeline.
+- Phase 30–32: Scholarly research validation and cross-domain generalization.
+
+## Reading a phase record
+
+Each phase record should be read as a historical snapshot. When a phase record states an
+architectural conclusion that is still true today, the current authoritative document is
+the source of truth; the phase record is retained as the original evidence and rationale.
+Where a phase record's original conclusions differ from later phases or current behavior,
+that difference is preserved as historical record, not silently corrected.
