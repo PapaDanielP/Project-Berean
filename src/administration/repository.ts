@@ -360,7 +360,7 @@ export class AdministrationRepository {
       const actorId = await this.actorId(client, actor);
       const result = await client.query(
         `UPDATE entity_source_mapping
-         SET mapping_status_code = $2, notes = concat_ws(E'\n', notes, $3)
+         SET mapping_status_code = $2, notes = concat_ws(E'\n', notes, $3::text)
          WHERE entity_source_mapping_id = $1 AND mapping_status_code = 'PROPOSED'
          RETURNING *`,
         [mappingId, input.status, `Reviewed by ${actor.key}: ${input.rationale as string}`]
