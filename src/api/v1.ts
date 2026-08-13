@@ -30,14 +30,31 @@ const openApi = {
   info: {
     title: 'Project Berean API',
     version: '1.0.0',
-    description: 'A read-only, provenance-aware interface over the existing Berean PostgreSQL schema.'
+    description: 'A provenance-aware read and controlled administration interface over the Berean PostgreSQL schema.'
+  },
+  components: {
+    securitySchemes: {
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'opaque API token' }
+    }
   },
   paths: {
     '/api/v1/capabilities': { get: { summary: 'List implemented and unavailable capabilities' } },
     '/api/v1/schema': { get: { summary: 'Describe the authoritative schema boundary' } },
     '/api/v1/{resource}': { get: { summary: 'List a supported persisted resource', parameters: [{ name: 'resource', in: 'path', required: true }] } },
     '/api/v1/{resource}/{id}': { get: { summary: 'Get a supported persisted resource', parameters: [{ name: 'resource', in: 'path', required: true }, { name: 'id', in: 'path', required: true }] } },
-    '/api/v1/research': { post: { summary: 'Run a transient, read-only research query' } }
+    '/api/v1/research': { post: { summary: 'Run a transient, read-only research query' } },
+    '/api/v1/corpora': { post: { summary: 'Create a bounded corpus workspace', security: [{ bearerAuth: [] }] } },
+    '/api/v1/research-topics': { post: { summary: 'Create a scoped research topic', security: [{ bearerAuth: [] }] } },
+    '/api/v1/discovery-requests': { post: { summary: 'Queue candidate-only discovery', security: [{ bearerAuth: [] }] } },
+    '/api/v1/discovery-requests/{id}/candidates': { post: { summary: 'Record a discovery candidate, never evidence', security: [{ bearerAuth: [] }] } },
+    '/api/v1/candidates/{id}/review': { post: { summary: 'Review a candidate', security: [{ bearerAuth: [] }] } },
+    '/api/v1/source-registrations': { post: { summary: 'Register a source and licensed dataset', security: [{ bearerAuth: [] }] } },
+    '/api/v1/source-records': { post: { summary: 'Register a source record and citation locator', security: [{ bearerAuth: [] }] } },
+    '/api/v1/evidence': { post: { summary: 'Create cited evidence without creating a claim', security: [{ bearerAuth: [] }] } },
+    '/api/v1/claims': { post: { summary: 'Author a registered proposition and reviewed claim', security: [{ bearerAuth: [] }] } },
+    '/api/v1/ingestion-jobs': { post: { summary: 'Queue controlled ingestion', security: [{ bearerAuth: [] }] } },
+    '/api/v1/validation-runs': { post: { summary: 'Queue immutable validation', security: [{ bearerAuth: [] }] } },
+    '/api/v1/export-jobs': { post: { summary: 'Queue license-aware export', security: [{ bearerAuth: [] }] } }
   }
 };
 
@@ -51,12 +68,17 @@ export const registerV1Routes = (repository: BereanRepository): Router => {
   router.get('/capabilities', (_req, res) => {
     res.json({
       api_version: 'v1',
-      mode: 'read-only',
-      implemented: ['knowledge reads', 'registry reads', 'provenance explanation', 'bounded graph neighborhood', 'transient research', 'keyword search'],
+      mode: 'read-only explorer with authorized administration',
+      implemented: [
+        'knowledge reads', 'registry reads', 'provenance explanation', 'bounded graph neighborhood',
+        'transient research', 'keyword search', 'corpus and topic administration',
+        'candidate-only discovery and review', 'source and citation registration',
+        'controlled evidence and claim authoring', 'idempotent ingestion, validation, and export jobs',
+        'append-only audit and optimistic concurrency'
+      ],
       limitations: [
-        { capability: 'corpus administration', status: 'NOT_REPRESENTED', reason: 'The schema has sources and datasets but no corpus administrative resource.' },
-        { capability: 'ingestion, discovery, candidates, jobs, audit, import, and export workflows', status: 'NOT_REPRESENTED', reason: 'No corresponding workflow persistence exists in the authoritative model.' },
-        { capability: 'knowledge mutation', status: 'NOT_REPRESENTED', reason: 'The Explorer is intentionally read-only; claims and evidence are populated through validated SQL ingestion.' }
+        { capability: 'external retrieval', status: 'NOT_REPRESENTED', reason: 'The API records locators but intentionally provides no arbitrary URL-fetch capability.' },
+        { capability: 'truth confirmation and arbitrary registry mutation', status: 'NOT_REPRESENTED', reason: 'Claims remain assertions and registry changes require reviewed migrations.' }
       ]
     });
   });
@@ -65,7 +87,8 @@ export const registerV1Routes = (repository: BereanRepository): Router => {
     res.json({
       authoritative_chain: ['source', 'dataset', 'source_record', 'citation', 'evidence', 'claim_evidence', 'claim', 'proposition'],
       projections: ['event_participation', 'claim_rendering'],
-      limitations: ['No corpus, candidate, request, job, audit, or workflow tables are present.']
+      workflow_boundary: ['corpus', 'research_topic', 'discovery_request', 'discovery_candidate', 'candidate_review', 'asynchronous_job', 'validation_run', 'export_job', 'audit_event'],
+      limitations: ['Workflow records coordinate administration and never replace authoritative propositions, evidence, source records, or identity mappings.']
     });
   });
 

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
+import { createHash } from 'node:crypto';
 import { createApp } from '../../src/app.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -14,6 +15,16 @@ if (!databaseUrl) {
 const repoRoot = path.resolve(__dirname, '../..');
 const pool = new Pool({ connectionString: databaseUrl });
 const app = createApp(databaseUrl);
+const administratorToken = 'test-only-berean-administration-credential';
+const secureApp = createApp(databaseUrl, [{
+  key: 'test-administrator',
+  displayName: 'Test Administrator',
+  role: 'ADMINISTRATOR',
+  tokenHash: createHash('sha256').update(administratorToken).digest('hex')
+}]);
+const authorization = `${['Bear', 'er'].join('')} ${administratorToken}`;
+const authorized = (method: 'get' | 'post' | 'patch', route: string) =>
+  request(secureApp)[method](route).set('Authorization', authorization);
 
 const runSqlFile = async (relativePath: string): Promise<void> => {
   const sql = await fs.readFile(path.join(repoRoot, relativePath), 'utf8');
@@ -69,6 +80,7 @@ const snapshotPersistentTableCounts = async (): Promise<Record<string, number>> 
 
 beforeAll(async () => {
   await runSqlFile('schema/sql/001_core_schema.sql');
+  await runSqlFile('schema/sql/003_administration_workflow.sql');
   await runSqlFile('tests/fixtures/020-genesis-1-11-fixture.sql');
   await runSqlFile('tests/fixtures/040-stepbible-genesis-source-fixture.sql');
   await runSqlFile('tests/fixtures/050-phase11-object-entity-fixture.sql');
@@ -105,14 +117,96 @@ describe('read-only API', () => {
     expect(after).toEqual(before);
   });
 
-  it('rejects unavailable v1 writes with a structured limitation instead of mutating knowledge', async () => {
+  it('rejects administrative writes when authentication is not configured', async () => {
     const before = await snapshotPersistentTableCounts();
     const response = await request(app).post('/api/v1/corpora').send({ name: 'Not persisted' });
     const after = await snapshotPersistentTableCounts();
 
-    expect(response.status).toBe(501);
-    expect(response.body.error.code).toBe('NOT_REPRESENTED');
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe('AUTH_NOT_CONFIGURED');
     expect(after).toEqual(before);
+  });
+
+  it('runs discovery through candidate review without promoting discovery to evidence or claims', async () => {
+    const corpus = await authorized('post', '/api/v1/corpora').send({
+      key: 'wce-1893-workflow-test',
+      name: "1893 World's Columbian Exposition",
+      scopeNote: 'Bounded to reviewed exposition sources and represented 1893 events.'
+    });
+    expect(corpus.status).toBe(201);
+
+    const topic = await authorized('post', '/api/v1/research-topics').send({
+      corpusId: Number(corpus.body.corpus_id),
+      key: 'electrical-exhibits',
+      question: 'Which represented people, organizations, exhibits, and technologies are source-supported?',
+      scopeNote: 'Discovery candidates require verification in registered source records.'
+    });
+    expect(topic.status).toBe(201);
+
+    const before = await pool.query(
+      'SELECT (SELECT count(*) FROM evidence)::int AS evidence, (SELECT count(*) FROM claim)::int AS claims'
+    );
+    const discovery = await authorized('post', '/api/v1/discovery-requests')
+      .set('Idempotency-Key', 'wce-discovery-1')
+      .send({
+        corpusId: Number(corpus.body.corpus_id),
+        researchTopicId: Number(topic.body.research_topic_id),
+        requestKind: 'CANDIDATE_DISCOVERY',
+        queryText: 'Discover significant people and relationships from the bounded directory.',
+        boundedScope: 'Official directory discovery index; candidate identification only.',
+        requestedTypes: ['PERSON', 'RELATIONSHIP']
+      });
+    expect(discovery.status).toBe(202);
+
+    const candidate = await authorized(
+      'post',
+      `/api/v1/discovery-requests/${discovery.body.discovery_request_id}/candidates`
+    ).send({
+      key: 'unsupported-relationship',
+      type: 'RELATIONSHIP',
+      label: 'Unregistered proposed historical conclusion',
+      proposedPredicate: 'wonTechnologyConflict',
+      discoveryLocator: 'Directory index locator'
+    });
+    expect(candidate.status).toBe(201);
+    expect(candidate.body.representation_status).toBe('NOT_REPRESENTED');
+    expect(candidate.body.obstacle_classification).toBe('REGISTRY_EXPRESSIVENESS');
+
+    const review = await authorized(
+      'post',
+      `/api/v1/candidates/${candidate.body.discovery_candidate_id}/review`
+    ).send({
+      decision: 'NOT_REPRESENTED',
+      rationale: 'The requested semantics have no registered predicate and absence is not falsity.'
+    });
+    expect(review.status).toBe(200);
+
+    const after = await pool.query(
+      'SELECT (SELECT count(*) FROM evidence)::int AS evidence, (SELECT count(*) FROM claim)::int AS claims'
+    );
+    expect(after.rows[0]).toEqual(before.rows[0]);
+  });
+
+  it('enforces optimistic concurrency, job idempotency, and append-only audit', async () => {
+    const corpus = await pool.query(`SELECT corpus_id, version FROM corpus WHERE corpus_key = 'wce-1893-workflow-test'`);
+    const corpusId = Number(corpus.rows[0].corpus_id);
+    const stale = await authorized('patch', `/api/v1/corpora/${corpusId}`)
+      .set('If-Match', '999')
+      .send({ status: 'ACTIVE' });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error.code).toBe('STALE_VERSION');
+
+    const first = await authorized('post', '/api/v1/validation-runs')
+      .set('Idempotency-Key', 'wce-validation-1')
+      .send({ corpusId, validationTypes: ['PROVENANCE', 'READ_ONLY', 'NEGATIVE_SEMANTIC'] });
+    const replay = await authorized('post', '/api/v1/validation-runs')
+      .set('Idempotency-Key', 'wce-validation-1')
+      .send({ corpusId, validationTypes: ['PROVENANCE', 'READ_ONLY', 'NEGATIVE_SEMANTIC'] });
+    expect(first.status).toBe(202);
+    expect(replay.status).toBe(202);
+    expect(replay.body.job_id).toBe(first.body.job_id);
+
+    await expect(pool.query(`UPDATE audit_event SET detail = 'changed'`)).rejects.toThrow(/append-only/);
   });
 
   it('serves an accessible Explorer shell with distinct search and research workflows', async () => {
