@@ -9,6 +9,24 @@ const registries = new Set([
   'predicates', 'entity-types', 'event-types', 'claim-types', 'evidence-types', 'mapping-statuses'
 ]);
 
+// Search filters are normalized explicitly. Plural route segments never map to search
+// result types by string slicing, and unrepresented filters never return a silent empty list.
+const searchResourceTypes: Record<string, string> = {
+  entities: 'entity',
+  events: 'event',
+  claims: 'claim',
+  propositions: 'proposition',
+  evidence: 'evidence',
+  sources: 'source',
+  datasets: 'dataset',
+  'source-records': 'source_record',
+  citations: 'citation',
+  identities: 'source_identity'
+};
+
+// Supported persisted resources that keyword search does not index.
+const unsearchableResources = new Set(['identity-mappings']);
+
 const positiveInteger = (value: unknown): number | null => {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
   const result = Number.parseInt(value, 10);
@@ -23,39 +41,6 @@ const limit = (value: unknown): number | null => {
 
 const error = (res: Response, status: number, code: string, message: string): void => {
   res.status(status).json({ error: { code, message } });
-};
-
-const openApi = {
-  openapi: '3.1.0',
-  info: {
-    title: 'Project Berean API',
-    version: '1.0.0',
-    description: 'A provenance-aware read and controlled administration interface over the Berean PostgreSQL schema.'
-  },
-  components: {
-    securitySchemes: {
-      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'opaque API token' }
-    }
-  },
-  paths: {
-    '/api/v1/capabilities': { get: { summary: 'List implemented and unavailable capabilities' } },
-    '/api/v1/schema': { get: { summary: 'Describe the authoritative schema boundary' } },
-    '/api/v1/{resource}': { get: { summary: 'List a supported persisted resource', parameters: [{ name: 'resource', in: 'path', required: true }] } },
-    '/api/v1/{resource}/{id}': { get: { summary: 'Get a supported persisted resource', parameters: [{ name: 'resource', in: 'path', required: true }, { name: 'id', in: 'path', required: true }] } },
-    '/api/v1/research': { post: { summary: 'Run a transient, read-only research query' } },
-    '/api/v1/corpora': { post: { summary: 'Create a bounded corpus workspace', security: [{ bearerAuth: [] }] } },
-    '/api/v1/research-topics': { post: { summary: 'Create a scoped research topic', security: [{ bearerAuth: [] }] } },
-    '/api/v1/discovery-requests': { post: { summary: 'Queue candidate-only discovery', security: [{ bearerAuth: [] }] } },
-    '/api/v1/discovery-requests/{id}/candidates': { post: { summary: 'Record a discovery candidate, never evidence', security: [{ bearerAuth: [] }] } },
-    '/api/v1/candidates/{id}/review': { post: { summary: 'Review a candidate', security: [{ bearerAuth: [] }] } },
-    '/api/v1/source-registrations': { post: { summary: 'Register a source and licensed dataset', security: [{ bearerAuth: [] }] } },
-    '/api/v1/source-records': { post: { summary: 'Register a source record and citation locator', security: [{ bearerAuth: [] }] } },
-    '/api/v1/evidence': { post: { summary: 'Create cited evidence without creating a claim', security: [{ bearerAuth: [] }] } },
-    '/api/v1/claims': { post: { summary: 'Author a registered proposition and reviewed claim', security: [{ bearerAuth: [] }] } },
-    '/api/v1/ingestion-jobs': { post: { summary: 'Queue controlled ingestion', security: [{ bearerAuth: [] }] } },
-    '/api/v1/validation-runs': { post: { summary: 'Queue immutable validation', security: [{ bearerAuth: [] }] } },
-    '/api/v1/export-jobs': { post: { summary: 'Queue license-aware export', security: [{ bearerAuth: [] }] } }
-  }
 };
 
 export const registerV1Routes = (repository: BereanRepository): Router => {
@@ -116,9 +101,28 @@ export const registerV1Routes = (repository: BereanRepository): Router => {
         error(res, 400, 'INVALID_REQUEST', 'q is required (at most 200 characters) and limit must be between 1 and 100.');
         return;
       }
-      const results = await repository.search(query, requestedLimit);
       const resource = req.params.resource;
-      res.json({ query, results: resource ? results.filter((result) => result.type === resource.slice(0, -1)) : results, classification: 'MATCHED' });
+      if (resource !== undefined && unsearchableResources.has(resource)) {
+        error(res, 501, 'NOT_REPRESENTED', `Keyword search does not index ${resource}; absence of a search filter is not falsity. Read the resource through /api/v1/${resource}.`);
+        return;
+      }
+      const resourceType = resource === undefined ? null : searchResourceTypes[resource] ?? null;
+      if (resource !== undefined && !resourceType) {
+        error(res, 404, 'NOT_FOUND', `Search resource filter was not found. Supported filters: ${Object.keys(searchResourceTypes).join(', ')}.`);
+        return;
+      }
+      const results = await repository.search(query, requestedLimit);
+      const filtered = resourceType ? results.filter((result) => result.type === resourceType) : results;
+      res.json({
+        query,
+        resource: resource ?? null,
+        resource_type: resourceType,
+        results: filtered,
+        classification: filtered.length ? 'MATCHED' : 'NO_MATCH',
+        limitation: filtered.length
+          ? 'Matched records are lexical search hits, not established claims.'
+          : 'NO_MATCH reports that no persisted record matched this term. It is not a denial of the searched subject.'
+      });
     } catch (exception) {
       next(exception);
     }
@@ -200,5 +204,3 @@ export const registerV1Routes = (repository: BereanRepository): Router => {
 
   return router;
 };
-
-export const openApiDocument = (): object => openApi;

@@ -72,46 +72,54 @@ Manual verification on 2026-08-13 observed a queued validation job remaining `QU
 
 Classification: **PARTIALLY_IMPLEMENTED**, **REQUIRES_SYSTEM_WORKER**.
 
-## 6. OpenAPI documentation gap
+## 6. OpenAPI coverage
 
-`/openapi.json` exists, but it omits many implemented routes and almost all request/response schemas, headers, error shapes, and role requirements.
+`/openapi.json` now documents every implemented route, with request bodies, enums, limits, security, roles, and error
+responses. Drift is prevented by `tests/app/openapi-coverage.test.ts`, which fails if a route is added without
+documentation or if a documented path has no route.
 
-Classification: **PARTIALLY_IMPLEMENTED**. See [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md).
+Classification: **IMPLEMENTED**. See [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md).
 
-## 7. Current implementation discrepancies (documented, not fixed here)
+## 7. Previously reported discrepancies and their current status
 
-### 7.1 V1 resource-filtered search pluralization bug
+### 7.1 V1 resource-filtered search normalization — FIXED
 
-`GET /api/v1/search/:resource?` filters with `result.type === resource.slice(0, -1)`.
+`GET /api/v1/search/:resource?` now normalizes each supported plural resource explicitly
+(`entities`→`entity`, `events`→`event`, `claims`→`claim`, `evidence`→`evidence`, `sources`→`source`,
+`datasets`→`dataset`, `source-records`→`source_record`, `citations`→`citation`, `identities`→`source_identity`).
+Unknown filters return `404 NOT_FOUND` instead of silently empty results, and `identity-mappings` returns
+`501 NOT_REPRESENTED` because mappings are not part of the search index. Empty result sets are classified `NO_MATCH`,
+which is not a denial of existence.
 
-Consequences:
+Classification: **IMPLEMENTED**. Evidence: `tests/app/app.test.ts`.
 
-- `claims`, `events`, `sources`, `datasets`, `citations`, `evidence` generally work;
-- `entities` becomes `entitie` and returns empty results;
-- `identities` becomes `identitie` and returns empty results;
-- `source-records` becomes `source-record`, which does not match `source_record`;
-- `identity-mappings` becomes `identity-mapping`, which matches nothing.
+### 7.2 Unsupported admin list resources — FIXED
 
-Classification: **PARTIALLY_IMPLEMENTED**.
+`GET /api/v1/admin/:resource` validates the resource against the supported list and returns `404 NOT_FOUND` with no
+implementation detail. Authentication still runs first, so an unauthenticated request receives `401` and learns
+nothing about which resources exist.
 
-### 7.2 Unsupported admin list resources return 500
+Classification: **IMPLEMENTED**. Evidence: `tests/app/app.test.ts`.
 
-`GET /api/v1/admin/:resource` supports only eight resources, but unsupported values throw `UNSUPPORTED_ADMIN_RESOURCE`, which falls through to the generic `500 internal_error` handler.
+### 7.3 Stale `If-Match` returns 409 — INTENTIONAL
 
-Classification: **PARTIALLY_IMPLEMENTED**.
+Berean issues no `ETag`; `If-Match` carries an opaque integer version, so the request is not a conventional HTTP
+entity-tag precondition. Every other write conflict in the API (`IDEMPOTENCY_CONFLICT`, `INVALID_MAPPING_STATE`,
+`INVALID_JOB_STATE`, `DUPLICATE`) is `409`, and the version guard executes as `UPDATE ... WHERE version = $2` inside
+the same transaction as the audit row, so a stale write commits nothing at all. `409 STALE_VERSION` is therefore the
+documented contract and was retained deliberately rather than changed for standards conformity alone.
 
-### 7.3 Stale `If-Match` returns 409, not 412
+Classification: **INTENTIONALLY_NOT_REPRESENTED** (as a 412 precondition contract). Evidence: `tests/app/app.test.ts`
+asserts that a stale update leaves the name, status, version, and audit-event count unchanged.
 
-The implementation accepts `If-Match`, but stale updates return `409 STALE_VERSION`. No semantic ETag contract is exposed.
+### 7.4 Missing-artifact provenance behaviour — INTENTIONAL COMPATIBILITY DIFFERENCE
 
-Classification: **PARTIALLY_IMPLEMENTED** relative to a conventional HTTP precondition contract.
+- `GET /api/v1/provenance/claim/:id` → `404 NOT_FOUND` (the V1 contract).
+- `GET /api/provenance/claims/:id` → `200` with `traversal: []` plus explicit `claim_present: false`,
+  `classification: "NOT_FOUND"`, and `compatibility` fields, preserving the legacy shape the Explorer depends on
+  while stating plainly that absence is not denial.
 
-### 7.4 Missing-artifact provenance routes are inconsistent
-
-- `/api/provenance/claims/:id` → `200 { traversal: [] }`
-- `/api/v1/provenance/claim/:id` → `404 NOT_FOUND`
-
-Classification: **PARTIALLY_IMPLEMENTED** as a uniform contract.
+Classification: **IMPLEMENTED** as a documented, tested divergence. Evidence: `tests/app/app.test.ts`.
 
 ## 8. Capability classes by domain concern
 
@@ -121,8 +129,8 @@ Classification: **PARTIALLY_IMPLEMENTED** as a uniform contract.
 | Controlled workflow state | IMPLEMENTED |
 | Source-backed authoring | IMPLEMENTED |
 | Identity proposal and review | IMPLEMENTED + REQUIRES_HUMAN_REVIEW |
-| Background execution queue persistence | PARTIALLY_IMPLEMENTED + REQUIRES_SYSTEM_WORKER |
-| Full OpenAPI contract | PARTIALLY_IMPLEMENTED |
+| Background execution queue persistence | IMPLEMENTED (queueing) + REQUIRES_SYSTEM_WORKER (execution) |
+| Full OpenAPI contract | IMPLEMENTED (drift-tested) |
 | Automatic truth / contradiction / causal inference | NOT_IMPLEMENTED / INTENTIONALLY_NOT_REPRESENTED |
 | External network acquisition via API | NOT_IMPLEMENTED / REQUIRES_FUTURE_ARCHITECTURE |
 
@@ -136,3 +144,10 @@ The current architecture and tests explicitly argue against turning these into a
 - identity certainty without evidence-backed review,
 - superiority / victory / causation narratives,
 - treating absence or `NOT_REPRESENTED` as falsity.
+
+## 10. Related documents
+
+- [`API_EPISTEMIC_BOUNDARIES.md`](./API_EPISTEMIC_BOUNDARIES.md) — the distinctions above and where each is enforced.
+- [`API_SECURITY_MODEL.md`](./API_SECURITY_MODEL.md) — authentication, roles, transactionality, and audit.
+- [`API_CAPABILITY_MATRIX.md`](./API_CAPABILITY_MATRIX.md) — per-route status and the administrative completeness matrix.
+- [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md) — OpenAPI coverage status.

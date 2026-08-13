@@ -532,7 +532,16 @@ export class BereanRepository {
       [claimId]
     );
 
-    return { claimId, traversal: result.rows };
+    // Compatibility route: the traversal starts FROM claim, so an absent claim is the only
+    // case that yields zero rows. The legacy 200 + empty traversal shape is preserved, and the
+    // classification makes "claim not represented" distinguishable from "claim without evidence".
+    return {
+      claimId,
+      claim_present: result.rows.length > 0,
+      classification: result.rows.length > 0 ? 'PROVENANCE_TRAVERSAL_REPRESENTED' : 'CLAIM_NOT_REPRESENTED',
+      compatibility: 'A claim that is not represented returns 200 with an empty traversal on this legacy route. GET /api/v1/provenance/claim/{id} returns 404 NOT_FOUND instead.',
+      traversal: result.rows
+    };
   }
 
   async explainProvenance(input: ExplainProvenanceInput): Promise<Record<string, unknown> | null> {

@@ -3,6 +3,19 @@ import type { AuthenticatedActor } from '../auth.js';
 
 type Values = Record<string, unknown>;
 
+const administrationListQueries: Record<string, string> = {
+  corpora: 'SELECT * FROM corpus ORDER BY corpus_id DESC LIMIT $1',
+  topics: 'SELECT * FROM research_topic ORDER BY research_topic_id DESC LIMIT $1',
+  discoveries: 'SELECT * FROM discovery_request ORDER BY discovery_request_id DESC LIMIT $1',
+  candidates: 'SELECT * FROM discovery_candidate ORDER BY discovery_candidate_id DESC LIMIT $1',
+  jobs: 'SELECT * FROM asynchronous_job ORDER BY job_id DESC LIMIT $1',
+  validations: 'SELECT * FROM validation_run ORDER BY validation_run_id DESC LIMIT $1',
+  audits: 'SELECT * FROM audit_event ORDER BY audit_event_id DESC LIMIT $1',
+  exports: 'SELECT * FROM export_job ORDER BY export_job_id DESC LIMIT $1'
+};
+
+export const ADMINISTRATION_LIST_RESOURCES = Object.keys(administrationListQueries);
+
 export class AdministrationRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -518,17 +531,7 @@ export class AdministrationRepository {
   }
 
   async list(resource: string, limit: number): Promise<Values[]> {
-    const queries: Record<string, string> = {
-      corpora: 'SELECT * FROM corpus ORDER BY corpus_id DESC LIMIT $1',
-      topics: 'SELECT * FROM research_topic ORDER BY research_topic_id DESC LIMIT $1',
-      discoveries: 'SELECT * FROM discovery_request ORDER BY discovery_request_id DESC LIMIT $1',
-      candidates: 'SELECT * FROM discovery_candidate ORDER BY discovery_candidate_id DESC LIMIT $1',
-      jobs: 'SELECT * FROM asynchronous_job ORDER BY job_id DESC LIMIT $1',
-      validations: 'SELECT * FROM validation_run ORDER BY validation_run_id DESC LIMIT $1',
-      audits: 'SELECT * FROM audit_event ORDER BY audit_event_id DESC LIMIT $1',
-      exports: 'SELECT * FROM export_job ORDER BY export_job_id DESC LIMIT $1'
-    };
-    const query = queries[resource];
+    const query = administrationListQueries[resource];
     if (!query) throw new Error('UNSUPPORTED_ADMIN_RESOURCE');
     return (await this.pool.query(query, [Math.max(1, Math.min(limit, 100))])).rows;
   }

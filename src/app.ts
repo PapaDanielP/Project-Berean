@@ -1,7 +1,8 @@
 import express from 'express';
 import path from 'node:path';
 import { Pool } from 'pg';
-import { openApiDocument, registerV1Routes } from './api/v1.js';
+import { openApiDocument } from './api/openapi.js';
+import { registerV1Routes } from './api/v1.js';
 import { BereanRepository } from './repository.js';
 import { BearerAuthenticator, credentialsFromEnvironment, type ApiCredential } from './auth.js';
 import { AdministrationRepository } from './administration/repository.js';

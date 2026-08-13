@@ -96,7 +96,7 @@ All implemented administrative mutations run inside a PostgreSQL transaction in 
 | Method | Path | Auth | Actual behavior | Tests / evidence |
 |---|---|---|---|---|
 | GET | `/health` | none | Returns `{status:"ok",mode:"read-only"}`; no DB access. | `tests/app/app.test.ts` |
-| GET | `/openapi.json` | none | Returns the static OpenAPI object from `src/api/v1.ts`. | `tests/app/app.test.ts` |
+| GET | `/openapi.json` | none | Returns the complete OpenAPI 3.1 document built in `src/api/openapi.ts`. Coverage is enforced by `tests/app/openapi-coverage.test.ts`. | `tests/app/app.test.ts`, `tests/app/openapi-coverage.test.ts` |
 | GET | `/api-docs` | none | Minimal HTML page linking to `/openapi.json`; not Swagger UI. | code-traced |
 | GET | `/api/research/scope` | none | Lists persisted sources, datasets, and inventory counts. Read-only. | `tests/app/app.test.ts`, manual 2026-08-13 |
 | POST | `/api/research` | none | Bounded read-only research over persisted data only. Never persists a plan or answer. | `tests/app/app.test.ts`, manual 2026-08-13 |
@@ -107,7 +107,7 @@ All implemented administrative mutations run inside a PostgreSQL transaction in 
 | GET | `/api/events/:eventId` | none | Event detail + projected participation + connected claims. | `tests/app/app.test.ts` |
 | GET | `/api/sources` | none | Lists all sources with dataset and source-record counts. | code-traced |
 | GET | `/api/sources/:sourceId` | none | Source detail + datasets + up to 200 source records. | code-traced |
-| GET | `/api/provenance/claims/:claimId` | none | Raw traversal rows for a claim. Missing claim returns `200` with `traversal: []`. | manual 2026-08-13 |
+| GET | `/api/provenance/claims/:claimId` | none | Raw traversal rows for a claim. Intentional compatibility behavior: a missing claim returns `200` with `traversal: []` plus `claim_present:false` and `classification:"CLAIM_NOT_REPRESENTED"`. | `tests/app/app.test.ts` |
 | GET | `/api/provenance/explain` | none | Deterministic structural provenance explanation for `claim_id` or `proposition_id`. | `tests/app/app.test.ts` |
 | GET | `/api/derivations/check-eligibility` | none | Structural derivation-eligibility check only. Read-only. | `tests/app/app.test.ts` |
 | GET | `/api/exploration/timeline` | none | Entity-centered timeline / coverage / source comparison assembly. Read-only. | `tests/app/app.test.ts` |
@@ -124,10 +124,10 @@ All implemented administrative mutations run inside a PostgreSQL transaction in 
 | GET | `/api/v1/capabilities` | none | Lists implemented high-level capabilities and two `NOT_REPRESENTED` limitations. | `tests/app/app.test.ts` |
 | GET | `/api/v1/schema` | none | Returns authoritative-chain / projection / workflow-boundary summary. | code-traced |
 | GET | `/api/v1/registry/:registry` | none | Supported registries: `predicates`, `entity-types`, `event-types`, `claim-types`, `evidence-types`, `mapping-statuses`. `/capabilities` 307-redirects to `/api/v1/capabilities`. | manual 2026-08-13 |
-| GET | `/api/v1/search/:resource?` | none | Same search engine as `/api/search`, adds `classification:"MATCHED"`. Resource filtering is implemented by string truncation and is therefore only reliable for some plural forms. | code-traced, manual 2026-08-13 |
+| GET | `/api/v1/search/:resource?` | none | Same search engine as `/api/search`. Plural resource segments are normalized explicitly; unknown filters return `404 NOT_FOUND`, `identity-mappings` returns `501 NOT_REPRESENTED`, and empty results are classified `NO_MATCH`. | `tests/app/app.test.ts` |
 | POST | `/api/v1/research` | none | Same bounded research behavior as `/api/research`, V1 envelope. | code-traced |
 | GET | `/api/v1/research/capabilities` | none | Returns supported research classifications. | code-traced |
-| GET | `/api/v1/provenance/claim/:id` | none | V1 claim provenance explanation. Missing claim returns `404 NOT_FOUND`. | manual 2026-08-13 |
+| GET | `/api/v1/provenance/claim/:id` | none | V1 claim provenance explanation. Missing claim returns `404 NOT_FOUND`. | `tests/app/app.test.ts` |
 | GET | `/api/v1/graph/entity/:id` | none | Entity neighborhood graph only. | code-traced |
 | GET | `/api/v1/:resource/:id` | none | Supported resources: `entities`, `events`, `claims`, `evidence`, `sources`, `datasets`, `source-records`, `citations`, `identities`, `identity-mappings`. Rich detail only for `entities`, `events`, `claims`, `sources`; others are direct table reads. | `tests/app/app.test.ts`, code-traced |
 | GET | `/api/v1/:resource` | none | Lists the same supported resources, `limit=1..100`, default 50. | `tests/app/app.test.ts`, code-traced |
@@ -227,10 +227,40 @@ Manual example (`GET /api/search?q=Nikola%20Tesla&limit=5`):
 }
 ```
 
-**Current caveat:** resource-filtered V1 search uses `resource.slice(0, -1)` to compare against result types. That works for plurals like `claims -> claim`, but fails for `entities`, `identities`, `source-records`, and `identity-mappings`. Manual verification showed `GET /api/v1/search/entities?q=adam&limit=3` returning:
+#### V1 resource filter normalization
+
+`GET /api/v1/search/:resource` normalizes the plural route segment explicitly. No string truncation is used.
+
+| Route segment | Search result type |
+|---|---|
+| `entities` | `entity` |
+| `events` | `event` |
+| `claims` | `claim` |
+| `propositions` | `proposition` |
+| `evidence` | `evidence` |
+| `sources` | `source` |
+| `datasets` | `dataset` |
+| `source-records` | `source_record` |
+| `citations` | `citation` |
+| `identities` | `source_identity` |
+
+Controlled errors replace silently empty results:
+
+- an unsupported filter (for example `/api/v1/search/not-a-resource` or the singular `/api/v1/search/entity`) returns `404 NOT_FOUND` listing the supported filters;
+- `identity-mappings` is a supported persisted resource that keyword search does not index, so it returns `501 NOT_REPRESENTED` and points at `GET /api/v1/identity-mappings`;
+- a legitimate empty result set returns `200` with `classification:"NO_MATCH"` and an explicit statement that `NO_MATCH` is not a denial.
+
+Response example (`GET /api/v1/search/entities?q=adam&limit=3`):
 
 ```json
-{ "classification": "MATCHED", "results": [] }
+{
+  "query": "adam",
+  "resource": "entities",
+  "resource_type": "entity",
+  "results": [{ "type": "entity", "id": 1, "key": "adam", "label": "Adam", "detail": "PERSON" }],
+  "classification": "MATCHED",
+  "limitation": "Matched records are lexical search hits, not established claims."
+}
 ```
 
 ### Entity / claim / proposition / event / source detail routes
@@ -249,16 +279,33 @@ Important distinctions:
 
 ### Provenance routes
 
-- `/api/provenance/claims/:claimId` returns raw traversal rows and **does not 404** for a missing claim.
 - `/api/provenance/explain` and `/api/v1/provenance/claim/:id` perform structured explanation and **do 404** when the target does not exist.
 - `/api/provenance/explain` requires **exactly one** of `claim_id` or `proposition_id`.
+- `/api/provenance/claims/:claimId` is a compatibility route that keeps its `200` shape because the Explorer interface depends on it.
 
-Manual discrepancy example:
+#### Intentional compatibility difference for missing claims
+
+`GET /api/v1/provenance/claim/999999999`:
 
 ```json
-GET /api/provenance/claims/999999999
-{ "claimId": 999999999, "traversal": [] }
+{ "error": { "code": "NOT_FOUND", "message": "Claim was not found." } }
 ```
+
+`GET /api/provenance/claims/999999999`:
+
+```json
+{
+  "claimId": 999999999,
+  "claim_present": false,
+  "classification": "CLAIM_NOT_REPRESENTED",
+  "compatibility": "A claim that is not represented returns 200 with an empty traversal on this legacy route. GET /api/v1/provenance/claim/{id} returns 404 NOT_FOUND instead.",
+  "traversal": []
+}
+```
+
+A represented claim returns `classification:"PROVENANCE_TRAVERSAL_REPRESENTED"`. Because the traversal starts `FROM claim`, an empty traversal can only mean "claim not represented", so the classification removes the ambiguity between an absent claim and a claim without evidence. Both behaviors are asserted in `tests/app/app.test.ts`, which prevents accidental divergence.
+
+**Use `/api/v1/provenance/claim/:id` for new integrations.**
 
 ### `/api/derivations/check-eligibility`
 
@@ -331,7 +378,16 @@ Supported resources and backing queries:
 
 Validation: `limit` must be integer 1..100, default 50.
 
-**Current discrepancy:** unsupported admin resources throw `UNSUPPORTED_ADMIN_RESOURCE`, which the global handler turns into `500 internal_error` instead of a structured `404`/`400`.
+Unsupported resources (for example `GET /api/v1/admin/not-real`) return a structured `404 NOT_FOUND` listing the supported resources. Authentication is still evaluated first, so an unauthenticated request returns `401` and never discloses which administrative resources exist. The internal `UNSUPPORTED_ADMIN_RESOURCE` marker is also mapped to `404` in the administration error handler, so no code path can produce `500 internal_error` for an unknown resource.
+
+```json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Administrative resource was not found. Supported resources: corpora, topics, discoveries, candidates, jobs, validations, audits, exports."
+  }
+}
+```
 
 ## Administrative write routes
 
@@ -425,7 +481,15 @@ Stale example (actual implementation):
 }
 ```
 
-> Note: the implementation returns **409**, not 412.
+> **The 409 status is the intended Berean contract, not an oversight.** `If-Match` carries the opaque integer `version`
+> counter returned by the previous write; Berean issues no entity tag, so no HTTP precondition contract is claimed.
+> Every Berean write conflict — `STALE_VERSION`, `IDEMPOTENCY_CONFLICT`, `INVALID_MAPPING_STATE`, `INVALID_JOB_STATE`,
+> and `DUPLICATE` — is reported as `409` so integrators can handle conflicts uniformly.
+>
+> The update and its audit row share one transaction and the version guard is in the `UPDATE ... WHERE version = $2`
+> predicate, so a stale write commits nothing: `tests/app/app.test.ts` asserts that after a stale `PATCH` the corpus name,
+> status, version, and `audit_event` count are all unchanged. A missing or non-numeric `If-Match` is rejected with
+> `400 INVALID_REQUEST` before any write is attempted.
 
 ### 2. Research topics and discovery workflow
 
@@ -959,15 +1023,18 @@ POST /api/research { "question": "Did an observation prove a theory?" }
 
 ## Current implementation notes and discrepancies
 
-1. **V1 resource-filtered search is only partially reliable.** `entities`, `identities`, `source-records`, and `identity-mappings` do not filter correctly because of naive singularization.
-2. **Unsupported admin list resources return 500**, not a structured 404/400.
-3. **Corpus concurrency is `If-Match`-only**; there is no version `ETag` contract.
-4. **`/api/provenance/claims/:id` and `/api/v1/provenance/claim/:id` differ on missing artifacts** (`200 []` vs `404`).
-5. **OpenAPI is a discovery stub, not a full contract.** See [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md).
+1. **V1 resource-filtered search — FIXED.** Plural segments are normalized explicitly; unknown filters return `404`, unindexed resources return `501 NOT_REPRESENTED`, and empty results are `NO_MATCH`.
+2. **Unsupported admin list resources — FIXED.** They return a structured `404 NOT_FOUND` with no implementation leakage.
+3. **Corpus concurrency returns 409, not 412 — INTENTIONAL AND DOCUMENTED.** `If-Match` carries an opaque version counter, no `ETag` is issued, and every Berean conflict uses `409`. Stale writes commit nothing.
+4. **`/api/provenance/claims/:id` versus `/api/v1/provenance/claim/:id` — INTENTIONAL COMPATIBILITY DIFFERENCE.** The legacy route keeps `200` with an empty traversal for the Explorer and now reports `classification:"CLAIM_NOT_REPRESENTED"`; the versioned route returns `404`. Both are tested.
+5. **OpenAPI — COMPLETE for the implemented surface.** `tests/app/openapi-coverage.test.ts` fails if a route is implemented but undocumented or documented but not implemented. See [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md).
 
 ## Cross-references
 
 - Exhaustive route-by-route matrix: [`API_CAPABILITY_MATRIX.md`](./API_CAPABILITY_MATRIX.md)
-- Composition recipes: [`API_COMPOSITION_GUIDE.md`](./API_COMPOSITION_GUIDE.md)
+- Workflow and composition recipes: [`API_WORKFLOWS.md`](./API_WORKFLOWS.md)
+- Authentication, roles, and audit: [`API_SECURITY_MODEL.md`](./API_SECURITY_MODEL.md)
+- Epistemic boundaries and their enforcement: [`API_EPISTEMIC_BOUNDARIES.md`](./API_EPISTEMIC_BOUNDARIES.md)
 - Non-capabilities and deliberate boundaries: [`API_LIMITATIONS.md`](./API_LIMITATIONS.md)
+- OpenAPI coverage status: [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md)
 - Verification evidence and command results: [`VERIFICATION_REPORT.md`](./VERIFICATION_REPORT.md)
