@@ -1,0 +1,210 @@
+# API Composition / Workflow Guide
+
+This guide describes **actual implemented route sequences**. It does not introduce new endpoints, new predicates, or automatic promotions.
+
+Cross-reference the architectural workflow decision in [`../01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md`](../01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md).
+
+## Composition rules that always apply
+
+1. **Search hit ≠ answer.** `MATCHED` search results are only lookup aids.
+2. **Candidate ≠ evidence.** Discovery routes never create evidence automatically.
+3. **Evidence ≠ claim.** Evidence creation never creates a claim automatically.
+4. **Claim ≠ truth.** Claim persistence records an assertion with provenance, not truth.
+5. **PROPOSED ≠ ACTIVE.** Identity mappings require an explicit review route.
+6. **Queued job ≠ completed job.** Job routes persist queue state only; a SYSTEM worker is separate.
+
+## Recipe 1: bounded research over what already exists
+
+1. **Inspect available persisted scope**  
+   `GET /api/research/scope`
+2. **Optionally keyword-search a name or locator**  
+   `GET /api/search?q=Nikola%20Tesla&limit=20`
+3. **Run bounded research**  
+   `POST /api/research`
+4. **Explain a returned claim structurally**  
+   `GET /api/provenance/explain?claim_id=<id>`
+5. **Inspect entity context or graph neighborhood**  
+   `GET /api/exploration/timeline?entity_key=phase37r_nikola_tesla`  
+   `GET /api/graph?nodeType=entity&nodeId=<id>`
+
+What must **not** be inferred:
+
+- `ESTABLISHED` means structurally source-backed, not true.
+- `NO_MATCH` means no persisted match in the selected scope, not falsehood.
+- A graph neighborhood is query output, not a persisted new relationship.
+
+## Recipe 2: corpus → topic → discovery request → candidate → review
+
+1. **Create corpus**  
+   `POST /api/v1/corpora`
+2. **Create research topic**  
+   `POST /api/v1/research-topics`
+3. **Queue discovery request**  
+   `POST /api/v1/discovery-requests` with `Idempotency-Key`
+4. **Record a candidate**  
+   `POST /api/v1/discovery-requests/:id/candidates`
+5. **Review that candidate**  
+   `POST /api/v1/candidates/:id/review`
+6. **List workflow state**  
+   `GET /api/v1/admin/discoveries`, `/candidates`, `/jobs`, `/audits`
+
+Typical WCE example:
+
+- corpus: `1893 World's Columbian Exposition`
+- topic: `electrical-exhibits`
+- discovery request: `CANDIDATE_DISCOVERY`
+- candidate: unsupported relationship `wonTechnologyConflict`
+- review: `NOT_REPRESENTED`
+
+What to call next:
+
+- If the candidate is only a workflow artifact, stop here.
+- If a human reviewer decides source-backed representation is warranted, move manually into Recipe 3.
+
+What must **not** be inferred:
+
+- A queued discovery request is not discovery output.
+- A reviewed candidate still does not create evidence or claims.
+- `NOT_REPRESENTED` means the current schema/registry cannot express the requested semantics; it does not mean the proposition is false.
+
+## Recipe 3: reviewed source registration → source record → citation → evidence
+
+1. **Register source and dataset**  
+   `POST /api/v1/source-registrations`
+2. **Register source record and citation locator**  
+   `POST /api/v1/source-records`
+3. **Create evidence from that source record**  
+   `POST /api/v1/evidence`
+4. **Verify source detail if needed**  
+   `GET /api/sources/:sourceId` or `GET /api/v1/sources/:id`
+
+Example shape:
+
+- source: reviewed historical work or official catalogue
+- dataset: locator-only bounded dataset
+- source record: one locator-bearing record
+- citation: one locator
+- evidence: `SOURCE_OBSERVATION` or `ANALYTICAL_OBSERVATION`
+
+What to call next:
+
+- To author a claim from direct source material, continue to Recipe 4.
+- To retain analytical observations without promotion, stop after evidence creation.
+
+What must **not** be inferred:
+
+- registering a source does not create source text, evidence, or claims;
+- evidence does not create a claim;
+- analytical evidence is not direct-claim evidence.
+
+## Recipe 4: evidence → proposition/claim → provenance check
+
+1. **Create direct or interpretive claim**  
+   `POST /api/v1/claims`
+2. **Explain claim provenance**  
+   `GET /api/provenance/explain?claim_id=<id>`
+3. **Inspect proposition-wide siblings if needed**  
+   `GET /api/propositions/:propositionId`
+4. **Inspect entity or event context**  
+   `GET /api/entities/:entityId` / `GET /api/events/:eventId`
+
+Genesis example:
+
+- direct claim like `Adam fatherOf Seth`
+- provenance chain through `Claim -> ClaimEvidence -> Evidence -> Citation -> SourceRecord -> Dataset -> Source`
+
+What to call next:
+
+- If reconciliation is required, continue to Recipe 5.
+- If derivation metadata is required for a future derived claim, continue to Recipe 6.
+
+What must **not** be inferred:
+
+- claim status is not truth;
+- the optional `statement` is display metadata only;
+- `QUALIFIES` / `CONTRADICTS` claim-evidence links report stored relation type only, not global truth resolution.
+
+## Recipe 5: source identity → proposed mapping → explicit review
+
+1. **Create proposed mapping**  
+   `POST /api/v1/identity-mappings`
+2. **Review mapping**  
+   `POST /api/v1/identity-mappings/:id/review`
+3. **Inspect entity-centered mapping state**  
+   `GET /api/entities/:entityId` or `GET /api/v1/identity-mappings/:id`
+
+Example boundaries from fixtures and manual verification:
+
+- `phase37-catalogue-mrs-potter-palmer` remains `PROPOSED` until explicit review.
+- A manually created mapping returned `PROPOSED`, then `REJECTED` only after the review route.
+
+What must **not** be inferred:
+
+- source identity is not canonical entity;
+- `PROPOSED` is not `ACTIVE`;
+- evidence from a different source cannot justify the mapping.
+
+## Recipe 6: derivation metadata → structural eligibility → derived claim
+
+1. **Create derivation metadata with explicit inputs**  
+   `POST /api/v1/derivations`
+2. **Check structural eligibility**  
+   `GET /api/derivations/check-eligibility?derivation_id=<id>`
+3. **If and only if a reviewer decides to persist a derived claim, create it**  
+   `POST /api/v1/claims` with `claimType: "DERIVED_CLAIM"` and `derivationId`
+4. **Explain the resulting claim**  
+   `GET /api/provenance/explain?claim_id=<id>`
+
+What must **not** be inferred:
+
+- derivation metadata is not a derived claim;
+- structural eligibility is not logical entailment;
+- creating a derivation never creates a claim automatically.
+
+## Recipe 7: queue validation / export / ingestion work
+
+1. **Queue job**  
+   `POST /api/v1/validation-runs`  
+   `POST /api/v1/export-jobs`  
+   `POST /api/v1/ingestion-jobs`
+2. **Inspect queue state**  
+   `GET /api/v1/admin/jobs`
+3. **Cancel or retry if necessary**  
+   `POST /api/v1/jobs/:id/cancel`  
+   `POST /api/v1/jobs/:id/retry`
+4. **Inspect specialized table rows**  
+   `GET /api/v1/admin/validations` or `/exports`
+
+What must **not** be inferred:
+
+- `QUEUED` is not execution;
+- queued jobs do not produce `validation_result`, `ingestion_result`, or export artifacts in this process;
+- retry/cancel only change persisted workflow state.
+
+## Recipe 8: full administration lifecycle with explicit human gates
+
+Implemented sequence:
+
+1. `POST /api/v1/corpora`
+2. `POST /api/v1/research-topics`
+3. `POST /api/v1/discovery-requests`
+4. `POST /api/v1/discovery-requests/:id/candidates`
+5. `POST /api/v1/candidates/:id/review`
+6. `POST /api/v1/source-registrations`
+7. `POST /api/v1/source-records`
+8. `POST /api/v1/evidence`
+9. `POST /api/v1/claims`
+10. `GET /api/provenance/explain?claim_id=<id>`
+11. `POST /api/v1/identity-mappings`
+12. `POST /api/v1/identity-mappings/:id/review`
+13. `POST /api/v1/derivations`
+14. `GET /api/derivations/check-eligibility?derivation_id=<id>`
+15. `POST /api/v1/validation-runs`
+16. `POST /api/v1/export-jobs`
+
+What is **not** implemented as an automatic chain:
+
+- corpus → topic → source registration is not auto-triggered;
+- candidate review does not auto-create source records, evidence, claims, or mappings;
+- derivation eligibility does not auto-create a derived claim;
+- queued validation/export/ingestion work does not auto-complete without a worker.

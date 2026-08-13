@@ -1,303 +1,973 @@
 # Project Berean API Developer Guide
 
-## Status and contract
+## Status, scope, and authoritative references
 
-Berean is a provenance-first PostgreSQL reference model with a read-only Express
-Explorer and an authenticated administration workflow. This guide documents the
-API implemented in this repository, not a proposed service contract. Explorer
-and research operations remain synchronous parameterized reads. Administrative
-operations are controlled, transactional writes to the workflow layer or to the
-existing authoritative objects; every implemented mutation is audited.
+This guide describes the API **as implemented in code and tests in this repository**. For the authoritative architectural model and workflow boundaries, see:
 
-Two HTTP surfaces are currently exposed:
+- [`docs/01-architecture/ARCHITECTURE.md`](../01-architecture/ARCHITECTURE.md)
+- [`docs/01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md`](../01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md)
 
-* **Explorer compatibility surface**: `/api/*`, used by the bundled Explorer.
-* **Versioned surface**: `/api/v1/*`, a bounded read and administration
-  interface. Its OpenAPI 3.1 discovery description is at `GET /openapi.json`.
+Berean exposes two HTTP surfaces:
 
-Administrative routes require opaque bearer credentials whose SHA-256 hashes,
-actor keys, names, and roles are supplied through `BEREAN_API_CREDENTIALS`.
-Credentials are not stored in the database. If none are configured, mutations
-fail closed with `503 AUTH_NOT_CONFIGURED`.
+- **Explorer compatibility surface**: `/api/*` plus `/health`, `/openapi.json`, `/api-docs`, and the Explorer HTML shell.
+- **Versioned surface**: `/api/v1/*`, combining bounded read routes with authenticated workflow/authoring routes.
 
-### Epistemic and persistence boundaries
+Berean's core distinctions remain mandatory in every route and example:
 
-`Claim → ClaimEvidence → Evidence → EvidenceCitation → Citation → SourceRecord
-→ Dataset → Source` is the source-backed traversal. A claim is not truth, and
-an `ESTABLISHED` research capability means only that the bounded retrieval
-found represented, directly supported material. `claim.statement` is display
-metadata; the structured Proposition is authoritative semantic content.
+- Source ≠ Dataset ≠ SourceRecord ≠ Citation ≠ Evidence ≠ Claim ≠ Truth
+- Claim ≠ Proposition
+- Source Identity ≠ Canonical Entity
+- Candidate ≠ Evidence
+- `PROPOSED` ≠ `ACTIVE`
+- query-derived result ≠ persisted derived claim
+- `NOT_REPRESENTED` / `NO_MATCH` ≠ `FALSE`
 
-`event_participation` is a projection from claim-asserted propositions. It is
-not an independently persisted event-participant assertion. Graph results are
-stored claim/proposition edges, projection rows, or query-derived
-neighborhoods—not a new claim or an inference result. A `NULL` source-record
-body or citation quotation is reported as `NOT_STORED_BY_POLICY`, not source
-silence. Source identities remain separate from canonical entities; a
-`PROPOSED` mapping is not `ACTIVE`.
+## Shared implementation facts
 
-All research, search, graph, provenance explanation, and timeline output remains
-transient. Database rows are never added or changed by those routes. The
-application sends a 16 KiB JSON body limit and security headers
-(`Content-Security-Policy`, `X-Content-Type-Options: nosniff`, and
-`Referrer-Policy: no-referrer`), disables `X-Powered-By`, and uses
-parameterized SQL.
+### Authentication and roles
 
-## Shared behavior
+Administrative routes use opaque bearer credentials loaded from `BEREAN_API_CREDENTIALS` and validated in `src/auth.ts`.
 
-Successful reads return `200` JSON unless stated otherwise. The compatibility
-surface returns `{ "error": "..." }` for validation/not-found errors and
-`{ "error": "internal_error", "message": "The request could not be completed." }`
-for unhandled failures. V1 uses `{ "error": { "code", "message" } }`.
-V1 unknown methods/routes return `501 NOT_REPRESENTED`; known nonexistent
-resources return `404 NOT_FOUND`. Read failures can return `500`.
+Implemented roles, in ascending rank:
 
-Examples use fixture values where named; numeric IDs are illustrative and must
-be obtained by search or list first.
+1. `READER`
+2. `RESEARCHER`
+3. `CONTENT_EDITOR`
+4. `REVIEWER`
+5. `ADMINISTRATOR`
+6. `SYSTEM`
 
-### Implementation locator
+If no credentials are configured, administrative writes fail closed with `503 AUTH_NOT_CONFIGURED`.
 
-The server entrypoint is `src/server.ts`; application initialization, static
-assets, security middleware, compatibility routes, and the final error handler
-are in `src/app.ts:109-431`. The V1 router is
-`src/api/v1.ts:44-179`. Database reads for all dynamic routes are in
-`src/repository.ts`: resource/scope/research/search (`12-249`), entity through
-source detail (`251-536`), provenance/derivation (`538-977`), timeline
-(`1046-1403`), coverage/quality/graph (`1405-1592`). Tests covering the
-surface are `tests/app/app.test.ts`; each route group below identifies its
-relevant test coverage.
+### Headers and envelopes
 
-## Discovery and resource reads
+- JSON body limit: **16 KiB** (`express.json({ limit: '16kb' })`)
+- Security headers: `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`
+- `X-Powered-By` is disabled.
+- Administrative routes always return `X-Correlation-Id`; supplied UUIDs are echoed, otherwise a new UUID is generated.
+- `401` responses set `WWW-Authenticate: Bearer`.
+- `PATCH /api/v1/corpora/:id` accepts `If-Match: <integer version>`.
+- Job-queueing routes require `Idempotency-Key`.
 
-| Method and route | Reads / response | Validation, bounds, and coverage |
-|---|---|---|
-| `GET /health` | Explorer `{status:"ok",mode:"read-only"}` | No database read. |
-| `GET /api/v1/health` | Adds `api_version:"v1"` | No database read. |
-| `GET /openapi.json` | OpenAPI 3.1 discovery object | Intentionally incomplete operation schemas. |
-| `GET /api-docs` | Minimal HTML link to OpenAPI | Not Swagger UI. |
-| `GET /api/v1/capabilities` | Implemented read capabilities and `NOT_REPRESENTED` limitations | Declares read-only boundary. |
-| `GET /api/v1/schema` | Authoritative chain and projections | Reports that corpus/workflow tables do not exist. |
-| `GET /api/v1/registry/{registry}` | `{results}` from a controlled registry | `predicates`, `entity-types`, `event-types`, `claim-types`, `evidence-types`, `mapping-statuses`; otherwise 404. `/registry/capabilities` 307-redirects to capabilities. |
-| `GET /api/v1/{resource}?limit=1..100` | `{results}` compact rows | Resources: `entities`, `events`, `claims`, `evidence`, `sources`, `datasets`, `source-records`, `citations`, `identities`, `identity-mappings`. Default 50. |
-| `GET /api/v1/{resource}/{id}` | Detail where implemented, otherwise a resource row | Positive safe integer only; 400 invalid, 404 absent. Entity/event/claim/source use richer reads. |
-| `GET /api/entities/:entityId`, `/api/claims/:claimId`, `/api/propositions/:propositionId`, `/api/events/:eventId`, `/api/sources/:sourceId` | Explorer detail objects | Integer path parameter; 400 invalid and 404 absent. |
-| `GET /api/sources` | `{sources}` with dataset and record counts | No pagination; returns every source. |
+### Important typing detail
 
-V1 compact resource fields map directly to schema tables: entity identity and
-type; event type; claim/proposition/type/status; evidence/source-record/type;
-source metadata; dataset license/version; record location/hash/revision;
-citation locator; source identity; and mapping status/confidence/justification/
-supporting evidence. Detail reads additionally assemble real adjacent rows:
-entity mappings/claims/events/related entities; event participation and claims;
-claim proposition/evidence/claim relations/derivation; source datasets and up
-to 200 source records; and a proposition's claims.
+`pg` returns PostgreSQL `BIGINT` values as JSON strings. Examples: `"claim_id":"348"`, `"job_id":"4"`. PostgreSQL `INTEGER` values remain JSON numbers, for example `"version":2`.
 
-## Search is not research
+### Error shapes
 
-`GET /api/search?q=<text>&limit=1..50` returns
-`{query,results:[{type,id,key,label,detail}]}`. `q` is required and at most
-200 characters; default limit is 20 (maximum 50). It performs case-insensitive
-substring matching against represented entity names/keys, events, claim keys
-and statements, proposition predicates, evidence, sources, datasets, source
-records/locations, citations/locators, and source identities. It does not
-search authoritative source text unless that text happens to be stored in one
-of those fields.
+Explorer compatibility routes use:
 
-`GET /api/v1/search[/{resource}]?q=<text>&limit=1..100` invokes the same
-search with V1 bounds/default 50 and adds `"classification":"MATCHED"`.
-The optional suffix filters by the singularized result type (for example,
-`/api/v1/search/entities`). `MATCHED` means only a keyword hit: it is not
-evidence, support, establishment, or a provenance result.
+```json
+{ "error": "..." }
+```
 
-Example: `GET /api/search?q=Gen.1.1&limit=20` can return a citation locator.
-Use the returned claim ID with provenance, or entity ID with graph/timeline,
-rather than treating the hit as an answer.
+or on unhandled failures:
 
-## Natural-language research and scope
+```json
+{ "error": "internal_error", "message": "The request could not be completed." }
+```
 
-| Route | Request / response | Actual behavior |
-|---|---|---|
-| `GET /api/research/scope` | `{sources,datasets,inventory}` | Lists persisted sources/datasets and counts records, evidence, claims; it neither creates a scope nor reconciles identity. |
-| `POST /api/research` | JSON `{question, datasetIds?: number[]}` | Returns question, interpretation, capability, plan, results, limitation. |
-| `POST /api/v1/research` | Same body/result | Same implementation, V1 validation envelope. |
-| `GET /api/v1/research/capabilities` | Mode and classifications | Documents supported classifications only. |
+`/api/v1/*` uses:
 
-Question is required, trimmed, and at most 1,000 characters. `datasetIds`
-contains at most 100 positive safe integers; duplicates are removed. Omit or
-pass `[]` for **all** represented datasets. One ID restricts results to that
-dataset; multiple IDs restrict to their union. An empty/stale/nonmatching scope
-is valid: it can return `NO_MATCH`, never an invented answer. The API does not
-validate that an ID exists before querying, and it does not persist scope
-selection.
+```json
+{ "error": { "code": "...", "message": "..." } }
+```
 
-Research is a bounded rule-based retrieval, not general natural-language
-reasoning. Questions mentioning participation select predicates registered with
-an event participation role; other questions match registered predicate code or
-description. It returns at most 50 matching persisted claims with their
-proposition, evidence relation, and source/dataset labels. The plan reports
-`BEREAN_ONLY`, selected IDs, candidate predicates, traversal shape, output
-constraints, and full-chain requirement. It does not fetch external sources,
-expand arbitrary hops, invent predicates, evaluate truth, or persist a plan.
+### Transactions, audit, idempotency, concurrency
 
-Capability/result meanings are exact implementation labels:
+All implemented administrative mutations run inside a PostgreSQL transaction in `src/administration/repository.ts`.
 
-* `ESTABLISHED`: non-derived results directly linked by `SUPPORTS`; not truth.
-* `DERIVED` / `DERIVED_FROM_PERSISTED_GRAPH`: a stored `DERIVED_CLAIM`, with
-  derivation metadata/inputs available through claim or provenance reads.
-* `SCHOLARLY_CANDIDATE`: an `INTERPRETIVE_CLAIM`, not automatically fact.
-* `UNRESOLVED`: an inactive (`UNDER_REVIEW`, `SUPERSEDED`, `RETRACTED`) claim,
-  or evidence relation that is not direct support.
-* `NOT_REPRESENTED`: a truth/proof request or no registered predicate match;
-  it is not falsehood or a denial.
-* `NO_MATCH`: registered retrieval found no selected-scope persisted claim.
+- Successful mutations append one `audit_event` row in the **same transaction**.
+- `audit_event` and `validation_result` are database-immutable via triggers.
+- Job idempotency is scoped to **(requested_by_actor_id, job_type, idempotency_key)**.
+- Reusing the same idempotency key with the same fingerprint replays the existing job.
+- Reusing the same key with a different fingerprint returns `409 IDEMPOTENCY_CONFLICT`.
+- Corpus optimistic concurrency uses integer `If-Match`; stale updates return `409 STALE_VERSION`.
+- The implementation does **not** emit a resource-version `ETag`. Any Express-generated `ETag` header is generic response hashing, not concurrency metadata.
 
-Individual result classifications may instead expose `EVIDENCE_CONTRADICTS` or
-`EVIDENCE_QUALIFIES`. Those report a stored ClaimEvidence relation, not a
-global contradiction resolution.
+### Worker boundary
 
-## Provenance, claims, identities, and derivation
+`POST /api/v1/discovery-requests`, `/ingestion-jobs`, `/validation-runs`, and `/export-jobs` persist queue state, but this repository ships **no in-process durable worker**. Manual verification on 2026-08-13 showed queued validation jobs remaining `QUEUED` with zero `validation_result` rows until a separate worker acts.
 
-| Route | Inputs | Output / limits |
-|---|---|---|
-| `GET /api/provenance/claims/:claimId` | Integer | Raw joined traversal rows for a claim; it returns an empty traversal for an absent claim (unlike explain). |
-| `GET /api/provenance/explain?claim_id=N` | Exactly one positive `claim_id` or `proposition_id` | Deterministic `EXPLAIN_PROVENANCE`; 400 invalid/both/neither, 404 absent. |
-| `GET /api/v1/provenance/claim/:id` | Positive ID | Same deterministic claim explanation, V1 envelope. |
-| `GET /api/derivations/check-eligibility?derivation_id=N` | Positive ID | Check list (`PASS`, `FAIL`, `NOT_APPLICABLE`); 404 absent. |
+## Route inventory
 
-Explanation returns the selected authoritative proposition; claim(s); source
-chain IDs; deduplicated supporting evidence, citations, records, datasets, and
-sources; projected participation; derivation and inputs; per-claim and overall
-structural gaps. Direct claims are `SOURCE-BACKED` or
-`SOURCE-BACKED_WITH_GAPS`; derived claims are `DERIVED` or
-`DERIVED_WITH_GAPS`. It checks missing ClaimEvidence/citation/record/dataset/
-source, missing projected participation, and malformed/missing/self derivation
-inputs. It does not assess truth, causation, theology, contradiction,
-compliance, or generalized inference.
+### Non-versioned and Explorer compatibility routes
 
-Entity detail, timeline, and V1 identity/mapping resources expose source
-identities separately and mapping status, confidence, justification, notes,
-and supporting evidence ID. Consumers must preserve that state: a proposed or
-unresolved mapping is not active reconciliation.
+| Method | Path | Auth | Actual behavior | Tests / evidence |
+|---|---|---|---|---|
+| GET | `/health` | none | Returns `{status:"ok",mode:"read-only"}`; no DB access. | `tests/app/app.test.ts` |
+| GET | `/openapi.json` | none | Returns the static OpenAPI object from `src/api/v1.ts`. | `tests/app/app.test.ts` |
+| GET | `/api-docs` | none | Minimal HTML page linking to `/openapi.json`; not Swagger UI. | code-traced |
+| GET | `/api/research/scope` | none | Lists persisted sources, datasets, and inventory counts. Read-only. | `tests/app/app.test.ts`, manual 2026-08-13 |
+| POST | `/api/research` | none | Bounded read-only research over persisted data only. Never persists a plan or answer. | `tests/app/app.test.ts`, manual 2026-08-13 |
+| GET | `/api/search` | none | Keyword search across represented records. `MATCHED` search hits are not evidence. | `tests/app/app.test.ts`, manual 2026-08-13 |
+| GET | `/api/entities/:entityId` | none | Entity detail: entity + source mappings + claims + events + related entities. | `tests/app/app.test.ts` |
+| GET | `/api/claims/:claimId` | none | Claim detail: claim + proposition + evidence + claim relations + derivation metadata. | `tests/app/app.test.ts` |
+| GET | `/api/propositions/:propositionId` | none | Proposition detail + all claims asserting it. | `tests/app/app.test.ts` |
+| GET | `/api/events/:eventId` | none | Event detail + projected participation + connected claims. | `tests/app/app.test.ts` |
+| GET | `/api/sources` | none | Lists all sources with dataset and source-record counts. | code-traced |
+| GET | `/api/sources/:sourceId` | none | Source detail + datasets + up to 200 source records. | code-traced |
+| GET | `/api/provenance/claims/:claimId` | none | Raw traversal rows for a claim. Missing claim returns `200` with `traversal: []`. | manual 2026-08-13 |
+| GET | `/api/provenance/explain` | none | Deterministic structural provenance explanation for `claim_id` or `proposition_id`. | `tests/app/app.test.ts` |
+| GET | `/api/derivations/check-eligibility` | none | Structural derivation-eligibility check only. Read-only. | `tests/app/app.test.ts` |
+| GET | `/api/exploration/timeline` | none | Entity-centered timeline / coverage / source comparison assembly. Read-only. | `tests/app/app.test.ts` |
+| GET | `/api/genesis/coverage` | none | Genesis-locator coverage dashboard. Read-only. | `tests/app/app.test.ts` |
+| GET | `/api/dashboard/quality` | none | Current structural totals, claim-type distribution, contradiction count, mapping status. | code-traced |
+| GET | `/api/graph` | none | Bounded graph neighborhood for `nodeType=entity|claim`. Read-only. | `tests/app/app.test.ts` |
+| GET | `*` | none | Returns Explorer HTML shell. | `tests/app/app.test.ts` |
 
-## Entity, event, timeline, and graph exploration
+### Versioned read routes
 
-`GET /api/exploration/timeline?entity_id=N` or
-`?entity_key=ark_of_covenant` requires exactly one selector. It returns the
-entity, coverage, mappings, related events, each event's claim/proposition/
-provenance, projected participation, entity-only claims, source comparison,
-stored claim relations, and ordering. It returns 400 invalid/both/neither and
-404 with `coverage_status:"NO_ENTITY_FOUND"` absent. Dates are only stored
-typed values; ordering is date, then stored year, then event ID. A comparison
-label of `DIFFERING_SOURCE_DESCRIPTION` is explicitly not contradiction.
+| Method | Path | Auth | Actual behavior | Tests / evidence |
+|---|---|---|---|---|
+| GET | `/api/v1/health` | none | `{status:"ok",api_version:"v1",mode:"read-only"}` | `tests/app/app.test.ts` |
+| GET | `/api/v1/capabilities` | none | Lists implemented high-level capabilities and two `NOT_REPRESENTED` limitations. | `tests/app/app.test.ts` |
+| GET | `/api/v1/schema` | none | Returns authoritative-chain / projection / workflow-boundary summary. | code-traced |
+| GET | `/api/v1/registry/:registry` | none | Supported registries: `predicates`, `entity-types`, `event-types`, `claim-types`, `evidence-types`, `mapping-statuses`. `/capabilities` 307-redirects to `/api/v1/capabilities`. | manual 2026-08-13 |
+| GET | `/api/v1/search/:resource?` | none | Same search engine as `/api/search`, adds `classification:"MATCHED"`. Resource filtering is implemented by string truncation and is therefore only reliable for some plural forms. | code-traced, manual 2026-08-13 |
+| POST | `/api/v1/research` | none | Same bounded research behavior as `/api/research`, V1 envelope. | code-traced |
+| GET | `/api/v1/research/capabilities` | none | Returns supported research classifications. | code-traced |
+| GET | `/api/v1/provenance/claim/:id` | none | V1 claim provenance explanation. Missing claim returns `404 NOT_FOUND`. | manual 2026-08-13 |
+| GET | `/api/v1/graph/entity/:id` | none | Entity neighborhood graph only. | code-traced |
+| GET | `/api/v1/:resource/:id` | none | Supported resources: `entities`, `events`, `claims`, `evidence`, `sources`, `datasets`, `source-records`, `citations`, `identities`, `identity-mappings`. Rich detail only for `entities`, `events`, `claims`, `sources`; others are direct table reads. | `tests/app/app.test.ts`, code-traced |
+| GET | `/api/v1/:resource` | none | Lists the same supported resources, `limit=1..100`, default 50. | `tests/app/app.test.ts`, code-traced |
+| any | unmatched `/api/v1/*` | none | Usually `501 NOT_REPRESENTED`; generic one- or two-segment resource patterns can instead return `404 NOT_FOUND` because they match `/:resource` or `/:resource/:id` first. | manual 2026-08-13 |
 
-`GET /api/graph?nodeType=entity|claim&nodeId=N` and
-`GET /api/v1/graph/entity/:id` return bounded neighborhoods from actual
-claim/proposition, participation, and provenance edges. They are not graph
-database queries, relationship truth, or persisted derived claims. In Phase
-37R, for example, an available person→exhibit→technology path is query-derived;
-shared exhibit participation does not assert employment or membership.
+## Read-route request validation and notable behaviors
 
-`GET /api/genesis/coverage` is a Genesis-location-specific dashboard (up to
-300 locators), not general corpus coverage. `GET /api/dashboard/quality`
-returns current structural counts/quality classifications. Both are read-only
-and data-dependent.
+### `/api/research/scope`
 
-## Supported composition workflows
+Response shape:
 
-1. **Research**: call scope, select IDs, post a question, inspect plan and
-   classification, then explain a returned claim. Treat an empty result or
-   `NOT_REPRESENTED` as a coverage/capability boundary.
-2. **Search to research**: keyword-search `Nikola Tesla` or
-   `CLAIM_MT_ADAM_FATHER_SETH`; use its source/dataset context to select scope;
-   research registered predicates rather than promoting `MATCHED`.
-3. **Claim to provenance**: search claim → get claim detail → explain by claim
-   ID → follow locator, record, dataset, and source. Inspect gaps and storage
-   policy flags before relying on the chain.
-4. **Entity to graph**: search entity → entity detail/timeline → graph
-   neighborhood → verify any edge's asserting claim via provenance.
-5. **Scope comparison**: run the same bounded question with `[]`, one dataset,
-   then multiple datasets. Compare represented descriptions; do not label
-   disagreement as contradiction unless a stored ClaimRelation says so.
+```json
+{
+  "sources": [{ "source_id": "12", "source_key": "1EN_ETH", "name": "1 Enoch, Ethiopic textual tradition", "source_type_code": "HISTORICAL_WORK", "dataset_count": 1 }],
+  "datasets": [{ "dataset_id": "32", "dataset_key": "ELECTRICAL_INDUSTRIES_P37R", "source_record_count": 2, "evidence_count": 2, "claim_count": 4 }],
+  "inventory": { "entities": 142, "events": 112, "claims": 348, "evidence": 182, "sources": 31, "datasets": 33 }
+}
+```
 
-## Administration and workflow API
+DB reads: `source`, `dataset`, `source_record`, `evidence`, `claim_evidence`, `claim`.
 
-The persistence decision and semantic boundaries are documented in
-`docs/01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md`. Administrative
-list reads are `GET /api/v1/admin/{corpora|topics|discoveries|candidates|jobs|
-validations|audits|exports}?limit=1..100`. They require at least `READER`.
+### `/api/research` and `/api/v1/research`
 
-| Minimum role | Operations |
-|---|---|
-| `RESEARCHER` | create research topics and discovery requests/candidates; record derivations with explicit inputs |
-| `CONTENT_EDITOR` | register source/dataset and source-record/citation locators; create evidence; propose evidence-backed identity mappings; queue/cancel/retry ingestion |
-| `REVIEWER` | review candidates/mappings; author validated claims; queue validation |
-| `ADMINISTRATOR` | create/archive/version corpora; queue controlled exports |
+Request body:
 
-Jobs require `Idempotency-Key`; exact duplicate replay by actor and job type
-returns the existing job, while a different payload returns
-`IDEMPOTENCY_CONFLICT`. Corpus updates require numeric `If-Match` and return
-`STALE_VERSION` on conflict. Mutations return an `X-Correlation-Id` and append
-an audit event in the same transaction. Audit and validation results are
-database-immutable.
+```json
+{ "question": "Who participates in the Opening Day event and where does it occur?", "datasetIds": [31, 32] }
+```
 
-Discovery requests and candidates never create Evidence or Claims. Source
-registration keeps Source, Dataset, SourceRecord, and Citation distinct.
-Evidence creation requires citation identifiers and creates no Claim. Direct
-and interpretive claim authoring accepts only cited `SOURCE_OBSERVATION`
-evidence. Derivation creation accepts explicit claim/evidence inputs and creates
-no Claim automatically. Identity mappings begin `PROPOSED` and require a
-reviewer to become `ACTIVE` or `REJECTED`.
+Validation:
 
-Still unavailable: arbitrary URL retrieval, uploads, filesystem access, SQL,
-registry mutation, generalized inference, truth/falsity/causation/superiority
-decisions, automatic candidate/evidence/claim promotion, and an in-process
-durable worker. Jobs persist controlled state for a separately deployed SYSTEM
-worker. Locators are metadata only, so the API exposes no SSRF-capable fetch
-operation.
+- `question`: required non-empty string, trimmed, max 1000 chars
+- `datasetIds`: optional array of at most 100 positive integers; duplicates are removed
 
-## API-to-data-model mapping and capability matrix
+Actual research behaviors:
 
-| Capability | Primary objects | Read | Write | Persistent result | Human review/provenance | Current |
-|---|---|---:|---:|---:|---|---|
-| Resource/registry reads | listed tables and controlled vocabularies | Yes | No | No | Existing provenance only | Yes |
-| Search | indexed columns of represented tables | Yes | No | No | `MATCHED` is not evidence | Yes |
-| Research | claim, proposition, ClaimEvidence, source chain | Yes | No | No | Bounded classifications/full-chain plan | Yes |
-| Provenance/derivation check | claim/evidence/citation/derivation inputs | Yes | No | No | Structural, deterministic only | Yes |
-| Timeline/graph | proposition, `event_participation`, claim relations | Yes | No | No | Stored/projected/query-derived separated | Yes |
-| Corpus/content management | workflow plus source through claim/identity/derivation | Yes | Controlled | Yes | Role, review, audit, provenance gates | Yes |
-| Candidate/discovery workflow | request, candidate, review, job, audit | Yes | Controlled | Yes | Candidate never auto-promotes | Yes |
-| Ingestion/validation/export plans | specialized asynchronous jobs | Yes | Queue/state | Yes | Idempotent; SYSTEM worker required | Partial |
+- Questions containing `prove|proved|true|truth|confirm*` return `capability: "NOT_REPRESENTED"`.
+- Participation questions use all predicates whose registry row has `event_participation_role_code`.
+- Other questions match registered `predicate_code` or `predicate.description`.
+- Results are limited to 50 rows.
+- Scope is always `BEREAN_ONLY`; no external retrieval happens.
+- `NO_MATCH` means no persisted claim in the selected scope matched the registered predicate set.
 
-## Remaining implementation priorities
+Manual example (2026-08-13):
 
-P1: deploy a durable SYSTEM worker for queued ingestion, validation, and export
-execution. It must preserve transaction/license policies and append immutable
-results; it must never convert discovery into evidence automatically.
+```json
+{
+  "capability": "ESTABLISHED",
+  "plan": {
+    "classification": "PARTICIPATION",
+    "scope": { "dataset_ids": [], "retrieval_scope": "BEREAN_ONLY" },
+    "candidate_predicates": ["builderIn", "childIn", "parentIn", "participatesIn", "subjectOf"],
+    "traversal_shape": "CLAIM_ASSERTED_EVENT_PARTICIPATION",
+    "provenance_requirement": "FULL_CHAIN"
+  },
+  "results": [
+    {
+      "claim_key": "CLAIM_SETH_CHILD_SETH_BEGETTING",
+      "predicate": "childIn",
+      "dataset_key": "GEN_MT_REF",
+      "classification": "DIRECTLY_SUPPORTED"
+    }
+  ]
+}
+```
 
-P2: expand the OpenAPI discovery document with complete request/response
-component schemas and pagination contracts.
+Failure example (`NO_MATCH`, manual 2026-08-13):
 
-P3: if external acquisition is added, first provide a separately sandboxed
-retriever with the URL/DNS/redirect/network/license controls listed in the
-architecture assessment. Do not add truth, inference, registry-mutation, or
-arbitrary relationship-authoring endpoints.
+```json
+{
+  "capability": "NO_MATCH",
+  "results": [],
+  "limitation": "No matching persisted claims were found in the selected scope."
+}
+```
 
-## Documentation verification report
+### `/api/search` and `/api/v1/search/:resource?`
 
-**Endpoints inspected:** every Express route in `src/app.ts` and
-`src/api/v1.ts` and `src/administration/routes.ts`, including wildcard fallback
-and static/API documentation routes. **Source inspected:** `src/app.ts`,
-`src/api/v1.ts`, `src/administration/*`, `src/repository.ts`, `src/types.ts`,
-`src/server.ts`, schema SQL, application tests, package scripts, README,
-Explorer/Phase 25 documentation, and Phase 37R/37B artifacts.
+Validation:
 
-**Tests inspected:** `tests/app/app.test.ts` (including read-only count
-snapshots, scope semantics, research classifications, validation, provenance,
-timeline, and graph assertions) and Phase 37R validation references.
-The OpenAPI document remains a discovery contract rather than a complete set of
-response schemas. `/api/provenance/claims/:id` does not 404 for an absent claim,
-while explain does. No generalized inference or external retrieval is claimed.
+- `q`: required, trimmed, max 200 chars
+- compatibility `limit`: positive integer, default 20, effective max 50
+- V1 `limit`: positive integer 1..100, default 50
 
-Verification commands for this documentation change are `npm run typecheck`,
-`npm run lint`, `npm test` (requires `DATABASE_URL`), and
-`scripts/validation/run-postgres-validation.sh` (PostgreSQL 16).
+Searches: `entity`, `event`, `claim`, `proposition`, `evidence`, `source`, `dataset`, `source_record`, `citation`, `source_identity`.
+
+Manual example (`GET /api/search?q=Nikola%20Tesla&limit=5`):
+
+```json
+{
+  "query": "Nikola Tesla",
+  "results": [
+    { "type": "citation", "key": "CITE_P37R_DIRECTORY_TESLA", "label": "Official Directory (1893), classified exhibitor entry for Nikola Tesla" },
+    { "type": "claim", "key": "CLAIM_P37R_TESLA_PARTICIPATES_IN_TESLA_EXHIBIT", "detail": "DIRECT_SOURCE_CLAIM" },
+    { "type": "entity", "key": "phase37r_nikola_tesla", "label": "Nikola Tesla", "detail": "PERSON" }
+  ]
+}
+```
+
+**Current caveat:** resource-filtered V1 search uses `resource.slice(0, -1)` to compare against result types. That works for plurals like `claims -> claim`, but fails for `entities`, `identities`, `source-records`, and `identity-mappings`. Manual verification showed `GET /api/v1/search/entities?q=adam&limit=3` returning:
+
+```json
+{ "classification": "MATCHED", "results": [] }
+```
+
+### Entity / claim / proposition / event / source detail routes
+
+Validation:
+
+- compatibility routes accept any integer-looking path parsed by `parseInt`; invalid text gives `400`
+- V1 detail routes require positive safe integers
+
+Important distinctions:
+
+- `/api/entities/:id` and `/api/v1/entities/:id` return **entity-centered joined detail**.
+- `/api/propositions/:id` returns **proposition + all claims**.
+- `/api/events/:id` uses projected `event_participation`, not a second participant store.
+- `/api/sources/:id` returns up to **200** source records.
+
+### Provenance routes
+
+- `/api/provenance/claims/:claimId` returns raw traversal rows and **does not 404** for a missing claim.
+- `/api/provenance/explain` and `/api/v1/provenance/claim/:id` perform structured explanation and **do 404** when the target does not exist.
+- `/api/provenance/explain` requires **exactly one** of `claim_id` or `proposition_id`.
+
+Manual discrepancy example:
+
+```json
+GET /api/provenance/claims/999999999
+{ "claimId": 999999999, "traversal": [] }
+```
+
+### `/api/derivations/check-eligibility`
+
+Validation: `derivation_id` must be one positive integer.
+
+Returns structural checks such as:
+
+- `DERIVATION_EXISTS`
+- `DERIVED_CLAIM_EXISTS`
+- `DERIVATION_INPUT_EXISTS`
+- `INPUT_PROVENANCE_STRUCTURALLY_COMPLETE`
+- `SELF_INPUT_ABSENT`
+- `TARGET_PREDICATE_VALID`
+
+It never decides entailment, truth, or adequacy of method.
+
+### `/api/exploration/timeline`
+
+Validation:
+
+- exactly one of `entity_id` or `entity_key`
+- `entity_id`: positive integer
+- `entity_key`: non-empty string
+
+Returns:
+
+- `entity`
+- `coverage`
+- `entity_source_mappings`
+- ordered `timeline`
+- `entity_claims_without_event`
+- `source_comparison`
+- `stored_claim_relations`
+- `limitations`
+
+Manual example (`ark_of_covenant`, truncated):
+
+```json
+{
+  "operation": "EXPLORE_TIMELINE",
+  "entity": { "entity_key": "ark_of_covenant", "entity_type_code": "OBJECT" },
+  "coverage": { "coverage_status": "EVIDENCE_EXISTS_SOURCE_TEXT_NOT_STORED", "provenance_status": "COMPLETE_SOURCE_CHAIN" },
+  "timeline": [
+    {
+      "record_type": "RELATED_EVENT",
+      "event": { "event_key": "ark_covenant_instruction", "event_type_code": "INSTRUCTION" },
+      "claims": [{ "record_type": "STORED_CLAIM", "claim": { "statement_role": "DISPLAY_METADATA_ONLY" } }],
+      "projected_event_participation": [{ "projection": "PROJECTED_FROM_CLAIM_ASSERTED_PROPOSITION" }]
+    }
+  ]
+}
+```
+
+## Administrative read route
+
+### `GET /api/v1/admin/:resource`
+
+Auth: `READER` or higher.
+
+Supported resources and backing queries:
+
+- `corpora` → `SELECT * FROM corpus ...`
+- `topics` → `research_topic`
+- `discoveries` → `discovery_request`
+- `candidates` → `discovery_candidate`
+- `jobs` → `asynchronous_job`
+- `validations` → `validation_run`
+- `audits` → `audit_event`
+- `exports` → `export_job`
+
+Validation: `limit` must be integer 1..100, default 50.
+
+**Current discrepancy:** unsupported admin resources throw `UNSUPPORTED_ADMIN_RESOURCE`, which the global handler turns into `500 internal_error` instead of a structured `404`/`400`.
+
+## Administrative write routes
+
+Every route below:
+
+- requires bearer auth and minimum role shown,
+- runs in one DB transaction,
+- writes one `audit_event` row on success,
+- returns PostgreSQL rows from `RETURNING *`,
+- does **not** perform background processing inside this process.
+
+### 1. Corpora
+
+#### `POST /api/v1/corpora`
+
+Minimum role: `ADMINISTRATOR`
+
+Body:
+
+- `key`: required, max 120, regex `^[A-Za-z0-9][A-Za-z0-9_.:-]*$`
+- `name`: required, max 300
+- `description`: optional, max 2000
+- `scopeNote`: required, max 4000
+
+Writes: `workflow_actor` upsert, `corpus`, `audit_event(action='CREATE', resource_type='corpus')`
+
+Response: raw `corpus` row.
+
+Manual success example:
+
+```http
+POST /api/v1/corpora
+Authorization: <bearer token>
+Content-Type: application/json
+X-Correlation-Id: 11111111-1111-1111-1111-111111111111
+```
+
+```json
+{ "key": "doc-wce", "name": "Documentation WCE Corpus", "scopeNote": "Bounded to documentation examples." }
+```
+
+```json
+{
+  "corpus_id": "1",
+  "corpus_key": "doc-wce",
+  "name": "Documentation WCE Corpus",
+  "scope_note": "Bounded to documentation examples.",
+  "status": "DRAFT",
+  "version": 1
+}
+```
+
+Failure examples:
+
+- missing token → `401 UNAUTHENTICATED`
+- invalid token → `401 UNAUTHENTICATED`
+- reader token → `403 FORBIDDEN`
+- credentials absent → `503 AUTH_NOT_CONFIGURED`
+
+#### `PATCH /api/v1/corpora/:id`
+
+Minimum role: `ADMINISTRATOR`
+
+Headers:
+
+- `If-Match`: required positive integer current version
+
+Body (all optional):
+
+- `name` max 300
+- `description` max 2000
+- `scopeNote` max 4000
+- `status` in `DRAFT | ACTIVE | ARCHIVED`
+
+Writes: `corpus.version = version + 1`, `updated_at`, `audit_event(action='UPDATE')`
+
+Success example (manual 2026-08-13):
+
+```json
+{ "corpus_id": "1", "status": "ACTIVE", "version": 2, "description": "Activated for documentation examples." }
+```
+
+Stale example (actual implementation):
+
+```json
+{
+  "error": {
+    "code": "STALE_VERSION",
+    "message": "The corpus version is stale or the corpus does not exist."
+  }
+}
+```
+
+> Note: the implementation returns **409**, not 412.
+
+### 2. Research topics and discovery workflow
+
+#### `POST /api/v1/research-topics`
+
+Minimum role: `RESEARCHER`
+
+Body:
+
+- `corpusId`: positive integer
+- `key`: identifier pattern
+- `question`: required, max 2000
+- `scopeNote`: required, max 4000
+
+Writes: `research_topic`, audit `CREATE research_topic`
+
+#### `POST /api/v1/discovery-requests`
+
+Minimum role: `RESEARCHER`
+
+Headers:
+
+- `Idempotency-Key`: required identifier pattern
+
+Body:
+
+- `corpusId`: positive integer
+- `researchTopicId`: optional positive integer
+- `requestKind`: `SOURCE_DISCOVERY | CANDIDATE_DISCOVERY | GAP_DISCOVERY`
+- `queryText`: required, max 2000
+- `boundedScope`: required, max 4000
+- `requestedTypes`: array, max 10, values from `PERSON | ORGANIZATION | PLACE | EVENT | DOCUMENT | TECHNOLOGY | CONCEPT | RELATIONSHIP | SOURCE_IDENTITY | SOURCE`
+
+Writes:
+
+- `asynchronous_job(job_type='DISCOVERY', status='QUEUED')`
+- `discovery_request`
+- audit `REQUEST discovery_request`
+
+Idempotency: fingerprint includes the validated request body plus `idempotencyKey`.
+
+Manual example:
+
+```http
+POST /api/v1/discovery-requests
+Authorization: <bearer token>
+Idempotency-Key: doc-discovery-1
+Content-Type: application/json
+```
+
+```json
+{
+  "corpusId": 1,
+  "researchTopicId": 1,
+  "requestKind": "CANDIDATE_DISCOVERY",
+  "queryText": "Discover electrical people and relationship candidates from the bounded directory.",
+  "boundedScope": "Official directory and contemporaneous electrical sources only.",
+  "requestedTypes": ["PERSON", "RELATIONSHIP"]
+}
+```
+
+```json
+{
+  "discovery_request_id": "1",
+  "request_kind": "CANDIDATE_DISCOVERY",
+  "requested_types": ["PERSON", "RELATIONSHIP"],
+  "job": {
+    "job_id": "1",
+    "job_type": "DISCOVERY",
+    "status": "QUEUED",
+    "idempotency_key": "doc-discovery-1"
+  }
+}
+```
+
+Replay with identical body returns `202` and the same `job_id`. Reuse with a different body returns `409 IDEMPOTENCY_CONFLICT`.
+
+#### `POST /api/v1/discovery-requests/:id/candidates`
+
+Minimum role: `RESEARCHER`
+
+Body:
+
+- `key`: identifier pattern
+- `type`: candidate type enum above
+- `label`: required, max 500
+- `description`: optional, max 2000
+- `representationStatus`: optional `UNREVIEWED | REPRESENTABLE | NOT_REPRESENTED | DUPLICATE | EXCLUDED`
+- `obstacleClassification`: optional `QUERY | DATA_ENTRY | REGISTRY_EXPRESSIVENESS | DOMAIN_SCOPING_LIMITATION | ARCHITECTURAL_DEFICIENCY`
+- `proposedPredicate`: optional, max 120; **required by DB check for `RELATIONSHIP` rows**
+- `discoveryLocator`: required, max 2000
+
+Writes: `discovery_candidate`, audit `DISCOVER discovery_candidate`
+
+Special behavior: if `proposedPredicate` is supplied but is not in `predicate`, the repository overwrites the row to `representation_status='NOT_REPRESENTED'` and `obstacle_classification='REGISTRY_EXPRESSIVENESS'` before insert.
+
+Manual example (`wonTechnologyConflict` is not registered):
+
+```json
+{
+  "discovery_candidate_id": "1",
+  "representation_status": "NOT_REPRESENTED",
+  "obstacle_classification": "REGISTRY_EXPRESSIVENESS",
+  "proposed_predicate": "wonTechnologyConflict"
+}
+```
+
+This route writes **no** `evidence`, `claim`, `proposition`, or `entity` rows.
+
+#### `POST /api/v1/candidates/:id/review`
+
+Minimum role: `REVIEWER`
+
+Body:
+
+- `decision`: `APPROVED | REJECTED | NEEDS_SOURCE_VERIFICATION | NOT_REPRESENTED`
+- `rationale`: required, max 4000
+
+Writes:
+
+- upsert `candidate_review`
+- updates `discovery_candidate.representation_status`:
+  - `APPROVED -> REPRESENTABLE`
+  - `REJECTED -> EXCLUDED`
+  - `NOT_REPRESENTED -> NOT_REPRESENTED`
+  - `NEEDS_SOURCE_VERIFICATION` leaves current status unchanged
+- audit `REVIEW discovery_candidate`
+
+This still does **not** create `evidence` or `claim` rows.
+
+### 3. Source registration and source-backed authoring
+
+#### `POST /api/v1/source-registrations`
+
+Minimum role: `CONTENT_EDITOR`
+
+Body:
+
+- `corpusId`: positive integer
+- `sourceKey`, `datasetKey`: identifier pattern
+- `sourceName`, `datasetName`: required, max 500
+- `sourceType`: identifier pattern; DB FK must match `source_type`
+- `description`: optional
+- `editionLabel`: optional
+- `version`: optional, max 200
+- `licenseStatus`: required, max 500
+- `acquisitionMethod`: required, max 500
+
+Writes:
+
+- `source` (`ON CONFLICT (source_key) DO UPDATE SET name = EXCLUDED.name`)
+- `dataset` (`ON CONFLICT (dataset_key) DO UPDATE SET license_status = EXCLUDED.license_status`)
+- `corpus_dataset` (`ON CONFLICT DO NOTHING`)
+- audit `REGISTER source`
+
+Response shape:
+
+```json
+{
+  "source": { "source_id": "33", "source_key": "doc-source", "source_type_code": "HISTORICAL_WORK" },
+  "dataset": { "dataset_id": "33", "dataset_key": "doc-dataset", "license_status": "LOCATOR_ONLY" }
+}
+```
+
+#### `POST /api/v1/source-records`
+
+Minimum role: `CONTENT_EDITOR`
+
+Body:
+
+- `datasetId`: positive integer
+- `key`: identifier pattern
+- `sourceLocation`: required, max 2000
+- `rawContent`: optional, max 10000
+- `contentHash`: required iff `rawContent` is supplied; must be lowercase 64-char SHA-256 hex
+- `revisionLabel`: optional, max 200
+- `citationKey`: identifier pattern
+- `locator`: required, max 2000
+- `quotedText`: optional, max 10000
+
+Writes:
+
+- `source_record` (`ON CONFLICT (dataset_id, source_record_key) DO UPDATE SET source_record_key = EXCLUDED.source_record_key`)
+- `citation` (`ON CONFLICT (citation_key) DO UPDATE SET locator = EXCLUDED.locator`)
+- audit `REGISTER source_record`
+
+Response shape:
+
+```json
+{
+  "sourceRecord": { "source_record_id": "169", "source_record_key": "doc-record", "source_location": "Example locator 1", "content_hash": null },
+  "citation": { "citation_id": "169", "citation_key": "doc-citation", "locator": "Example locator 1", "quoted_text": null }
+}
+```
+
+#### `POST /api/v1/evidence`
+
+Minimum role: `CONTENT_EDITOR`
+
+Body:
+
+- `key`: identifier pattern
+- `sourceRecordId`: positive integer
+- `observation`: required, max 10000
+- `evidenceType`: `SOURCE_OBSERVATION | ANALYTICAL_OBSERVATION`
+- `notes`: optional, max 4000
+- `citationIds`: array of 1..100 positive integers
+
+Writes:
+
+- `evidence`
+- one `evidence_citation` row per citation id
+- audit `CREATE evidence`
+
+Important boundary: creating evidence does **not** create a claim.
+
+#### `POST /api/v1/claims`
+
+Minimum role: `REVIEWER`
+
+Body:
+
+- `key`: identifier pattern
+- `predicate`: identifier pattern; DB FK must match registered predicate/term kinds
+- exactly one of `subjectEntityId` or `subjectEventId`
+- exactly one of `objectEntityId`, `objectEventId`, or `objectTypedValueId`
+- `claimType`: `DIRECT_SOURCE_CLAIM | INTERPRETIVE_CLAIM | DERIVED_CLAIM`
+- `status`: optional `ACTIVE | UNDER_REVIEW`, defaults `UNDER_REVIEW`
+- `statement`, `notes`: optional, max 4000
+- `derivationId`: required only for `DERIVED_CLAIM`; forbidden otherwise
+- `evidenceIds`: array of 1..100 positive integers
+- `evidenceRelation`: optional `SUPPORTS | CONTRADICTS | QUALIFIES`, defaults `SUPPORTS`
+
+Writes:
+
+- `proposition`
+- `claim`
+- one `claim_evidence` row per `evidenceId`
+- audit `AUTHOR claim`
+
+Critical validation rules:
+
+- Non-derived claims require every supplied evidence row to be `SOURCE_OBSERVATION` **and** cited.
+- Derived claims require an existing `derivation` row with at least one `derivation_input`.
+- Analytical evidence is not auto-promoted into direct or interpretive claims.
+
+Manual success example:
+
+```json
+{
+  "claim": { "claim_id": "348", "claim_key": "doc-direct-claim", "claim_type_code": "DIRECT_SOURCE_CLAIM", "claim_status_code": "UNDER_REVIEW" },
+  "proposition": { "proposition_id": "336", "predicate": "fatherOf", "subject_entity_id": "1", "object_entity_id": "2" }
+}
+```
+
+Manual failure example (`ANALYTICAL_OBSERVATION` evidence):
+
+```json
+{
+  "error": {
+    "code": "DIRECT_CLAIM_REQUIRES_CITED_SOURCE_OBSERVATION",
+    "message": "Direct and interpretive claims require cited SOURCE_OBSERVATION evidence; analytical observations are not promoted automatically."
+  }
+}
+```
+
+Manual counts before/after that failure were unchanged (`claim_count 348 -> 348`, `proposition_count 336 -> 336`), confirming rollback/no partial commit.
+
+### 4. Identity reconciliation
+
+#### `POST /api/v1/identity-mappings`
+
+Minimum role: `CONTENT_EDITOR`
+
+Body:
+
+- `sourceIdentityId`: positive integer
+- `entityId`: positive integer
+- `confidence`: number in `[0,1]`
+- `justification`: required, max 4000
+- `notes`: optional, max 4000
+- `supportingEvidenceId`: positive integer
+
+Writes:
+
+- `entity_source_mapping(mapping_status_code='PROPOSED')`
+- audit `PROPOSE entity_source_mapping`
+
+Validation: supporting evidence must come from the same source as the source identity, else `422 IDENTITY_EVIDENCE_SOURCE_MISMATCH`.
+
+Manual example:
+
+```json
+{ "entity_source_mapping_id": "101", "mapping_status_code": "PROPOSED", "supporting_evidence_id": "1" }
+```
+
+#### `POST /api/v1/identity-mappings/:id/review`
+
+Minimum role: `REVIEWER`
+
+Body:
+
+- `status`: `ACTIVE | REJECTED`
+- `rationale`: required, max 4000
+
+Writes:
+
+- updates only `PROPOSED` mappings
+- appends rationale text into `notes`
+- audit `REVIEW entity_source_mapping`
+
+If the mapping is not currently `PROPOSED`, returns `409 INVALID_MAPPING_STATE`.
+
+### 5. Derivations
+
+#### `POST /api/v1/derivations`
+
+Minimum role: `RESEARCHER`
+
+Body:
+
+- `method`: required, max 4000
+- `assumptions`: required, max 4000
+- `inputs`: array of 1..100 objects; each must contain exactly one of `claimId` or `evidenceId`; optional `notes`
+
+Writes:
+
+- `derivation`
+- `derivation_input` rows
+- audit `CREATE derivation`
+
+Boundary: this route creates **no claim automatically**.
+
+### 6. Jobs and job control
+
+#### `POST /api/v1/ingestion-jobs`
+
+Minimum role: `CONTENT_EDITOR`
+
+Headers: `Idempotency-Key` required
+
+Body:
+
+- `corpusId`: optional positive integer
+- `sourceId`: optional positive integer
+- `candidateId`: optional positive integer
+- `transactionPolicy`: optional `ATOMIC | SAVEPOINT_PER_ITEM`, default `ATOMIC`
+- `partialFailurePolicy`: optional `ROLLBACK_ALL | RETAIN_SUCCESSES`, default `ROLLBACK_ALL`
+
+Writes:
+
+- `asynchronous_job(job_type='INGESTION')`
+- `ingestion_job`
+- audit `QUEUE ingestion_job`
+
+#### `POST /api/v1/validation-runs`
+
+Minimum role: `REVIEWER`
+
+Headers: `Idempotency-Key` required
+
+Body:
+
+- `corpusId`: optional positive integer
+- `validationTypes`: non-empty array of `SCHEMA | PROVENANCE | REGISTRY | IDENTITY | CLAIM | EVIDENCE | DERIVATION | CORPUS | REPLAY | READ_ONLY | NEGATIVE_SEMANTIC`
+
+Writes:
+
+- `asynchronous_job(job_type='VALIDATION')`
+- `validation_run`
+- audit `QUEUE validation_job`
+
+Manual queue example:
+
+```json
+{ "job_id": "4", "job_type": "VALIDATION", "status": "QUEUED", "idempotency_key": "doc-validation-1" }
+```
+
+Manual worker-boundary evidence:
+
+```json
+{ "validation_run_id": "1", "status": "QUEUED", "result_count": 0 }
+```
+
+#### `POST /api/v1/export-jobs`
+
+Minimum role: `ADMINISTRATOR`
+
+Headers: `Idempotency-Key` required
+
+Body:
+
+- `corpusId`: positive integer when supplied to the validator
+- `format`: `JSONL | CSV`
+- `includeRawContent`: boolean, defaults false
+- `reproducibilityNote`: required, max 4000
+
+Writes:
+
+- `asynchronous_job(job_type='EXPORT')`
+- `export_job`
+- audit `QUEUE export_job`
+
+#### `POST /api/v1/jobs/:id/cancel`
+
+Minimum role: `CONTENT_EDITOR`, plus ownership / elevated-role checks
+
+Behavior:
+
+- export jobs require `ADMINISTRATOR`
+- validation jobs require `REVIEWER`
+- ingestion/discovery jobs require `CONTENT_EDITOR`
+- non-owner actors may act only if they are `ADMINISTRATOR` or `SYSTEM`
+- valid source states: `QUEUED | RUNNING | WAITING_FOR_REVIEW`
+
+Writes: updates `asynchronous_job` to `CANCELLED`, sets cancel/completed timestamps, audit `CANCEL asynchronous_job`
+
+#### `POST /api/v1/jobs/:id/retry`
+
+Minimum role and ownership rules: same as cancel.
+
+Valid source states: `FAILED | CANCELLED`
+
+Writes: updates `asynchronous_job` to `QUEUED`, increments `attempt_count`, clears error fields, audit `RETRY asynchronous_job`
+
+Manual examples:
+
+```json
+{ "job_id": "4", "status": "CANCELLED", "cancel_requested_at": "2026-08-13T19:32:57.463Z", "completed_at": "2026-08-13T19:32:57.463Z" }
+```
+
+```json
+{ "job_id": "4", "status": "QUEUED", "attempt_count": 1 }
+```
+
+## Failure examples
+
+### Missing bearer token
+
+```json
+{
+  "error": {
+    "code": "UNAUTHENTICATED",
+    "message": "A bearer credential is required."
+  }
+}
+```
+
+### Invalid bearer token
+
+```json
+{
+  "error": {
+    "code": "UNAUTHENTICATED",
+    "message": "The bearer credential is invalid."
+  }
+}
+```
+
+### Role failure
+
+```json
+{
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "ADMINISTRATOR role or higher is required."
+  }
+}
+```
+
+### Validation failure (bad search / research / headers)
+
+Examples:
+
+- `/api/search?q=<201 chars>` → `400`
+- `/api/research` with non-integer dataset ids → `400`
+- `PATCH /api/v1/corpora/:id` without numeric `If-Match` → `400 INVALID_REQUEST`
+- `/api/v1/evidence` with empty `citationIds` → `400 INVALID_REQUEST`
+
+### Idempotency replay and conflict
+
+Replay: same actor + same job type + same `Idempotency-Key` + same validated request body → same `job_id`, still `202`.
+
+Conflict:
+
+```json
+{
+  "error": {
+    "code": "IDEMPOTENCY_CONFLICT",
+    "message": "The idempotency key was already used with a different request."
+  }
+}
+```
+
+### Stale optimistic concurrency
+
+Actual implementation:
+
+```json
+{
+  "error": {
+    "code": "STALE_VERSION",
+    "message": "The corpus version is stale or the corpus does not exist."
+  }
+}
+```
+
+Status: `409`.
+
+### Not represented
+
+Manual 2026-08-13 examples:
+
+```json
+DELETE /api/v1/entities/1
+{
+  "error": {
+    "code": "NOT_REPRESENTED",
+    "message": "DELETE /api/v1/entities/1 requires workflow or mutation structures not represented by the current Berean schema."
+  }
+}
+```
+
+```json
+POST /api/research { "question": "Did an observation prove a theory?" }
+{
+  "capability": "NOT_REPRESENTED",
+  "results": []
+}
+```
+
+## Current implementation notes and discrepancies
+
+1. **V1 resource-filtered search is only partially reliable.** `entities`, `identities`, `source-records`, and `identity-mappings` do not filter correctly because of naive singularization.
+2. **Unsupported admin list resources return 500**, not a structured 404/400.
+3. **Corpus concurrency is `If-Match`-only**; there is no version `ETag` contract.
+4. **`/api/provenance/claims/:id` and `/api/v1/provenance/claim/:id` differ on missing artifacts** (`200 []` vs `404`).
+5. **OpenAPI is a discovery stub, not a full contract.** See [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md).
+
+## Cross-references
+
+- Exhaustive route-by-route matrix: [`API_CAPABILITY_MATRIX.md`](./API_CAPABILITY_MATRIX.md)
+- Composition recipes: [`API_COMPOSITION_GUIDE.md`](./API_COMPOSITION_GUIDE.md)
+- Non-capabilities and deliberate boundaries: [`API_LIMITATIONS.md`](./API_LIMITATIONS.md)
+- Verification evidence and command results: [`VERIFICATION_REPORT.md`](./VERIFICATION_REPORT.md)
