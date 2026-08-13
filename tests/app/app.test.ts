@@ -1276,3 +1276,158 @@ describe('phase 27 Genesis 1-50 corpus', () => {
     expect(await snapshotPersistentTableCounts()).toEqual(before);
   });
 });
+
+describe('V1 API contract', () => {
+  const searchProbes = [
+    { resource: 'entities', type: 'entity', sql: 'SELECT entity_key AS key FROM entity ORDER BY entity_id LIMIT 1' },
+    { resource: 'events', type: 'event', sql: 'SELECT event_key AS key FROM event ORDER BY event_id LIMIT 1' },
+    { resource: 'claims', type: 'claim', sql: 'SELECT claim_key AS key FROM claim ORDER BY claim_id LIMIT 1' },
+    { resource: 'propositions', type: 'proposition', sql: 'SELECT predicate AS key FROM proposition ORDER BY proposition_id LIMIT 1' },
+    { resource: 'evidence', type: 'evidence', sql: 'SELECT evidence_key AS key FROM evidence ORDER BY evidence_id LIMIT 1' },
+    { resource: 'sources', type: 'source', sql: 'SELECT source_key AS key FROM source ORDER BY source_id LIMIT 1' },
+    { resource: 'datasets', type: 'dataset', sql: 'SELECT dataset_key AS key FROM dataset ORDER BY dataset_id LIMIT 1' },
+    { resource: 'source-records', type: 'source_record', sql: 'SELECT source_record_key AS key FROM source_record ORDER BY source_record_id LIMIT 1' },
+    { resource: 'citations', type: 'citation', sql: 'SELECT citation_key AS key FROM citation ORDER BY citation_id LIMIT 1' },
+    { resource: 'identities', type: 'source_identity', sql: 'SELECT source_identity_key AS key FROM source_identity ORDER BY source_identity_id LIMIT 1' }
+  ];
+
+  it('normalizes every supported search resource filter to its persisted type', async () => {
+    for (const probe of searchProbes) {
+      const row = await pool.query(probe.sql);
+      expect(row.rowCount, `fixture row required for ${probe.resource}`).toBeGreaterThan(0);
+      const term = String(row.rows[0].key);
+
+      const response = await request(app).get(`/api/v1/search/${probe.resource}`).query({ q: term, limit: 100 });
+      expect(response.status, `${probe.resource} search status`).toBe(200);
+      expect(response.body.resource).toBe(probe.resource);
+      expect(response.body.resource_type).toBe(probe.type);
+      expect(response.body.results.length, `${probe.resource} results`).toBeGreaterThan(0);
+      expect(response.body.classification).toBe('MATCHED');
+      for (const result of response.body.results) {
+        expect(result.type, `${probe.resource} filtered type`).toBe(probe.type);
+      }
+    }
+  });
+
+  it('returns a controlled error for unknown and unindexed search filters', async () => {
+    const before = await snapshotPersistentTableCounts();
+
+    const unknown = await request(app).get('/api/v1/search/not-a-resource').query({ q: 'adam' });
+    expect(unknown.status).toBe(404);
+    expect(unknown.body.error.code).toBe('NOT_FOUND');
+
+    const singular = await request(app).get('/api/v1/search/entity').query({ q: 'adam' });
+    expect(singular.status).toBe(404);
+
+    const unindexed = await request(app).get('/api/v1/search/identity-mappings').query({ q: 'adam' });
+    expect(unindexed.status).toBe(501);
+    expect(unindexed.body.error.code).toBe('NOT_REPRESENTED');
+
+    const noMatch = await request(app).get('/api/v1/search/entities').query({ q: 'zzz-no-such-persisted-record-zzz' });
+    expect(noMatch.status).toBe(200);
+    expect(noMatch.body.results).toEqual([]);
+    expect(noMatch.body.classification).toBe('NO_MATCH');
+    expect(noMatch.body.limitation).toContain('not a denial');
+
+    expect(await snapshotPersistentTableCounts()).toEqual(before);
+  });
+
+  it('rejects an unsupported administrative resource with 404 and no implementation leakage', async () => {
+    const unauthenticated = await request(secureApp).get('/api/v1/admin/not-real');
+    expect(unauthenticated.status).toBe(401);
+
+    const response = await authorized('get', '/api/v1/admin/not-real');
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('NOT_FOUND');
+    expect(JSON.stringify(response.body)).not.toContain('UNSUPPORTED_ADMIN_RESOURCE');
+    expect(JSON.stringify(response.body)).not.toContain('internal_error');
+    expect(response.headers['x-correlation-id']).toBeTruthy();
+
+    const supported = await authorized('get', '/api/v1/admin/corpora').query({ limit: 5 });
+    expect(supported.status).toBe(200);
+    expect(Array.isArray(supported.body.results)).toBe(true);
+  });
+
+  it('distinguishes missing-claim provenance between the versioned and compatibility routes', async () => {
+    const missingId = 2147483000;
+    const versioned = await request(app).get(`/api/v1/provenance/claim/${missingId}`);
+    expect(versioned.status).toBe(404);
+    expect(versioned.body.error.code).toBe('NOT_FOUND');
+
+    const compatibility = await request(app).get(`/api/provenance/claims/${missingId}`);
+    expect(compatibility.status).toBe(200);
+    expect(compatibility.body.traversal).toEqual([]);
+    expect(compatibility.body.claim_present).toBe(false);
+    expect(compatibility.body.classification).toBe('CLAIM_NOT_REPRESENTED');
+
+    const claimId = await getClaimIdByKey('CLAIM_MT_ADAM_FATHER_SETH');
+    const represented = await request(app).get(`/api/provenance/claims/${claimId}`);
+    expect(represented.status).toBe(200);
+    expect(represented.body.claim_present).toBe(true);
+    expect(represented.body.classification).toBe('PROVENANCE_TRAVERSAL_REPRESENTED');
+    expect((await request(app).get(`/api/v1/provenance/claim/${claimId}`)).status).toBe(200);
+  });
+
+  it('applies one 409 conflict contract to If-Match, mapping state, and job state without partial writes', async () => {
+    const created = await authorized('post', '/api/v1/corpora').send({
+      key: 'concurrency-contract-corpus',
+      name: 'Concurrency contract corpus',
+      scopeNote: 'Bounded to verifying the optimistic concurrency contract.'
+    });
+    expect(created.status).toBe(201);
+    const corpusId = Number(created.body.corpus_id);
+    const version = Number(created.body.version);
+
+    const missingHeader = await authorized('patch', `/api/v1/corpora/${corpusId}`).send({ status: 'ACTIVE' });
+    expect(missingHeader.status).toBe(400);
+    expect(missingHeader.body.error.code).toBe('INVALID_REQUEST');
+
+    const auditsBefore = await pool.query('SELECT count(*)::int AS count FROM audit_event');
+    const stale = await authorized('patch', `/api/v1/corpora/${corpusId}`)
+      .set('If-Match', String(version + 41))
+      .send({ status: 'ACTIVE', name: 'Stale write that must not commit' });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error.code).toBe('STALE_VERSION');
+
+    const unchanged = await pool.query('SELECT name, status, version FROM corpus WHERE corpus_id = $1', [corpusId]);
+    expect(unchanged.rows[0].name).toBe('Concurrency contract corpus');
+    expect(unchanged.rows[0].status).not.toBe('ACTIVE');
+    expect(Number(unchanged.rows[0].version)).toBe(version);
+    const auditsAfter = await pool.query('SELECT count(*)::int AS count FROM audit_event');
+    expect(auditsAfter.rows[0].count).toBe(auditsBefore.rows[0].count);
+
+    const current = await authorized('patch', `/api/v1/corpora/${corpusId}`)
+      .set('If-Match', String(version))
+      .send({ status: 'ACTIVE' });
+    expect(current.status).toBe(200);
+    expect(Number(current.body.version)).toBe(version + 1);
+
+    const replayed = await authorized('patch', `/api/v1/corpora/${corpusId}`)
+      .set('If-Match', String(version))
+      .send({ status: 'ARCHIVED' });
+    expect(replayed.status).toBe(409);
+    expect(replayed.body.error.code).toBe('STALE_VERSION');
+
+    const unknownJob = await authorized('post', '/api/v1/jobs/2147483000/cancel').send({});
+    expect(unknownJob.status).toBe(409);
+    expect(unknownJob.body.error.code).toBe('INVALID_JOB_STATE');
+  });
+
+  it('keeps unmatched versioned routes and read routes free of mutation and truth assertions', async () => {
+    const before = await snapshotPersistentTableCounts();
+
+    const unmatched = await request(app).delete('/api/v1/claims/1');
+    expect(unmatched.status).toBe(501);
+    expect(unmatched.body.error.code).toBe('NOT_REPRESENTED');
+
+    const truth = await request(app).post('/api/v1/research').send({ question: 'Prove that this claim is true.' });
+    expect(truth.status).toBe(200);
+    expect(truth.body.capability).toBe('NOT_REPRESENTED');
+    expect(truth.body.results).toEqual([]);
+
+    const forbidden = await request(secureApp).post('/api/v1/corpora').send({ key: 'x', name: 'x', scopeNote: 'x' });
+    expect(forbidden.status).toBe(401);
+
+    expect(await snapshotPersistentTableCounts()).toEqual(before);
+  });
+});

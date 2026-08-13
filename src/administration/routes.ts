@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { BearerAuthenticator } from '../auth.js';
-import { AdministrationRepository } from './repository.js';
+import { ADMINISTRATION_LIST_RESOURCES, AdministrationRepository } from './repository.js';
 import { AdministrationError, AdministrationService } from './service.js';
 
 const positiveId = (value: string): number | null => {
@@ -36,6 +36,13 @@ export const registerAdministrationRoutes = (
     '/admin/:resource',
     authenticator.require('READER'),
     handler(async (req, res) => {
+      if (!ADMINISTRATION_LIST_RESOURCES.includes(req.params.resource)) {
+        throw new AdministrationError(
+          404,
+          'NOT_FOUND',
+          `Administrative resource was not found. Supported resources: ${ADMINISTRATION_LIST_RESOURCES.join(', ')}.`
+        );
+      }
       const rawLimit = req.query.limit === undefined ? 50 : Number(req.query.limit);
       if (!Number.isSafeInteger(rawLimit) || rawLimit < 1 || rawLimit > 100) {
         throw new AdministrationError(400, 'INVALID_REQUEST', 'limit must be between 1 and 100.');
@@ -204,6 +211,10 @@ export const administrationErrorHandler = (
         message: 'Direct and interpretive claims require cited SOURCE_OBSERVATION evidence; analytical observations are not promoted automatically.'
       }
     });
+    return;
+  }
+  if (error.message === 'UNSUPPORTED_ADMIN_RESOURCE') {
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Administrative resource was not found.' } });
     return;
   }
   if (error.message === 'IDEMPOTENCY_KEY_REUSED') {
