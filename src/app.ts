@@ -3,6 +3,9 @@ import path from 'node:path';
 import { Pool } from 'pg';
 import { openApiDocument, registerV1Routes } from './api/v1.js';
 import { BereanRepository } from './repository.js';
+import { BearerAuthenticator, credentialsFromEnvironment, type ApiCredential } from './auth.js';
+import { AdministrationRepository } from './administration/repository.js';
+import { administrationErrorHandler, registerAdministrationRoutes } from './administration/routes.js';
 
 const toInt = (value: string): number | null => {
   const parsed = Number.parseInt(value, 10);
@@ -106,10 +109,15 @@ const homeHtml = `<!doctype html>
 </body>
 </html>`;
 
-export const createApp = (databaseUrl: string): express.Express => {
+export const createApp = (
+  databaseUrl: string,
+  credentials: ApiCredential[] = credentialsFromEnvironment()
+): express.Express => {
   const app = express();
   const pool = new Pool({ connectionString: databaseUrl });
   const repository = new BereanRepository(pool);
+  const administrationRepository = new AdministrationRepository(pool);
+  const authenticator = new BearerAuthenticator(credentials);
 
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -133,6 +141,7 @@ export const createApp = (databaseUrl: string): express.Express => {
     res.type('html').send('<!doctype html><title>Project Berean API</title><h1>Project Berean API</h1><p>Machine-readable API documentation is available at <a href="/openapi.json">/openapi.json</a>.</p>');
   });
 
+  app.use('/api/v1', registerAdministrationRoutes(administrationRepository, authenticator));
   app.use('/api/v1', registerV1Routes(repository));
 
   app.get('/api/research/scope', async (_req, res, next) => {
@@ -424,6 +433,7 @@ export const createApp = (databaseUrl: string): express.Express => {
     res.type('html').send(homeHtml);
   });
 
+  app.use(administrationErrorHandler);
   app.use((_error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: 'internal_error', message: 'The request could not be completed.' });
   });

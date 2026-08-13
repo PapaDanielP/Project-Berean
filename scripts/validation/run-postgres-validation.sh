@@ -9,6 +9,7 @@ run() {
 }
 
 run "$root/schema/sql/001_core_schema.sql"
+run "$root/schema/sql/003_administration_workflow.sql"
 
 # Each fixture resets reference-model data, so validation runs once per loaded fixture.
 run "$root/tests/fixtures/010-synthetic-structural-fixture.sql"

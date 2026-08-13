@@ -3,21 +3,22 @@
 ## Status and contract
 
 Berean is a provenance-first PostgreSQL reference model with a read-only Express
-Explorer. This guide documents the API implemented in this repository, not a
-proposed service contract. All API operations are synchronous, parameterized
-database reads except static HTML/assets. They do not create claims, evidence,
-relationships, identities, research records, or audit records.
+Explorer and an authenticated administration workflow. This guide documents the
+API implemented in this repository, not a proposed service contract. Explorer
+and research operations remain synchronous parameterized reads. Administrative
+operations are controlled, transactional writes to the workflow layer or to the
+existing authoritative objects; every implemented mutation is audited.
 
 Two HTTP surfaces are currently exposed:
 
 * **Explorer compatibility surface**: `/api/*`, used by the bundled Explorer.
-* **Versioned surface**: `/api/v1/*`, a bounded resource interface. Its
-  machine-readable description is at `GET /openapi.json`; that document is a
-  deliberately small discovery document, not a complete response schema.
+* **Versioned surface**: `/api/v1/*`, a bounded read and administration
+  interface. Its OpenAPI 3.1 discovery description is at `GET /openapi.json`.
 
-There is no authentication or authorization middleware. Do **not** treat the
-absence of authentication as production-grade access control: deploy only
-behind an appropriate trusted boundary until controls are implemented.
+Administrative routes require opaque bearer credentials whose SHA-256 hashes,
+actor keys, names, and roles are supplied through `BEREAN_API_CREDENTIALS`.
+Credentials are not stored in the database. If none are configured, mutations
+fail closed with `503 AUTH_NOT_CONFIGURED`.
 
 ### Epistemic and persistence boundaries
 
@@ -35,8 +36,8 @@ body or citation quotation is reported as `NOT_STORED_BY_POLICY`, not source
 silence. Source identities remain separate from canonical entities; a
 `PROPOSED` mapping is not `ACTIVE`.
 
-All research, search, graph, provenance explanation, and timeline output is
-transient. Database rows are never added or changed by these routes. The
+All research, search, graph, provenance explanation, and timeline output remains
+transient. Database rows are never added or changed by those routes. The
 application sends a 16 KiB JSON body limit and security headers
 (`Content-Security-Policy`, `X-Content-Type-Options: nosniff`, and
 `Referrer-Policy: no-referrer`), disables `X-Powered-By`, and uses
@@ -218,37 +219,41 @@ and data-dependent.
    then multiple datasets. Compare represented descriptions; do not label
    disagreement as contradiction unless a stored ClaimRelation says so.
 
-## Administrative capabilities not currently available through API
+## Administration and workflow API
 
-The current mechanism is reviewed SQL fixtures, candidate CSVs, validation
-scripts, and the TypeScript ingestion command—not HTTP. The schema has source
-and dataset data, but no corpus, candidate decision, job, audit, import, or
-export workflow records. Consequently these are **not currently available**:
-corpus/source/dataset creation or editing; source-record/citation/evidence/
-claim/proposition/entity/event/predicate mutation; candidate review; identity
-approval; derivation creation; bulk import/export; discovery acquisition;
-administrative audit/job status; user management; authentication/authorization;
-and asynchronous work.
+The persistence decision and semantic boundaries are documented in
+`docs/01-architecture/KNOWLEDGE_ADMINISTRATION_WORKFLOW.md`. Administrative
+list reads are `GET /api/v1/admin/{corpora|topics|discoveries|candidates|jobs|
+validations|audits|exports}?limit=1..100`. They require at least `READER`.
 
-V1 returns `501 NOT_REPRESENTED` for such unimplemented methods/routes. This
-is intentional: exposing writes without provenance, review, authorization,
-idempotency, and audit structures risks manufacturing authoritative-looking
-knowledge. The Phase 37R candidate review is a CSV/validation-only artifact;
-the discovery-only people index does not enter claim provenance. Its candidate
-audit records unresolved George Westinghouse and Edison identities, while
-selected direct claims use locator-only reviewed sources.
+| Minimum role | Operations |
+|---|---|
+| `RESEARCHER` | create research topics and discovery requests/candidates; record derivations with explicit inputs |
+| `CONTENT_EDITOR` | register source/dataset and source-record/citation locators; create evidence; propose evidence-backed identity mappings; queue/cancel/retry ingestion |
+| `REVIEWER` | review candidates/mappings; author validated claims; queue validation |
+| `ADMINISTRATOR` | create/archive/version corpora; queue controlled exports |
 
-## What cannot be done through APIs today
+Jobs require `Idempotency-Key`; exact duplicate replay by actor and job type
+returns the existing job, while a different payload returns
+`IDEMPOTENCY_CONFLICT`. Corpus updates require numeric `If-Match` and return
+`STALE_VERSION` on conflict. Mutations return an `X-Correlation-Id` and append
+an audit event in the same transaction. Audit and validation results are
+database-immutable.
 
-There is no API to ingest a source, upload text, fetch a catalog, create or
-approve candidates, issue or activate identity mappings, write claims/evidence/
-citations/derivations, register predicates, resolve competing claims, export
-the corpus, execute arbitrary SQL, schedule a job, retain research history,
-perform full-text/corpus-wide external search, request generalized multi-hop
-inference, establish proof/truth/falsity/causation/superiority, or declare an
-AC/DC winner. There is no API to infer person-to-organization employment or
-membership from Phase 37R co-participation. There is no production identity,
-access-control, tenancy, rate-limit, or audit API.
+Discovery requests and candidates never create Evidence or Claims. Source
+registration keeps Source, Dataset, SourceRecord, and Citation distinct.
+Evidence creation requires citation identifiers and creates no Claim. Direct
+and interpretive claim authoring accepts only cited `SOURCE_OBSERVATION`
+evidence. Derivation creation accepts explicit claim/evidence inputs and creates
+no Claim automatically. Identity mappings begin `PROPOSED` and require a
+reviewer to become `ACTIVE` or `REJECTED`.
+
+Still unavailable: arbitrary URL retrieval, uploads, filesystem access, SQL,
+registry mutation, generalized inference, truth/falsity/causation/superiority
+decisions, automatic candidate/evidence/claim promotion, and an in-process
+durable worker. Jobs persist controlled state for a separately deployed SYSTEM
+worker. Locators are metadata only, so the API exposes no SSRF-capable fetch
+operation.
 
 ## API-to-data-model mapping and capability matrix
 
@@ -259,53 +264,40 @@ access-control, tenancy, rate-limit, or audit API.
 | Research | claim, proposition, ClaimEvidence, source chain | Yes | No | No | Bounded classifications/full-chain plan | Yes |
 | Provenance/derivation check | claim/evidence/citation/derivation inputs | Yes | No | No | Structural, deterministic only | Yes |
 | Timeline/graph | proposition, `event_participation`, claim relations | Yes | No | No | Stored/projected/query-derived separated | Yes |
-| Corpus/content management | source through claim/identity/derivation | No | No | N/A | Would require review/audit | No |
-| Candidate/discovery workflow | CSV/scripts only | No | No | N/A | Human review required | No |
+| Corpus/content management | workflow plus source through claim/identity/derivation | Yes | Controlled | Yes | Role, review, audit, provenance gates | Yes |
+| Candidate/discovery workflow | request, candidate, review, job, audit | Yes | Controlled | Yes | Candidate never auto-promotes | Yes |
+| Ingestion/validation/export plans | specialized asynchronous jobs | Yes | Queue/state | Yes | Idempotent; SYSTEM worker required | Partial |
 
-## Recommended future API surface (not implemented)
+## Remaining implementation priorities
 
-P0: first add authenticated, authorized, audited **review** APIs only after
-authoritative workflow storage exists. A candidate-review caller needs explicit
-human approval, immutable provenance links, idempotency keys, validation
-failures, and no direct publication of proposed knowledge.
+P1: deploy a durable SYSTEM worker for queued ingestion, validation, and export
+execution. It must preserve transaction/license policies and append immutable
+results; it must never convert discovery into evidence automatically.
 
-P1: add asynchronous, idempotent ingestion-job APIs for authorized content
-administrators. They should report source-license, locator, validation, and
-rollback state, never convert discovery into evidence automatically.
+P2: expand the OpenAPI discovery document with complete request/response
+component schemas and pagination contracts.
 
-P2: add paginated, versioned read contracts and a complete generated OpenAPI
-schema for application teams; preserve bounded reads and document rate/access
-controls once actually deployed.
-
-P3: consider export and reproducible query-audit APIs after authorization,
-redaction, provenance, and retention policies exist. Do not add truth,
-inference, or relationship-authoring endpoints merely to make the Explorer
-more convenient.
+P3: if external acquisition is added, first provide a separately sandboxed
+retriever with the URL/DNS/redirect/network/license controls listed in the
+architecture assessment. Do not add truth, inference, registry-mutation, or
+arbitrary relationship-authoring endpoints.
 
 ## Documentation verification report
 
 **Endpoints inspected:** every Express route in `src/app.ts` and
-`src/api/v1.ts`, including wildcard fallback and static/API documentation
-routes. **Source inspected:** `src/app.ts`, `src/api/v1.ts`,
-`src/repository.ts`, `src/types.ts`, `src/server.ts`, schema
-`schema/sql/001_core_schema.sql`, application tests, package scripts, README,
+`src/api/v1.ts` and `src/administration/routes.ts`, including wildcard fallback
+and static/API documentation routes. **Source inspected:** `src/app.ts`,
+`src/api/v1.ts`, `src/administration/*`, `src/repository.ts`, `src/types.ts`,
+`src/server.ts`, schema SQL, application tests, package scripts, README,
 Explorer/Phase 25 documentation, and Phase 37R/37B artifacts.
 
 **Tests inspected:** `tests/app/app.test.ts` (including read-only count
 snapshots, scope semantics, research classifications, validation, provenance,
 timeline, and graph assertions) and Phase 37R validation references.
-**Undocumented endpoints discovered:** the V1 surface and root OpenAPI/API-docs
-routes were not represented in the older Phase 25 endpoint document; this
-guide records them. **Discrepancies:** `/openapi.json` lists only a subset of
-the implemented V1 paths and response schemas; it is not a complete OpenAPI
-contract. `/api/provenance/claims/:id` does not 404 for an absent claim, while
-explain does. **Capabilities not claimed:** no mutation, authentication,
-administration, inference, or external retrieval is represented. **Previously
-under-documented implementation:** bounded V1 resource/registry reads,
-`NOT_REPRESENTED` fallback, search `MATCHED`, and dataset-scoped transient
-research.
+The OpenAPI document remains a discovery contract rather than a complete set of
+response schemas. `/api/provenance/claims/:id` does not 404 for an absent claim,
+while explain does. No generalized inference or external retrieval is claimed.
 
 Verification commands for this documentation change are `npm run typecheck`,
 `npm run lint`, `npm test` (requires `DATABASE_URL`), and
-`scripts/validation/run-postgres-validation.sh` (PostgreSQL 16). This guide
-does not alter executable behavior.
+`scripts/validation/run-postgres-validation.sh` (PostgreSQL 16).
