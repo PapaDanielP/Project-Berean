@@ -93,16 +93,18 @@ A missing record is not automatically evidence that the underlying fact is false
 
 The web layer consumes the existing PostgreSQL model directly and does not create a duplicate authoritative store. It currently provides read-only search and views for entities, events, claims, propositions, evidence, sources, datasets, citations, locators, graph neighborhoods, Genesis coverage, quality information, and claim provenance.
 
-There are no application write endpoints. The application is an explorer over persisted knowledge, not an ingestion or mutation service.
+The Explorer surface is read-only. Authenticated `/api/v1` administration routes support bounded, audited workflow and
+knowledge-authoring steps; they do not turn discovery into evidence, evidence into truth, or claims into truth.
 
 The versioned interface is available under `/api/v1`. It exposes bounded reads of
 the existing source, dataset, record, citation, evidence, claim, proposition,
 entity, event, identity, mapping, and registry structures, along with transient
 research, graph, and provenance operations. `/openapi.json` and `/api-docs`
-describe that interface. Corpus administration, discovery workflows, candidate
-decisions, jobs, audit records, imports, exports, and knowledge mutations return
-an explicit `NOT_REPRESENTED` response: the authoritative schema has no
-corresponding workflow structures, and the API does not invent a second store.
+describe that interface. Authenticated `/api/v1` administration routes implement
+corpus administration, discovery workflows, candidate review, source-backed
+authoring, jobs, and audit records. Unsafe shortcuts—truth adjudication,
+automatic promotion, arbitrary registry mutation, and arbitrary import—remain
+explicitly `NOT_REPRESENTED`.
 
 ## Validation
 

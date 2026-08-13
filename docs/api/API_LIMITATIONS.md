@@ -86,7 +86,8 @@ Classification: **IMPLEMENTED**. See [`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REP
 
 `GET /api/v1/search/:resource?` now normalizes each supported plural resource explicitly
 (`entities`→`entity`, `events`→`event`, `claims`→`claim`, `evidence`→`evidence`, `sources`→`source`,
-`datasets`→`dataset`, `source-records`→`source_record`, `citations`→`citation`, `identities`→`source_identity`).
+`datasets`→`dataset`, `source-records`→`source_record`, `citations`→`citation`, `identities`→`source_identity`,
+`propositions`→`proposition`).
 Unknown filters return `404 NOT_FOUND` instead of silently empty results, and `identity-mappings` returns
 `501 NOT_REPRESENTED` because mappings are not part of the search index. Empty result sets are classified `NO_MATCH`,
 which is not a denial of existence.
@@ -116,7 +117,7 @@ asserts that a stale update leaves the name, status, version, and audit-event co
 
 - `GET /api/v1/provenance/claim/:id` → `404 NOT_FOUND` (the V1 contract).
 - `GET /api/provenance/claims/:id` → `200` with `traversal: []` plus explicit `claim_present: false`,
-  `classification: "NOT_FOUND"`, and `compatibility` fields, preserving the legacy shape the Explorer depends on
+  `classification: "CLAIM_NOT_REPRESENTED"`, and `compatibility` fields, preserving the legacy shape the Explorer depends on
   while stating plainly that absence is not denial.
 
 Classification: **IMPLEMENTED** as a documented, tested divergence. Evidence: `tests/app/app.test.ts`.
