@@ -49,6 +49,13 @@ The fixture demonstrates shared evidence, multiple evidence for a claim, contrar
 
 `tests/validation/phase28-ingestion-validation.sql` runs after the Phase 28 automated Tier-1 ingestion step and checks that every ingested claim is a direct source claim with a complete provenance chain, that deferred and excluded candidates stayed outside the graph, that locator-only source storage held, that ingested source-identity mappings are `ACTIVE`, justified, and evidence-backed, and that ingestion produced no duplicate assertion. The ingestion step itself requires the Node toolchain and is skipped when dependencies are absent.
 
+## Related validation records
+
+- Current governance verification: [`../07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md`](../07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md)
+- API verification evidence: [`../api/VERIFICATION_REPORT.md`](../api/VERIFICATION_REPORT.md)
+- Legacy Phase 6–32 validation history: [`../04-data/README.md`](../04-data/README.md)
+- Later phase validation records: [`../phases/README.md`](../phases/README.md)
+
 ## Genesis regression
 
 Genesis 1–11 should include tests for:

@@ -154,5 +154,6 @@ fresh dependency install and a disposable local PostgreSQL 16 database. Results:
 | `npx vitest run tests/app/openapi-coverage.test.ts` | 0 | Passed: **1 file, 6 tests**. |
 | `npm test` | 0 | Passed: **4 files, 112 tests**. |
 | `bash scripts/validation/run-postgres-validation.sh` | 0 | Full PostgreSQL validation passed end-to-end after resetting `phase28_ingestion` and `public`. |
+| `npx vitest run tests/app/documentation-links.test.ts` (post-index rerun) | 0 | Passed after adding `data/external/README.md`: **1 file, 10 tests**. |
 
 The 2026-08-14 pass made no runtime, schema, fixture, API semantic, or validation semantic changes.

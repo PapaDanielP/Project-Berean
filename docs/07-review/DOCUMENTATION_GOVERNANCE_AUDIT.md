@@ -24,7 +24,7 @@ Findings:
   directory exists. No obsolete root-level architecture document exists.
 - **Authority:** one current authority exists for each major subject (§3). No competing current
   architecture, repository-structure, domain-model, schema, or API document was found.
-- **Links:** all 80 tracked Markdown files were scanned. **0 broken local Markdown links** and
+- **Links:** all 82 tracked Markdown files were scanned. **0 broken local Markdown links** and
   **0 stale path references** were found. The pre-existing link test only covered `docs/`; it now
   covers the whole repository, so this result is enforced rather than asserted.
 - **API:** the implemented route surface, the OpenAPI document, and the canonical API docs agree.
@@ -77,7 +77,7 @@ Every document above explains that behavior; none of them override it.
 
 ## 4. Repository inventory
 
-80 tracked Markdown files, plus executable and data artifacts.
+82 tracked Markdown files, plus executable and data artifacts.
 
 | Location | Count | Classification |
 |---|---|---|
@@ -93,7 +93,7 @@ Every document above explains that behavior; none of them override it.
 | `docs/07-review/` | 4 → 5 | Review/audit records (this file added) |
 | `docs/api/` | 8 | Canonical API documentation set — the sole API documentation location |
 | `docs/phases/` | 8 | Phase 33–37R/37B records + canonical phase index; historical |
-| `data/**` | 11 | Source metadata, acquisition manifests, candidate/ingestion input documentation |
+| `data/**` | 12 | Source metadata, acquisition manifests, external-source index, candidate/ingestion input documentation |
 | `.github/copilot-instructions.md` | 1 | Contributor/agent guidance |
 | `schema/sql/**`, `tests/**`, `scripts/**`, `src/**` | — | Executable artifacts; authoritative for behavior, not relocated |
 
@@ -127,7 +127,9 @@ No document was deleted, merged, or replaced by a pointer during this audit.
   exist and execute.
 - **Missing from the indexes (fixed):** `docs/00-project/WEB_APP_MVP_PLAN.md` and
   `docs/07-review/COPILOT_PEER_REVIEW_PROMPT.md` existed but were referenced by no index. Both are
-  now classified and linked from `docs/README.md`.
+  now classified and linked from `docs/README.md`. A master [`../../data/external/README.md`](../../data/external/README.md)
+  was also added for the external-source metadata directories, and `docs/05-validation/VALIDATION.md`
+  now links to the current governance, API verification, and phase-validation records.
 - **Missing documentation of implemented functionality:** none found. Administration, discovery,
   ingestion, identity review, derivation, jobs, audit, authentication, authorization, idempotency,
   and optimistic concurrency are all documented in the `docs/api/` set and in
@@ -195,12 +197,12 @@ limitation is stated in the gap report and is not claimed away here.
 
 ## 9. Broken-link and stale-path audit
 
-Scope: all 80 tracked Markdown files (root, `docs/**`, `data/**`, `.github/**`), plus path
+Scope: all 82 tracked Markdown files (root, `docs/**`, `data/**`, `.github/**`), plus path
 references appearing in TypeScript sources, SQL, shell scripts, and the CI workflow.
 
 | Check | Result |
 |---|---|
-| Local Markdown links resolving to an existing file or directory | 80 files scanned, **0 broken** |
+| Local Markdown links resolving to an existing file or directory | 82 files scanned, **0 broken** |
 | References to moved/deleted paths (`docs/`, `src/`, `tests/`, `scripts/`, `schema/`, `data/`) in Markdown, code, scripts, and workflows | **0 stale** |
 | References to the obsolete canonical documentation directories retired by the predecessor consolidation (enumerated in `tests/app/documentation-links.test.ts` as `OBSOLETE_PATH_FRAGMENTS`) | **0** outside the predecessor report, which discusses them as negative examples |
 
@@ -229,21 +231,27 @@ are; their content is untouched.
 
 | File | Change | Justification |
 |---|---|---|
-| `docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md` | Created (replacing the earlier pass at this path) | Required audit report; kept as one current governance authority rather than two competing audits |
+| `README.md` | Modified | Added direct navigation to the external-source metadata index |
+| `data/external/README.md` | Created | Added a master index for external upstream source declarations without promoting upstream material to Berean evidence or claims |
+| `docs/04-data/README.md` | Modified | Clarified why `DATA_POLICY.md` remains with legacy data-population records |
+| `docs/05-validation/VALIDATION.md` | Modified | Added links to related governance, API verification, and phase-validation records |
+| `docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md` | Created/updated (replacing the earlier pass at this path) | Required audit report; kept as one current governance authority rather than two competing audits; records verification and follow-up index fixes |
 | `docs/api/OPENAPI_GAP_REPORT.md` | Modified | Added the six explicit coverage categories with measured counts; replaced an ambiguous "none identified" statement with the enumerated behavior-untested set |
 | `docs/api/API_CAPABILITY_MATRIX.md` | Modified | Corrected 7 "Tests / evidence" entries against measured test coverage; added an evidence-column legend defining tested / code-traced / manual |
-| `docs/README.md` | Modified | Indexed this audit, `COPILOT_PEER_REVIEW_PROMPT.md`, and `WEB_APP_MVP_PLAN.md`; marked the predecessor consolidation report as such |
+| `docs/README.md` | Modified | Indexed this audit, `COPILOT_PEER_REVIEW_PROMPT.md`, `WEB_APP_MVP_PLAN.md`, and external-source metadata; marked the predecessor consolidation report as such |
+| `docs/api/VERIFICATION_REPORT.md` | Modified | Added the 2026-08-14 verification addendum for the final governance pass |
 | `tests/app/documentation-links.test.ts` | Modified | Extended local-link resolution from `docs/` to the whole repository, and asserted that this audit is present and indexed |
 
 Files moved: **none**. Files deleted: **none**. No `src/**`, `schema/**`, `scripts/**`,
-`tests/fixtures/**`, `tests/validation/**`, or `data/**` file was changed.
+`tests/fixtures/**`, `tests/validation/**`, fixture CSV, acquisition manifest, external-source
+manifest, source metadata, or data payload file was changed.
 
 ## 12. Files intentionally untouched
 
 - All executable artifacts: `src/**`, `schema/sql/**`, `scripts/**`, `tests/fixtures/**`,
   `tests/validation/**`, and `tests/app/app.test.ts`, `openapi-coverage.test.ts`,
   `phase28-ingestion.test.ts`.
-- All phase records, ADRs, prior review records, and `data/**`.
+- All phase records, ADRs, prior review records, and existing `data/**` payload/metadata files.
 - `.github/workflows/postgres-validation.yml` and `.github/copilot-instructions.md`.
 
 ## 13. Remaining issues
@@ -302,6 +310,7 @@ before database-backed verification by dropping `phase28_ingestion` and `public`
 | `bash scripts/validation/run-postgres-validation.sh` | PASS — full PostgreSQL validation completed with exit code 0. |
 | `git grep -n 'docs/' -- '*.md' ':!docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md'` | PASS — active `docs/` references reviewed; no stale active paths found. |
 | `git grep -n -E 'docs/(architecture\|data\|administration\|ingestion\|research\|history/phases\|development\|operations)/' -- '*.md' ':!docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md'` | PASS — no obsolete live documentation path references found. |
+| `npx vitest run tests/app/documentation-links.test.ts` (after adding `data/external/README.md`) | PASS — 1 file, 10 tests; repository now contains 82 Markdown files including the new index. |
 
 Initial note: before `npm ci`, `npm run typecheck` failed because the fresh checkout lacked
 installed dependencies (`express`, `pg`, `@types/node`, and related packages). After installing the
