@@ -281,3 +281,46 @@ Files moved: **none**. Files deleted: **none**. No `src/**`, `schema/**`, `scrip
   represented as falsity.
 - No schema semantics, API semantics, runtime architecture, predicate semantics, or validation
   fixture semantics were changed.
+
+## 15. Verification commands and results
+
+Commands below were executed on 2026-08-14 from the repository root unless otherwise noted. The
+local PostgreSQL 16 service was started, a disposable `berean_test` database owned by `runner` was
+created, and `DATABASE_URL` was exported from `/tmp/berean-env.sh`. The test schemas were reset
+before database-backed verification by dropping `phase28_ingestion` and `public`, recreating
+`public`, and granting access to `runner`.
+
+| Command | Result |
+|---|---|
+| `npm ci` | PASS — installed locked dependencies; npm audit reported 0 vulnerabilities. |
+| `npm run typecheck` | PASS. |
+| `npm run lint` | PASS. |
+| `npm run build` | PASS. |
+| `npx vitest run tests/app/documentation-links.test.ts` | PASS — 1 file, 10 tests. |
+| `npx vitest run tests/app/openapi-coverage.test.ts` | PASS — 1 file, 6 tests. |
+| `npm test` | PASS — 4 files, 112 tests (`documentation-links`, `openapi-coverage`, `phase28-ingestion`, `app`). |
+| `bash scripts/validation/run-postgres-validation.sh` | PASS — full PostgreSQL validation completed with exit code 0. |
+| `git grep -n 'docs/' -- '*.md' ':!docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md'` | PASS — active `docs/` references reviewed; no stale active paths found. |
+| `git grep -n -E 'docs/(architecture\|data\|administration\|ingestion\|research\|history/phases\|development\|operations)/' -- '*.md' ':!docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md'` | PASS — no obsolete live documentation path references found. |
+
+Initial note: before `npm ci`, `npm run typecheck` failed because the fresh checkout lacked
+installed dependencies (`express`, `pg`, `@types/node`, and related packages). After installing the
+existing lockfile dependencies, the command passed without source changes.
+
+GitHub Actions note: the recent PostgreSQL reference validation workflow run was inspected with the
+GitHub Actions API. The listed run had conclusion `action_required`; fetching failed-job logs
+returned "No failed jobs found in this workflow run", so there was no failing job log to remediate.
+
+## 16. Final classification
+
+**DOCUMENTATION GOVERNANCE: PASS WITH NON-BLOCKING NOTES**
+
+Non-blocking notes:
+
+1. The OpenAPI route surface is complete and enforced, but 12 documented routes remain
+   behavior-untested as listed in [`../api/OPENAPI_GAP_REPORT.md`](../api/OPENAPI_GAP_REPORT.md).
+2. Queue-backed discovery, ingestion, validation, and export routes persist workflow state only;
+   this repository does not ship a `SYSTEM` worker to execute queued jobs.
+3. Several API evidence rows still cite manual 2026-08-13 observations. They are labelled as manual
+   evidence and should become automated tests in a future engineering task if CI-level behavior
+   coverage is desired.
