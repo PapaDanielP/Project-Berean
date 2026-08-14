@@ -26,6 +26,7 @@ const CANONICAL_ENTRY_POINTS = [
   'docs/05-validation/VALIDATION.md',
   'docs/phases/README.md',
   'docs/04-data/README.md',
+  'docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md',
   'docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md'
 ];
 
@@ -143,6 +144,16 @@ describe('documentation navigation and link integrity', () => {
     const report = read('docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md');
     expect(report).toMatch(/Authority hierarchy/i);
     expect(report).toMatch(/API documentation audit/i);
+  });
+
+  it('contains the current governance audit and makes it discoverable from the documentation index', () => {
+    const docsIndex = read('docs/README.md');
+    expect(docsIndex).toContain('DOCUMENTATION_GOVERNANCE_AUDIT.md');
+
+    const report = read('docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md');
+    expect(report).toMatch(/Authority model and inventory/i);
+    expect(report).toMatch(/API and OpenAPI coverage/i);
+    expect(report).toMatch(/Link and stale-path audit/i);
   });
 
   it('contains no references to obsolete/superseded canonical documentation paths', () => {
