@@ -430,6 +430,10 @@ export const createApp = (
     }
   });
 
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'route not found' });
+  });
+
   app.get('*', (_req, res) => {
     res.type('html').send(homeHtml);
   });

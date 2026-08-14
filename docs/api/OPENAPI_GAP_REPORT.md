@@ -110,8 +110,8 @@ behavior-level testing for every response shape, and no runtime change was made 
 
 ## Deliberate documentation boundaries
 
-- The Explorer shell (`GET *`) and the `/api/v1` catch-all are described as fallback behaviours rather than as
-  addressable paths, because they match arbitrary URLs. A generic V1 read route can return `404 NOT_FOUND` before the
+- The Explorer shell (`GET *`), the unmatched-`/api` JSON 404 handler (`ALL /api/*`), and the `/api/v1` catch-all are
+  described as fallback behaviours rather than as addressable paths, because they match arbitrary URLs. A generic V1 read route can return `404 NOT_FOUND` before the
   V1 catch-all returns `501 NOT_REPRESENTED`; the fallback description does not override that route-specific result.
 - Response bodies are documented as shapes and required envelope fields; row-level column lists are not duplicated
   from [`docs/03-schema/INFORMATION_SCHEMA.md`](../03-schema/INFORMATION_SCHEMA.md).

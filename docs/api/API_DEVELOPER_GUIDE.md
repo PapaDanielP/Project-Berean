@@ -114,7 +114,8 @@ All implemented administrative mutations run inside a PostgreSQL transaction in 
 | GET | `/api/genesis/coverage` | none | Genesis-locator coverage dashboard. Read-only. | `tests/app/app.test.ts` |
 | GET | `/api/dashboard/quality` | none | Current structural totals, claim-type distribution, contradiction count, mapping status. | code-traced |
 | GET | `/api/graph` | none | Bounded graph neighborhood for `nodeType=entity|claim`. Read-only. | `tests/app/app.test.ts` |
-| GET | `*` | none | Returns Explorer HTML shell. | `tests/app/app.test.ts` |
+| ALL | `/api/*` (unmatched) | none | Any `/api` path that matches no compatibility or versioned route returns `404 {"error":"route not found"}` as JSON, never the HTML shell. | `tests/app/app.test.ts` |
+| GET | `*` (non-`/api`) | none | Returns Explorer HTML shell. | `tests/app/app.test.ts` |
 
 ### Versioned read routes
 
