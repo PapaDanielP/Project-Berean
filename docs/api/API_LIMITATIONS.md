@@ -19,7 +19,9 @@ This document records limitations evidenced by implementation, tests, and valida
 
 - Read routes never mutate state; this was verified by automated tests and manual before/after count checks on 2026-08-13.
 - Search returns lexical matches only.
-- Research is bounded to persisted Berean rows and registered predicate semantics.
+- Research is bounded to persisted Berean rows and registered predicate semantics, and is now
+  subject-bound (`question -> subject resolution -> predicate resolution -> claims`) to prevent
+  cross-subject predicate contamination.
 - Provenance explanation is structural only.
 - Timeline and graph routes assemble persisted claims, projections, and joins; they do not persist new graph knowledge.
 

@@ -106,7 +106,10 @@ redirect additionally asserted in `tests/app/openapi-coverage.test.ts`). Per-rou
 ### Remaining OpenAPI gaps
 
 None at route-surface level for implemented non-static routes. Route-surface completeness does not replace
-behavior-level testing for every response shape, and no runtime change was made to improve any count above.
+behavior-level testing for every response shape. In the current pass, the `ResearchResponse` schema was
+updated to include subject-resolution planning and bounded truncation metadata
+(`bounded.total_matched/returned/truncated`) so bounded subsets are explicit in both `/api/research`
+and `/api/v1/research`.
 
 ## Deliberate documentation boundaries
 

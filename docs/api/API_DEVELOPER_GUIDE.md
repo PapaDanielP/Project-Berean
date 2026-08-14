@@ -166,9 +166,19 @@ Validation:
 Actual research behaviors:
 
 - Questions containing `prove|proved|true|truth|confirm*` return `capability: "NOT_REPRESENTED"`.
-- Participation questions use all predicates whose registry row has `event_participation_role_code`.
+- Subject resolution now runs before claim retrieval:
+  - one resolved represented subject (`entity` or `event`) → subject-bound retrieval only;
+  - multiple plausible subjects → `capability: "UNRESOLVED"` with no promoted answer rows;
+  - unresolved source identity (no single `ACTIVE` mapping) → `capability: "UNRESOLVED"`;
+  - no represented subject → `capability: "NOT_REPRESENTED"` (non-denial).
+- Participation questions use predicates whose registry row has `event_participation_role_code`.
 - Other questions match registered `predicate_code` or `predicate.description`.
-- Results are limited to 50 rows.
+- Predicate matches that are not subject-relevant are excluded.
+- Results remain bounded to 50 rows and now expose:
+  - `bounded.total_matched`
+  - `bounded.returned`
+  - `bounded.truncated`
+  - deterministic `bounded.order`.
 - Scope is always `BEREAN_ONLY`; no external retrieval happens.
 - `NO_MATCH` means no persisted claim in the selected scope matched the registered predicate set.
 
@@ -179,10 +189,18 @@ Manual example (2026-08-13):
   "capability": "ESTABLISHED",
   "plan": {
     "classification": "PARTICIPATION",
+    "subject_resolution": { "status": "RESOLVED", "resolved_kind": "ENTITY" },
     "scope": { "dataset_ids": [], "retrieval_scope": "BEREAN_ONLY" },
     "candidate_predicates": ["builderIn", "childIn", "parentIn", "participatesIn", "subjectOf"],
-    "traversal_shape": "CLAIM_ASSERTED_EVENT_PARTICIPATION",
+    "traversal_shape": "SUBJECT_BOUND_EVENT_PARTICIPATION",
     "provenance_requirement": "FULL_CHAIN"
+  },
+  "bounded": {
+    "total_matched": 2,
+    "returned": 2,
+    "truncated": false,
+    "limit": 50,
+    "order": ["claim_id", "claim_evidence_id", "dataset_id", "source_key"]
   },
   "results": [
     {

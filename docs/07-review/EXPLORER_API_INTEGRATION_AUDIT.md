@@ -266,3 +266,101 @@ The classification is unchanged: **PASS WITH NON-BLOCKING FINDINGS.**
 
 No schema, ingestion, or administrative-route semantics were changed. Explorer remains read-only and
 API-mediated.
+
+## 12. Phase R1 follow-on design gate: D-1 subject binding (2026-08-14)
+
+This section records the implementation design required before code changes for the approved
+research-integrity next step.
+
+1. **Existing structures used for subject resolution**
+   - `entity` (`entity_key`, `canonical_name`) for represented canonical entities.
+   - `event` (`event_key`, `description`) for represented events.
+   - `source_identity` (`source_identity_key`, `display_name`) and
+     `entity_source_mapping` (`mapping_status_code`) to preserve unresolved source identities and avoid
+     forced canonical promotion.
+   - `proposition` subject columns (`subject_entity_id`, `subject_event_id`) as authoritative claim
+     subject anchors.
+
+2. **Subject resolution behavior**
+   - Explicit represented entity/event in the question: bind to that subject.
+   - Source-identity wording in the question: resolve as source identity first; map to canonical entity
+     only when exactly one `ACTIVE` mapping exists.
+   - Multiple plausible represented matches (same/overlapping labels): return unresolved/ambiguous
+     result without `ESTABLISHED`.
+   - Unresolved source identity (no active mapping): keep unresolved identity status, do not promote.
+   - Absent represented subject: return bounded `NO_MATCH`/`NOT_REPRESENTED` semantics (non-denial),
+     never a truth denial.
+
+3. **Proof of subject relevance before `ESTABLISHED`**
+   - A row is eligible only when claim subject is the resolved subject:
+     `proposition.subject_entity_id = resolved entity` or
+     `proposition.subject_event_id = resolved event`.
+   - Predicate-only matches without subject binding are excluded from answer rows and cannot produce
+     `ESTABLISHED`.
+
+4. **Derived-claim scope through derivation inputs**
+   - No schema change in this pass.
+   - D-1 fix keeps derived/direct distinction and introduces no new inferred provenance path.
+   - D-3 remains separate: if implemented later, scope for derived claims must traverse
+     `claim -> derivation -> derivation_input -> input claim/evidence -> source_record -> dataset`.
+
+5. **Claim/evidence aggregation**
+   - D-1 scope: prevent cross-subject contamination first.
+   - D-6 aggregation (single claim with multiple evidence/provenance paths) is deferred unless required
+     for correctness in touched code.
+
+6. **Provenance-gap semantics**
+   - Direct claims still require source-backed chain to classify as directly supported.
+   - Derived claims remain distinct from direct source observation.
+   - Missing required provenance remains unresolved; D-7 refinement remains a follow-on unless required
+     by D-1 implementation changes.
+
+7. **API contract alignment (`/api/*` and `/api/v1/*`)**
+   - Both surfaces share the same repository research engine; any response-shape change in `research()`
+     applies to both routes.
+   - Compatibility routes remain in place; no migration to `/api/v1/*` is introduced by this pass.
+
+8. **Regression strategy (Q10/X1 recurrence)**
+   - Keep existing tests unchanged.
+   - Add focused API regressions for:
+     - predicate match with wrong subject (must be excluded),
+     - same-name/multiple candidates (ambiguous/unresolved),
+     - absent subject,
+     - source identity vs canonical entity boundary,
+     - supported subject with no matching claim in selected scope.
+
+### 12.1 Finding classification for this gate (A/B/C/D/E)
+
+| ID | Finding | Classification | Planned action |
+|---|---|---|---|
+| RI-D1 | Predicate-only research can return claims unrelated to asked subject | **A MUST FIX** | Implement subject-first binding and subject-anchored filtering in `research()` with tests |
+| RI-D2 | Research limit can truncate silently | **B SHOULD FIX** | Implement bounded truncation metadata (`total_matched`, `returned`, `truncated`) if safe in current contract |
+| RI-D3 | Derived scope through derivation inputs is incomplete for dataset scoping | **C DOCUMENT / D DEFER (unless locally safe)** | Document as follow-on unless D-1 changes require immediate fix |
+| RI-D6 | Claim/evidence rows are not yet aggregated per claim | **D DEFER** | Defer unless required to preserve correctness in D-1 touched code |
+| RI-D7 | Derived provenance wording can blur valid-derived vs missing-provenance gaps | **C DOCUMENT** | Preserve current distinctions; refine only if touched by D-1 |
+| RI-D8 | Per-result provenance context depth may be insufficient for one-shot inspection | **D DEFER** | Evaluate after D-1/D-2; avoid oversized payload changes in this pass |
+| RI-D4 | Scholarly capability population is a coverage/product concern, not synthetic generation | **E FALSE POSITIVE (for code fix)** | Document honestly; do not fabricate scholarly material |
+
+### 12.2 Implementation outcome for this pass
+
+- **Implemented (fixed):**
+  - **D-1 subject binding** in `src/repository.ts::research()`:
+    question processing now runs `subject_resolution` first and applies subject-bound proposition filters
+    before result classification, preventing predicate-only cross-subject contamination.
+  - **D-2 truncation transparency**:
+    `ResearchResponse` now includes `bounded { total_matched, returned, truncated, limit, order }`,
+    and the Explorer renders returned-vs-total status.
+- **Regression coverage added (Q10/X1 recurrence protections):**
+  - wrong-subject predicate-match exclusion;
+  - ambiguous multi-subject resolution (`UNRESOLVED`);
+  - unresolved source-identity handling without canonical promotion;
+  - absent subject (`NOT_REPRESENTED`);
+  - represented subject with no matching claim (`NO_MATCH`).
+- **Compatibility impact:** both `/api/research` and `/api/v1/research` stay aligned because both call the
+  same repository research engine; `/api/*` compatibility routes remain supported and unchanged in path.
+- **Deferred in this pass (documented, not silently changed):**
+  - D-3 derived-claim scope expansion through derivation inputs;
+  - D-6 claim/evidence row aggregation into one claim row with nested paths;
+  - D-7 derived provenance semantic split refinements;
+  - D-8 expanded per-result provenance payload;
+  - D-5 broader pagination architecture work.
