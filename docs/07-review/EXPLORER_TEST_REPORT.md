@@ -69,13 +69,28 @@ before the schemas were dropped, and both then passed cleanly.
 npm test   # vitest run
 ```
 
-Result after cleaning the schema: **114 passed (4 test files)** —
+Result after cleaning the schema: **141 passed (5 test files)** —
 `tests/app/documentation-links.test.ts` (11), `tests/app/openapi-coverage.test.ts` (6),
-`tests/app/phase28-ingestion.test.ts` (35), `tests/app/app.test.ts` (62, including the new graph
-self-loop regression test). A fifth file, `tests/app/explorer-contract.test.ts` (27 tests, added in
-this pass), was run standalone as `npx vitest run tests/app/explorer-contract.test.ts` and passed;
-it also passes as part of the full suite once the database is clean (verified in the final
-pre-PR run recorded in `git`/CI history for this branch).
+`tests/app/explorer-contract.test.ts` (27), `tests/app/phase28-ingestion.test.ts` (35), and
+`tests/app/app.test.ts` (62, including the graph self-loop regression test).
+
+Current re-verification in the final integration pass:
+
+```
+npm run typecheck
+npm run lint
+npm run build
+bash scripts/validation/run-postgres-validation.sh
+npm test
+npx vitest run tests/app/documentation-links.test.ts
+```
+
+Results: `typecheck`, `lint`, and `build` exited 0 after `npm ci`; PostgreSQL validation exited 0
+with `All validation self-test cases passed.`; `npm test` exited 0 with **141 passed (5 test
+files)**; the focused documentation-link test exited 0 with **11 passed**. The first attempted
+`typecheck`/`lint`/`build` before dependency installation failed because `node_modules` was absent
+(`eslint`, `express`, `pg`, and Node typings were not installed); no source defect was indicated,
+and the commands passed after the repository dependencies were installed with `npm ci`.
 
 **Remaining test-coverage gaps** (unchanged from the predecessor audit, not closed in this pass, and
 listed here rather than hidden): 12 documented routes have no behavior-level test (F-11 in
@@ -168,6 +183,20 @@ Findings:
   `EXPLORER_API_INTEGRATION_AUDIT.md` §7) removed the self-referential edges previously reported in
   `FINAL_PLATFORM_ARCHITECTURE_AUDIT.md` (F-02) for this same entity.
 - **0 console errors** in this session as well.
+
+Current smoke re-verification: the sandboxed Playwright MCP browser tool again failed with
+`Transport closed`. A same-origin smoke test was therefore run with the existing server instead:
+
+```
+PORT=3210 npx tsx src/server.ts
+curl -sS -D /tmp/berean-headers.txt http://127.0.0.1:3210/
+curl -sS http://127.0.0.1:3210/api/research/scope
+```
+
+Result: the Explorer HTML shell returned 200 with the configured CSP, `X-Content-Type-Options:
+nosniff`, and `Referrer-Policy: no-referrer`; `GET /api/research/scope` returned a JSON dataset
+scope (20 datasets in the post-`npm test` database state). This was a smoke check only, not a
+replacement for the earlier real-browser sessions recorded above.
 
 ### Responsive / accessibility commands
 

@@ -18,14 +18,14 @@ Ground truth inspected: `src/public/app.js` (630 lines), `src/app.ts`, `src/api/
 
 - **IMPLEMENTED_AND_DOCUMENTED** — the route exists in the Express router and in `GET /openapi.json`.
 - **DOCUMENTED_AND_TESTED** — additionally covered by a behavior-level test.
-- All ten Explorer-called routes below are both.
+- All thirteen Explorer-called path templates below are both.
 
 ## Matrix
 
 | Capability | UI entry point | API | Request | Response fields the client reads | Epistemic interpretation | Auth | Tests |
 |---|---|---|---|---|---|---|---|
 | Research scope discovery | scope `<details>` panel, loaded on page load | `GET /api/research/scope` | none | `datasets[].dataset_id`, `.name`, `.source_name`, `.claim_count` | Scope selection is presentation over persisted datasets; it never creates a domain or reconciles identities (stated in the UI copy itself) | none (read-only, unauthenticated) | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
-| Research question | "Ask Berean" form → `#researchButton` | `POST /api/research` | JSON `{question: string, datasetIds: number[]}` (empty array = all persisted datasets) | `capability`, `interpretation`, `plan.classification`, `plan.traversalShape`, `results[].classification`, `results[].claim_status_code`, `limitation` | `capability` values (`ESTABLISHED`, `NOT_REPRESENTED`, `UNRESOLVED`) are rendered as labelled sections, never collapsed into a single answer; `NOT_REPRESENTED` always renders the non-denial limitation text | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Research question | "Ask Berean" form → `#researchButton` | `POST /api/research` | JSON `{question: string, datasetIds: number[]}` (empty array = all persisted datasets) | `capability`, `interpretation`, `plan.classification`, `plan.traversal_shape`, `results[].classification`, `results[].claim_status_code`, `limitation` | `capability` values (`ESTABLISHED`, `NOT_REPRESENTED`, `UNRESOLVED`) are rendered as labelled sections, never collapsed into a single answer; `NOT_REPRESENTED` always renders the non-denial limitation text | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
 | Keyword search | "Find represented records" form → `#searchButton` | `GET /api/search?q&limit` | `q` (≤ 200 chars), `limit` (positive integer; effective cap 50 rows server-side) | `results[].type`, `.id`, `.key`, `.label` | Every hit is labelled "Matched"; the standing note "Matches are not established claims" is always shown alongside results | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
 | Entity detail | click an entity search/research hit | `GET /api/entities/{id}` | numeric `id` from a prior search/research response | `entity.canonical_name`, `sourceMappings[]`, `events[]`, `claims[]` | Source identity mappings are rendered with `mapping_status`, not collapsed into "identified" | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
 | Claim detail | click a claim search/research hit | `GET /api/claims/{id}` | numeric `id` | `claim.claim_type_code`, `.claim_status_code`, `proposition`, `evidence[]`, `derivation`, `claimRelations[]` | `SUPERSEDED` claims render their status badge and retained evidence, never promoted; derived claims render a `Derivation` section instead of an invented citation | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
@@ -39,9 +39,11 @@ Ground truth inspected: `src/public/app.js` (630 lines), `src/app.ts`, `src/api/
 ## Authentication
 
 The Explorer never sends an `Authorization` header, never stores or reads a token/credential, and
-never calls an authenticated or administrative route. All ten endpoints above are unauthenticated
-by design; the full authentication/authorization model for the routes the Explorer does **not**
-call is documented in [`API_SECURITY_MODEL.md`](./API_SECURITY_MODEL.md).
+never calls an authenticated or administrative route. It persists only selected dataset-scope
+identifiers in same-origin `sessionStorage` (`berean-scope`) for reader convenience. All thirteen
+endpoint path templates above are unauthenticated by design; the full authentication/authorization
+model for the routes the Explorer does **not** call is documented in
+[`API_SECURITY_MODEL.md`](./API_SECURITY_MODEL.md).
 
 ## Endpoints the Explorer does not use
 
