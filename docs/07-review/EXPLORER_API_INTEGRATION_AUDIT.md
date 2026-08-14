@@ -58,7 +58,7 @@ interface.
 | Genesis coverage / quality dashboard | dashboard links | `GET /api/genesis/coverage`, `GET /api/dashboard/quality` |
 | Bounded relationship graph | "Expand selected node neighborhood" | `GET /api/graph` |
 
-Ten distinct endpoints are used. **No administrative UI is present**: there is no login form, no
+Thirteen distinct endpoint path templates are used. **No administrative UI is present**: there is no login form, no
 token input, no write action anywhere in `src/public/app.js` or `src/app.ts`'s HTML shell. This
 matches the read-only design stated in `README.md` and `API_SECURITY_MODEL.md`.
 
@@ -68,10 +68,10 @@ The full endpoint-by-endpoint request/response comparison (methods, parameters, 
 fields, and status codes actually returned by `src/app.ts`) is maintained as the canonical matrix in
 [`../api/API_EXPLORER_INTEGRATION_MATRIX.md`](../api/API_EXPLORER_INTEGRATION_MATRIX.md). Summary:
 
-- All ten Explorer-called routes are **IMPLEMENTED_AND_DOCUMENTED** in `src/api/openapi.ts` /
+- All thirteen Explorer-called path templates are **IMPLEMENTED_AND_DOCUMENTED** in `src/api/openapi.ts` /
   `GET /openapi.json`, confirmed programmatically by `tests/app/openapi-coverage.test.ts` (route
   surface) and, as of this audit, by `tests/app/explorer-contract.test.ts` (Explorer-specific
-  endpoint/field coverage, added in this pass — see §7).
+  endpoint coverage, added in this pass — see §7).
 - No Explorer call assumes a request shape, status code, or response field that the server does not
   actually provide. No outdated assumption was found.
 - The Explorer never calls `/api/v1/*`; it only uses the legacy `/api/*` compatibility surface, which
@@ -80,15 +80,17 @@ fields, and status codes actually returned by `src/app.ts`) is maintained as the
 
 ## 4. Authentication, authorization, and security
 
-- The Explorer never sends an `Authorization` header and never stores a token or credential (no
-  `localStorage`/`sessionStorage`/cookie write appears in `src/public/app.js`). Every route it calls
-  is unauthenticated by design (read-only, non-administrative), matching `API_SECURITY_MODEL.md`.
+- The Explorer never sends an `Authorization` header and never stores a token or credential. It
+  writes only the selected dataset-scope identifiers to same-origin `sessionStorage` under
+  `berean-scope`; it does not write `localStorage`, cookies, bearer tokens, or credentials. Every
+  route it calls is unauthenticated by design (read-only, non-administrative), matching
+  `API_SECURITY_MODEL.md`.
 - An ordinary reader of the Explorer cannot reach any administrator action: no administration route
   (`/api/v1/admin/*`, ingestion, discovery, candidate review, identity mapping, derivation, job, or
   export endpoints) is called or reachable from the UI. Authorization enforcement for those routes is
   server-side (`src/administration/routes.ts`, `src/auth.ts`) and out of the Explorer's reach entirely
-  — verified by code inspection and by a live browser session (§6) that observed exactly the ten
-  compatibility endpoints in its network log.
+  — verified by code inspection and by live browser sessions (§6) whose network logs showed only
+  documented compatibility endpoints from the thirteen-template Explorer surface.
 - **XSS:** the client uses `textContent`/DOM node construction for all rendered result text; it does
   not use `innerHTML` with unescaped server data for search results, research results, or error
   messages. A live browser probe (§6) submitted `<img src=x onerror=alert(1)>` as a search term; the
@@ -165,7 +167,7 @@ following the F-EXP-01 fix rather than FAIL, re-verified live in this pass (§6 
 - Previously reported as `F-13` in `FINAL_PLATFORM_ARCHITECTURE_AUDIT.md` §20/§21, with a
   recommended smallest strategy of extracting the Explorer's called endpoint paths and asserting each
   resolves to a documented OpenAPI path.
-- **Action taken:** added `tests/app/explorer-contract.test.ts`, which parses the ten `fetch(...)`
+- **Action taken:** added `tests/app/explorer-contract.test.ts`, which parses the Explorer `fetch(...)`
   call sites out of `src/public/app.js` with a regular expression and asserts each resolves to a path
   registered in the live Express route stack (reusing the route-collection helper pattern from
   `tests/app/openapi-coverage.test.ts`) and documented in `src/api/openapi.ts`. This closes the
@@ -185,10 +187,20 @@ scope requires fixing. In particular:
 - F-06 through F-12 remain MINOR GAP / TEST COVERAGE GAP items with no epistemic-safety impact; they
   are listed as remaining issues in `EXPLORER_TEST_REPORT.md` §5 rather than fixed here, per the
   smallest-change-set instruction for this audit.
+- Current re-audit also noted non-blocking UI hardening opportunities that are not defects in the
+  current Explorer/API contract: the Explorer's generic `fetchJson` helper is tailored to the
+  compatibility routes' string error envelopes rather than the authenticated administration API's
+  `{ error: { code, message } }` envelope, which the Explorer does not call; a hypothetical
+  non-all-selected scope with more than 100 datasets would receive the server's 400 response as a
+  generic research failure rather than a pre-submit client warning; and the research button is enabled
+  in the initial HTML until scope loading completes, although the submit handler still prevents an
+  empty-scope request. These are recorded as UX/hardening limitations, not blocking conformance
+  defects, because no current Explorer route, represented-data workflow, or epistemic boundary is
+  broken by them.
 
 ## 9. Final classification
 
-**PASS WITH NON-BLOCKING FINDINGS.** The Explorer is a correctly architected, documented,
+**PASS WITH NON-BLOCKING ISSUES.** The Explorer is a correctly architected, documented,
 epistemically safe API consumer. One implementation defect it exposed (self-referential graph
 edges) was fixed with a regression test; one test-coverage gap (Explorer↔API contract) was closed
 with the smallest useful test. Remaining findings (F-01, F-05 through F-12 in the predecessor audit)
