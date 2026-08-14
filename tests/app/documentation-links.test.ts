@@ -26,7 +26,8 @@ const CANONICAL_ENTRY_POINTS = [
   'docs/05-validation/VALIDATION.md',
   'docs/phases/README.md',
   'docs/04-data/README.md',
-  'docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md'
+  'docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md',
+  'docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md'
 ];
 
 const CANONICAL_API_DOCS = [
@@ -85,6 +86,13 @@ const collectMarkdownFiles = (dir: string): string[] => {
   }
   return files;
 };
+
+// `collectMarkdownFiles` skips dot-directories so that `.git` is never walked; `.github`
+// nonetheless carries contributor documentation and is therefore collected explicitly.
+const collectRepositoryMarkdownFiles = (): string[] =>
+  collectMarkdownFiles('.')
+    .concat(exists('.github') ? collectMarkdownFiles('.github') : [])
+    .filter((file) => !file.includes('node_modules'));
 
 describe('documentation navigation and link integrity', () => {
   it('has every canonical entry point present on disk', () => {
@@ -150,11 +158,7 @@ describe('documentation navigation and link integrity', () => {
     // examples (paths that were considered and intentionally not adopted); exclude it from
     // this scan so that discussing them does not trip the guard meant for live references.
     const exemptFiles = new Set(['docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md']);
-    const markdownFiles = collectMarkdownFiles('docs')
-      .concat(collectMarkdownFiles('.').filter(
-        (file) => !file.startsWith('docs/') && !file.includes('node_modules')
-      ))
-      .filter((file) => !exemptFiles.has(file));
+    const markdownFiles = collectRepositoryMarkdownFiles().filter((file) => !exemptFiles.has(file));
     for (const file of markdownFiles) {
       const content = read(file);
       for (const fragment of OBSOLETE_PATH_FRAGMENTS) {
@@ -166,8 +170,19 @@ describe('documentation navigation and link integrity', () => {
     }
   });
 
-  it('resolves every local Markdown link within docs/ to an existing file or directory', () => {
-    const markdownFiles = collectMarkdownFiles('docs');
+  it('indexes the documentation governance audit from docs/README.md', () => {
+    const docsIndex = read('docs/README.md');
+    expect(docsIndex).toContain('07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md');
+
+    const audit = read('docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md');
+    expect(audit).toMatch(/Authority model/i);
+    expect(audit).toMatch(/Broken-link and stale-path audit/i);
+  });
+
+  it('resolves every local Markdown link in the repository to an existing file or directory', () => {
+    // Documentation lives outside docs/ as well (root README, data/**, .github/**), so link
+    // integrity is enforced across every tracked Markdown file rather than docs/ alone.
+    const markdownFiles = collectRepositoryMarkdownFiles();
     const broken: string[] = [];
     for (const file of markdownFiles) {
       const content = read(file);

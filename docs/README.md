@@ -53,9 +53,14 @@ If a phase or validation record conflicts with current implementation or authori
 - Later independent phase studies (Phase 33–37R/37B) in [`phases/`](./phases/).
 
 ### REVIEW / AUDIT
-- [`07-review/REPOSITORY_CONSOLIDATION_REPORT.md`](./07-review/REPOSITORY_CONSOLIDATION_REPORT.md) — repository-wide documentation and structural integrity audit.
+- [`07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md`](./07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md) — current documentation governance, authority, link-integrity, and API-coverage audit.
+- [`07-review/REPOSITORY_CONSOLIDATION_REPORT.md`](./07-review/REPOSITORY_CONSOLIDATION_REPORT.md) — repository-wide documentation and structural integrity audit (predecessor pass).
 - [`07-review/REMEDIATION-REPORT.md`](./07-review/REMEDIATION-REPORT.md) — architecture alignment and remediation record.
 - [`07-review/WEB_APP_MVP_REPORT.md`](./07-review/WEB_APP_MVP_REPORT.md) — MVP review record.
+- [`07-review/COPILOT_PEER_REVIEW_PROMPT.md`](./07-review/COPILOT_PEER_REVIEW_PROMPT.md) — historical peer-review prompt used to commission an independent review; not a specification.
+
+### HISTORICAL PLAN
+- [`00-project/WEB_APP_MVP_PLAN.md`](./00-project/WEB_APP_MVP_PLAN.md) — original read-only web MVP assessment and plan. Historical; superseded for current behavior by [`api/API_DEVELOPER_GUIDE.md`](./api/API_DEVELOPER_GUIDE.md) and [`01-architecture/ARCHITECTURE.md`](./01-architecture/ARCHITECTURE.md).
 
 ### GENERATED / TEST ARTIFACTS
 - SQL fixtures: `tests/fixtures/`
