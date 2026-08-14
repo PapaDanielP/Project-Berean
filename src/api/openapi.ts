@@ -272,11 +272,22 @@ const document: Values = {
           question: { type: 'string' },
           interpretation: { type: 'string' },
           capability: { type: 'string', enum: ['ESTABLISHED', 'DERIVED', 'SCHOLARLY_CANDIDATE', 'UNRESOLVED', 'NOT_REPRESENTED', 'NO_MATCH'] },
-          plan: { type: 'object', description: 'Query plan: classification, scope, candidate predicates, traversal shape, output constraints.' },
+          plan: { type: 'object', description: 'Query plan: classification, resolved subject state, scope, candidate predicates, traversal shape, output constraints.' },
           results: { type: 'array', items: { type: 'object' } },
+          bounded: object(
+            {
+              total_matched: { type: 'integer', minimum: 0 },
+              returned: { type: 'integer', minimum: 0 },
+              truncated: { type: 'boolean' },
+              limit: { type: 'integer', minimum: 1 },
+              order: { type: 'array', items: { type: 'string' } }
+            },
+            ['total_matched', 'returned', 'truncated', 'limit', 'order'],
+            'Bounded retrieval metadata so a partial result set is never mistaken for a complete answer.'
+          ),
           limitation: { type: 'string' }
         },
-        ['question', 'plan', 'results'],
+        ['question', 'plan', 'results', 'bounded'],
         'Research answers are assembled only from persisted rows and registered predicates.'
       ),
       CorpusCreate: object(

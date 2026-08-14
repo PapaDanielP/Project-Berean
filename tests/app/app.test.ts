@@ -358,18 +358,28 @@ describe('read-only API', () => {
     expect(response.status).toBe(200);
     expect(after).toEqual(before);
     expect(response.body.plan.scope.retrieval_scope).toBe('BEREAN_ONLY');
+    expect(response.body.plan.subject_resolution.status).toBe('NO_SUBJECT');
     expect(response.body.plan.candidate_predicates.length).toBeGreaterThan(0);
     expect(response.body.results.length).toBeLessThanOrEqual(50);
+    expect(response.body.bounded).toEqual({
+      total_matched: 0,
+      returned: 0,
+      truncated: false,
+      limit: 50,
+      order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']
+    });
   });
 
   it('supports all, single, and multiple persisted dataset scopes', async () => {
     const scope = await request(app).get('/api/research/scope');
-    const all = await request(app).post('/api/research').send({ question: 'Who participated in events?' });
+    const all = await request(app).post('/api/research').send({ question: 'In which represented events does Seth participate?' });
     expect(all.status).toBe(200);
     expect(all.body.plan.scope.dataset_ids).toEqual([]);
     expect(all.body.results.length).toBeGreaterThan(0);
 
-    const representedDatasetId = Number(all.body.results[0].dataset_id);
+    const firstScopedResult = all.body.results.find((result: { dataset_id: number | string | null }) => Number.isFinite(Number(result.dataset_id)));
+    expect(firstScopedResult).toBeTruthy();
+    const representedDatasetId = Number(firstScopedResult.dataset_id);
     const otherDatasetId = scope.body.datasets
       .map((dataset: { dataset_id: number | string }) => Number(dataset.dataset_id))
       .find((datasetId: number) => datasetId !== representedDatasetId);
@@ -378,7 +388,7 @@ describe('read-only API', () => {
 
     const single = await request(app)
       .post('/api/research')
-      .send({ question: 'Who participated in events?', datasetIds: datasetIds.slice(0, 1) });
+      .send({ question: 'In which represented events does Seth participate?', datasetIds: datasetIds.slice(0, 1) });
     expect(single.status).toBe(200);
     expect(single.body.plan.scope.dataset_ids).toEqual(datasetIds.slice(0, 1));
     expect(single.body.results.length).toBeGreaterThan(0);
@@ -386,10 +396,92 @@ describe('read-only API', () => {
 
     const multiple = await request(app)
       .post('/api/research')
-      .send({ question: 'Who participated in events?', datasetIds });
+      .send({ question: 'In which represented events does Seth participate?', datasetIds });
     expect(multiple.status).toBe(200);
     expect(multiple.body.plan.scope.dataset_ids).toEqual(datasetIds);
     expect(multiple.body.results.every((result: { dataset_id: number | string }) => datasetIds.includes(Number(result.dataset_id)))).toBe(true);
+  });
+
+  it('excludes predicate matches that are unrelated to the resolved subject', async () => {
+    const noParticipationSubject = await pool.query(
+      `SELECT e.canonical_name
+       FROM entity e
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM proposition p
+         JOIN predicate pr ON pr.predicate_code = p.predicate
+         WHERE p.subject_entity_id = e.entity_id
+           AND pr.event_participation_role_code IS NOT NULL
+       )
+       ORDER BY char_length(e.canonical_name) DESC, e.entity_id
+       LIMIT 1`
+    );
+    expect(noParticipationSubject.rowCount).toBeGreaterThan(0);
+    const subjectName = noParticipationSubject.rows[0].canonical_name as string;
+
+    const response = await request(app)
+      .post('/api/research')
+      .send({ question: `Who participates in ${subjectName} events?` });
+    expect(response.status).toBe(200);
+    expect(response.body.plan.subject_resolution.status).toBe('RESOLVED');
+    expect(response.body.capability).toBe('NO_MATCH');
+    expect(response.body.results).toEqual([]);
+  });
+
+  it('returns UNRESOLVED for ambiguous and unresolved source-identity subjects', async () => {
+    const ambiguous = await request(app)
+      .post('/api/research')
+      .send({ question: 'What fatherOf claim relates Adam and Seth?' });
+    expect(ambiguous.status).toBe(200);
+    expect(ambiguous.body.capability).toBe('UNRESOLVED');
+    expect(ambiguous.body.plan.subject_resolution.status).toBe('AMBIGUOUS');
+    expect(ambiguous.body.results).toEqual([]);
+
+    const unresolvedName = 'Unresolved Test Identity';
+    await pool.query(
+      `WITH seeded AS (
+         INSERT INTO source_identity (source_id, source_identity_key, display_name)
+         SELECT source_id, 'phase32-unresolved-test-identity', $1
+         FROM source
+         WHERE source_key = 'EARMAN_GLYMOUR_1980'
+         ON CONFLICT (source_id, source_identity_key) DO UPDATE SET display_name = EXCLUDED.display_name
+         RETURNING source_identity_id
+       )
+       INSERT INTO entity_source_mapping (source_identity_id, entity_id, mapping_status_code, confidence, justification)
+       SELECT seeded.source_identity_id, entity.entity_id, 'PROPOSED', 0.5000, 'Test-only unresolved source identity mapping.'
+       FROM seeded
+       JOIN entity ON entity.entity_key = 'adam'
+       WHERE NOT EXISTS (
+         SELECT 1 FROM entity_source_mapping existing
+         WHERE existing.source_identity_id = seeded.source_identity_id
+           AND existing.entity_id = entity.entity_id
+       )`,
+      [unresolvedName]
+    );
+
+    const unresolved = await request(app)
+      .post('/api/research')
+      .send({ question: `What represented claims involve ${unresolvedName}?` });
+    expect(unresolved.status).toBe(200);
+    expect(unresolved.body.capability).toBe('UNRESOLVED');
+    expect(unresolved.body.plan.subject_resolution.status).toBe('UNRESOLVED_SOURCE_IDENTITY');
+    expect(unresolved.body.results).toEqual([]);
+  });
+
+  it('returns NOT_REPRESENTED when no represented subject can be resolved', async () => {
+    const response = await request(app).post('/api/research').send({ question: 'What fatherOf claim exists for zzz-no-subject-zzz?' });
+    expect(response.status).toBe(200);
+    expect(response.body.capability).toBe('NOT_REPRESENTED');
+    expect(response.body.plan.subject_resolution.status).toBe('NO_SUBJECT');
+    expect(response.body.results).toEqual([]);
+  });
+
+  it('returns NO_MATCH for a represented subject with no matching subject-bound claims', async () => {
+    const response = await request(app).post('/api/research').send({ question: 'Is Earth fatherOf anyone?' });
+    expect(response.status).toBe(200);
+    expect(response.body.plan.subject_resolution.status).toBe('RESOLVED');
+    expect(response.body.capability).toBe('NO_MATCH');
+    expect(response.body.results).toEqual([]);
   });
 
   it('preserves evidence relations and inactive claim lifecycle states in research results', async () => {
@@ -399,7 +491,7 @@ describe('read-only API', () => {
 
     const lxx = await request(app)
       .post('/api/research')
-      .send({ question: 'ageAtFatherhoodYears', datasetIds: [lxxDatasetId] });
+      .send({ question: 'What ageAtFatherhoodYears claim is represented for Adam?', datasetIds: [lxxDatasetId] });
     const contradictedMtClaim = lxx.body.results.find(
       (result: { claim_key: string }) => result.claim_key === 'CLAIM_MT_ADAM_AGE_AT_SETH'
     );
@@ -408,7 +500,7 @@ describe('read-only API', () => {
 
     const mt = await request(app)
       .post('/api/research')
-      .send({ question: 'ageAtFatherhoodYears', datasetIds: [mtDatasetId] });
+      .send({ question: 'What ageAtFatherhoodYears claim is represented for Adam?', datasetIds: [mtDatasetId] });
     const superseded = mt.body.results.find(
       (result: { claim_key: string }) => result.claim_key === 'CLAIM_MT_ADAM_AGE_AT_SETH_DRAFT'
     );

@@ -294,6 +294,14 @@ const renderResearch = (payload) => {
     plan.append(summary, planList);
     researchResults.append(plan);
   }
+
+  if (payload.bounded) {
+    const bounded = element('p', {
+      className: 'muted',
+      text: `Returned ${safeText(payload.bounded.returned)} of ${safeText(payload.bounded.total_matched)} matched rows${payload.bounded.truncated ? ' (truncated to bounded limit).' : '.'}`
+    });
+    researchResults.append(bounded);
+  }
 };
 
 researchForm.addEventListener('submit', async (event) => {
@@ -319,7 +327,10 @@ researchForm.addEventListener('submit', async (event) => {
       signal: researchController.signal
     });
     renderResearch(payload);
-    researchStatus.textContent = `${humanize(payload.capability)}. ${(payload.results ?? []).length} bounded results.`;
+    const bounded = payload.bounded;
+    researchStatus.textContent = bounded
+      ? `${humanize(payload.capability)}. Returned ${bounded.returned} of ${bounded.total_matched}${bounded.truncated ? ' (truncated).' : '.'}`
+      : `${humanize(payload.capability)}. ${(payload.results ?? []).length} bounded results.`;
   } catch (error) {
     if (error.name !== 'AbortError') {
       renderMessage(researchResults, 'Research could not be completed. Please revise the question or try again.', 'error');

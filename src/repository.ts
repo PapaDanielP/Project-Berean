@@ -9,6 +9,188 @@ const boundedLimit = (value: number | undefined, fallback: number, max: number):
 export class BereanRepository {
   constructor(private readonly pool: Pool) {}
 
+  private async resolveResearchSubject(question: string): Promise<Record<string, unknown>> {
+    type SubjectCandidate =
+      | { kind: 'ENTITY'; id: number; key: string; label: string; match_length: number }
+      | { kind: 'EVENT'; id: number; key: string; label: string; match_length: number }
+      | {
+          kind: 'SOURCE_IDENTITY';
+          id: number;
+          key: string;
+          label: string;
+          match_length: number;
+          active_mapping_count: number;
+          active_entity_id: number | null;
+        };
+    const normalizedQuestion = ` ${question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+    const [entityCandidates, eventCandidates, sourceIdentityCandidates] = await Promise.all([
+      this.pool.query(
+        `SELECT entity_id, entity_key, canonical_name,
+                GREATEST(
+                  CASE WHEN char_length(regexp_replace(lower(canonical_name), '[^a-z0-9]+', ' ', 'g')) >= 3
+                         AND strpos($1, ' ' || regexp_replace(lower(canonical_name), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
+                       THEN char_length(regexp_replace(lower(canonical_name), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END,
+                  CASE WHEN char_length(regexp_replace(lower(entity_key), '[^a-z0-9]+', ' ', 'g')) >= 3
+                         AND strpos($1, ' ' || regexp_replace(lower(entity_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
+                       THEN char_length(regexp_replace(lower(entity_key), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END
+                )::int AS match_length
+         FROM entity
+         WHERE (char_length(regexp_replace(lower(canonical_name), '[^a-z0-9]+', ' ', 'g')) >= 3
+                AND strpos($1, ' ' || regexp_replace(lower(canonical_name), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
+            OR (char_length(regexp_replace(lower(entity_key), '[^a-z0-9]+', ' ', 'g')) >= 3
+                AND strpos($1, ' ' || regexp_replace(lower(entity_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
+         ORDER BY match_length DESC, entity_id
+         LIMIT 10`,
+        [normalizedQuestion]
+      ),
+      this.pool.query(
+        `SELECT event_id, event_key,
+                GREATEST(
+                  CASE WHEN char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) >= 3
+                         AND strpos($1, ' ' || regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
+                       THEN char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END,
+                  CASE WHEN char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) >= 3
+                         AND strpos($1, ' ' || regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
+                       THEN char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END
+                )::int AS match_length
+         FROM event
+         WHERE (char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) >= 3
+                AND strpos($1, ' ' || regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
+            OR (char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) >= 3
+                AND strpos($1, ' ' || regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
+         ORDER BY match_length DESC, event_id
+         LIMIT 10`,
+        [normalizedQuestion]
+      ),
+      this.pool.query(
+        `SELECT si.source_identity_id, si.source_identity_key, si.display_name,
+                COUNT(*) FILTER (WHERE esm.mapping_status_code = 'ACTIVE')::int AS active_mapping_count,
+                MIN(CASE WHEN esm.mapping_status_code = 'ACTIVE' THEN esm.entity_id END)::bigint AS active_entity_id,
+                GREATEST(
+                  CASE WHEN char_length(regexp_replace(lower(si.display_name), '[^a-z0-9]+', ' ', 'g')) >= 3
+                         AND strpos($1, ' ' || regexp_replace(lower(si.display_name), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
+                       THEN char_length(regexp_replace(lower(si.display_name), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END,
+                  CASE WHEN char_length(regexp_replace(lower(si.source_identity_key), '[^a-z0-9]+', ' ', 'g')) >= 3
+                         AND strpos($1, ' ' || regexp_replace(lower(si.source_identity_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
+                       THEN char_length(regexp_replace(lower(si.source_identity_key), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END
+                )::int AS match_length
+         FROM source_identity si
+         LEFT JOIN entity_source_mapping esm ON esm.source_identity_id = si.source_identity_id
+         WHERE (char_length(regexp_replace(lower(si.display_name), '[^a-z0-9]+', ' ', 'g')) >= 3
+                AND strpos($1, ' ' || regexp_replace(lower(si.display_name), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
+            OR (char_length(regexp_replace(lower(si.source_identity_key), '[^a-z0-9]+', ' ', 'g')) >= 3
+                AND strpos($1, ' ' || regexp_replace(lower(si.source_identity_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
+         GROUP BY si.source_identity_id
+         ORDER BY match_length DESC, si.source_identity_id
+         LIMIT 10`,
+        [normalizedQuestion]
+      )
+    ]);
+
+    const candidates: SubjectCandidate[] = [
+      ...entityCandidates.rows.map((row) => ({
+        kind: 'ENTITY' as const,
+        id: Number(row.entity_id),
+        key: row.entity_key as string,
+        label: row.canonical_name as string,
+        match_length: Number(row.match_length)
+      })),
+      ...eventCandidates.rows.map((row) => ({
+        kind: 'EVENT' as const,
+        id: Number(row.event_id),
+        key: row.event_key as string,
+        label: row.event_key as string,
+        match_length: Number(row.match_length)
+      })),
+      ...sourceIdentityCandidates.rows.map((row) => ({
+        kind: 'SOURCE_IDENTITY' as const,
+        id: Number(row.source_identity_id),
+        key: row.source_identity_key as string,
+        label: row.display_name as string,
+        match_length: Number(row.match_length),
+        active_mapping_count: Number(row.active_mapping_count),
+        active_entity_id: row.active_entity_id ? Number(row.active_entity_id) : null
+      }))
+    ].filter((candidate) => candidate.match_length > 0);
+
+    if (!candidates.length) {
+      return {
+        status: 'NO_SUBJECT',
+        candidates: [],
+        reason: 'No represented subject label matched the question text.'
+      };
+    }
+
+    const strongestLength = Math.max(...candidates.map((candidate) => candidate.match_length));
+    const strongest = candidates.filter((candidate) => candidate.match_length === strongestLength);
+    const consolidated = new Map<string, SubjectCandidate>();
+    for (const candidate of strongest) {
+      const key = candidate.kind === 'SOURCE_IDENTITY'
+        ? candidate.active_mapping_count === 1 && candidate.active_entity_id
+          ? `ENTITY:${candidate.active_entity_id}`
+          : `SOURCE_IDENTITY:${candidate.id}`
+        : `${candidate.kind}:${candidate.id}`;
+      if (!consolidated.has(key)) consolidated.set(key, candidate);
+    }
+    if (consolidated.size === 1) {
+      const winner = [...consolidated.values()][0];
+      if (winner.kind === 'SOURCE_IDENTITY') {
+        if (winner.active_mapping_count === 1 && winner.active_entity_id) {
+          return {
+            status: 'RESOLVED',
+            resolved_kind: 'ENTITY',
+            subject_entity_id: winner.active_entity_id,
+            resolved_from: 'SOURCE_IDENTITY_ACTIVE_MAPPING',
+            candidates: strongest,
+            reason: 'Resolved through one active source-identity mapping.'
+          };
+        }
+        if (winner.active_mapping_count === 0) {
+          return {
+            status: 'UNRESOLVED_SOURCE_IDENTITY',
+            candidates: strongest,
+            reason: 'Matched source identity has no active canonical mapping.'
+          };
+        }
+        return {
+          status: 'AMBIGUOUS',
+          candidates: strongest,
+          reason: 'Matched source identity maps to multiple active canonical entities.'
+        };
+      }
+      return winner.kind === 'ENTITY'
+        ? {
+            status: 'RESOLVED',
+            resolved_kind: 'ENTITY',
+            subject_entity_id: winner.id,
+            resolved_from: 'ENTITY_LABEL',
+            candidates: strongest,
+            reason: 'Resolved to one represented entity.'
+          }
+        : {
+            status: 'RESOLVED',
+            resolved_kind: 'EVENT',
+            subject_event_id: winner.id,
+            resolved_from: 'EVENT_KEY',
+            candidates: strongest,
+            reason: 'Resolved to one represented event.'
+          };
+    }
+    if (strongest.length > 1) {
+      return {
+        status: 'AMBIGUOUS',
+        candidates: strongest,
+        reason: 'Multiple represented subjects matched the question with equal confidence.'
+      };
+    }
+
+    return {
+      status: 'NO_SUBJECT',
+      candidates: [],
+      reason: 'No represented subject label matched the question text.'
+    };
+  }
+
   async listApiResource(resource: string, limit = 50): Promise<Record<string, unknown>[]> {
     const safeLimit = Math.max(1, Math.min(limit, 100));
     const queries: Record<string, string> = {
@@ -89,6 +271,7 @@ export class BereanRepository {
   async research(question: string, datasetIds: number[] = []): Promise<Record<string, unknown>> {
     const normalizedQuestion = question.trim();
     const requestedTruthAssertion = /\b(prove|proved|true|truth|confirm(?:ed|s)?)\b/i.test(normalizedQuestion);
+    const subjectResolution = await this.resolveResearchSubject(normalizedQuestion);
     const relationshipTerms = /\b(participat\w*|who\b.*\bevents?\b|events?\b.*\bwho)\b/i.test(normalizedQuestion);
     const predicateResult = await this.pool.query(
       relationshipTerms
@@ -103,10 +286,11 @@ export class BereanRepository {
     const plan = {
       classification: requestedTruthAssertion ? 'TRUTH_ASSERTION' : relationshipTerms ? 'PARTICIPATION' : 'PERSISTED_LABEL_SEARCH',
       scope: { dataset_ids: datasetIds, retrieval_scope: 'BEREAN_ONLY' },
+      subject_resolution: subjectResolution,
       candidate_predicates: candidatePredicates,
-      traversal_shape: relationshipTerms ? 'CLAIM_ASSERTED_EVENT_PARTICIPATION' : 'REGISTERED_PREDICATE_MATCH',
+      traversal_shape: relationshipTerms ? 'SUBJECT_BOUND_EVENT_PARTICIPATION' : 'SUBJECT_BOUND_REGISTERED_PREDICATE_MATCH',
       traversal: relationshipTerms ? 'Claim → Proposition → ClaimEvidence → Evidence → Citation → SourceRecord → Dataset → Source' : 'Claim → Proposition → ClaimEvidence → Evidence → SourceRecord → Dataset → Source',
-      output_constraints: requestedTruthAssertion ? ['NO_INVENTED_PREDICATE', 'NO_TRUTH_ASSERTION'] : ['BOUNDED_RESULTS'],
+      output_constraints: requestedTruthAssertion ? ['NO_INVENTED_PREDICATE', 'NO_TRUTH_ASSERTION'] : ['BOUNDED_RESULTS', 'SUBJECT_BOUND_RESULTS_ONLY'],
       provenance_requirement: 'FULL_CHAIN'
     };
     if (requestedTruthAssertion) {
@@ -119,6 +303,30 @@ export class BereanRepository {
         limitation: 'Absence of representation is not a denial; retrieval remains limited to Berean.'
       };
     }
+    if (subjectResolution.status === 'NO_SUBJECT') {
+      return {
+        question: normalizedQuestion,
+        interpretation: 'No represented subject could be resolved from this question; Berean does not return predicate-only cross-subject results.',
+        capability: 'NOT_REPRESENTED',
+        plan,
+        results: [],
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
+        limitation: 'No represented subject was identified for subject-bound retrieval. Absence of representation is not a denial.'
+      };
+    }
+    if (subjectResolution.status === 'AMBIGUOUS' || subjectResolution.status === 'UNRESOLVED_SOURCE_IDENTITY') {
+      return {
+        question: normalizedQuestion,
+        interpretation: subjectResolution.status === 'AMBIGUOUS'
+          ? 'Multiple represented subjects matched the question. Berean requires one unambiguous subject before claim retrieval.'
+          : 'The matched source identity is unresolved to a canonical entity, so Berean does not promote or bind it automatically.',
+        capability: 'UNRESOLVED',
+        plan,
+        results: [],
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
+        limitation: 'Subject resolution must be unambiguous and represented before ESTABLISHED can be assigned.'
+      };
+    }
     if (!candidatePredicates.length) {
       return {
         question: normalizedQuestion,
@@ -126,29 +334,46 @@ export class BereanRepository {
         capability: 'NOT_REPRESENTED',
         plan: { ...plan, output_constraints: ['NO_INVENTED_PREDICATE', 'BOUNDED_RESULTS'] },
         results: [],
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
         limitation: 'Absence of representation is not a denial. Try keyword search to find persisted records.'
       };
     }
 
     const scoped = datasetIds.length > 0;
+    const resolvedKind = subjectResolution.resolved_kind as 'ENTITY' | 'EVENT';
+    const resolvedEntityId = subjectResolution.subject_entity_id ? Number(subjectResolution.subject_entity_id) : null;
+    const resolvedEventId = subjectResolution.subject_event_id ? Number(subjectResolution.subject_event_id) : null;
     const { rows } = await this.pool.query(
-      `SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
-              c.proposition_id, cr.rendered_proposition, p.predicate,
-              ce.relation_type_code AS evidence_relation_type_code,
-              s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
-       FROM claim c
-       JOIN proposition p ON p.proposition_id = c.proposition_id
-       LEFT JOIN claim_rendering cr ON cr.claim_id = c.claim_id
-       LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
-       LEFT JOIN evidence e ON e.evidence_id = ce.evidence_id
-       LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
-       LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
-       LEFT JOIN source s ON s.source_id = d.source_id
-       WHERE ($1::text[] = '{}'::text[] OR p.predicate = ANY($1))
-         AND (NOT $2::boolean OR d.dataset_id = ANY($3::bigint[]))
-       ORDER BY c.claim_id
+      `WITH subject_bound AS (
+         SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
+                 c.proposition_id, cr.rendered_proposition, p.predicate,
+                 ce.claim_evidence_id, ce.relation_type_code AS evidence_relation_type_code,
+                 s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
+          FROM claim c
+          JOIN proposition p ON p.proposition_id = c.proposition_id
+          LEFT JOIN claim_rendering cr ON cr.claim_id = c.claim_id
+          LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
+          LEFT JOIN evidence e ON e.evidence_id = ce.evidence_id
+          LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
+          LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
+          LEFT JOIN source s ON s.source_id = d.source_id
+          WHERE ($1::text[] = '{}'::text[] OR p.predicate = ANY($1))
+            AND (
+              ($2::text = 'ENTITY' AND p.subject_entity_id = $3::bigint)
+              OR ($2::text = 'EVENT' AND p.subject_event_id = $4::bigint)
+            )
+            AND (NOT $5::boolean OR d.dataset_id = ANY($6::bigint[]))
+       ),
+       ranked AS (
+         SELECT subject_bound.*,
+                COUNT(*) OVER()::int AS total_matched
+         FROM subject_bound
+         ORDER BY claim_id, claim_evidence_id NULLS LAST, dataset_id NULLS LAST, source_key NULLS LAST
+       )
+       SELECT *
+       FROM ranked
        LIMIT 50`,
-      [candidatePredicates, scoped, datasetIds]
+      [candidatePredicates, resolvedKind, resolvedEntityId, resolvedEventId, scoped, datasetIds]
     );
     const results = rows.map((row) => ({
       ...row,
@@ -166,6 +391,14 @@ export class BereanRepository {
                   ? 'EVIDENCE_QUALIFIES'
                   : 'UNRESOLVED'
     }));
+    const totalMatched = rows.length ? Number(rows[0].total_matched) : 0;
+    const bounded = {
+      total_matched: totalMatched,
+      returned: results.length,
+      truncated: totalMatched > results.length,
+      limit: 50,
+      order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']
+    };
     const capability = results.some((row) => row.classification === 'UNRESOLVED')
       ? 'UNRESOLVED'
       : results.some((row) => row.classification === 'SCHOLARLY_CANDIDATE')
@@ -185,6 +418,7 @@ export class BereanRepository {
       capability,
       plan,
       results,
+      bounded,
       limitation: results.length ? null : 'No matching persisted claims were found in the selected scope.'
     };
   }

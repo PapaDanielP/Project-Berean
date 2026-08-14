@@ -22,6 +22,7 @@ catalogues limitations; this document is about enforcement.
 | Competing claims ≠ Contradiction resolved | Multiple claims over one proposition are preserved | No merge, overwrite, or winner route exists | `tests/app/app.test.ts` |
 | `NOT_REPRESENTED` ≠ `FALSE` | Unrepresentable requests return `501 NOT_REPRESENTED` or `capability:"NOT_REPRESENTED"` with an explicit "absence is not denial" statement | `src/api/v1.ts`, `src/repository.ts` | `tests/app/app.test.ts` |
 | `NO_MATCH` ≠ `FALSE` | Empty search results are classified `NO_MATCH` with an explicit non-denial statement | `src/api/v1.ts` search handler | `tests/app/app.test.ts` |
+| Predicate match ≠ Subject relevance | Research resolves one represented subject first, then filters claims by proposition subject; cross-subject predicate matches are excluded | `src/repository.ts` `resolveResearchSubject()` + subject-bound `research()` query | `tests/app/app.test.ts` |
 | Locator-only ≠ Source silence | Withheld raw content and quoted text are reported as `NOT_STORED_BY_POLICY` | `src/repository.ts` provenance explanation | `tests/app/app.test.ts` |
 | Workflow state ≠ Knowledge | Corpus, topic, discovery, job, validation, and audit rows never become propositions | Separate tables; no promotion path exists | `docs/api/API_CAPABILITY_MATRIX.md`, `tests/app/app.test.ts` |
 | Queued ≠ Completed | Queueing routes return `202` and persist `QUEUED` state only | No in-process execution exists | `tests/app/app.test.ts` |
