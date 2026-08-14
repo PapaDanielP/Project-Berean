@@ -69,7 +69,20 @@ const fetchJson = async (url, options = {}) => {
   } catch {
     throw new Error(`Request failed (${response.status})`);
   }
-  if (!response.ok) throw new Error(safeText(payload.error) || `Request failed (${response.status})`);
+  if (!response.ok) {
+    const errorCode = safeText(payload?.error?.code).toUpperCase();
+    const knownErrors = {
+      NOT_FOUND: 'The requested represented resource was not found.',
+      NOT_REPRESENTED: 'This request is outside Berean’s currently represented capability.',
+      INVALID_REQUEST: 'The request format was invalid for this represented endpoint.'
+    };
+    throw new Error(
+      knownErrors[errorCode] ||
+      safeText(payload?.error?.message) ||
+      safeText(payload?.error) ||
+      `Request failed (${response.status})`
+    );
+  }
   return payload;
 };
 
@@ -79,12 +92,12 @@ const renderMessage = (container, message, kind = 'empty') => {
 };
 
 const capabilityDescription = {
-  ESTABLISHED: 'Represented by persisted direct claims. A represented claim is not automatically truth.',
+  ESTABLISHED: 'Represented by persisted direct source-backed claims. A represented claim is not automatically truth.',
   DERIVED: 'Derived through persisted graph structure and explicit derivation metadata.',
   SCHOLARLY_CANDIDATE: 'A represented scholarly interpretation; no candidate is promoted to truth.',
   UNRESOLVED: 'Represented material remains under review or unresolved.',
-  NOT_REPRESENTED: 'The requested conclusion is outside the represented query capability.',
-  NO_MATCH: 'No matching represented claims were found in the active scope.'
+  NOT_REPRESENTED: 'The requested conclusion is outside the represented query capability, and this does not mean false.',
+  NO_MATCH: 'This supported query found no matching represented claim in the active scope, and this does not mean false.'
 };
 
 const badge = (status, prefix = '') => {
@@ -228,7 +241,7 @@ const renderResearch = (payload) => {
 
   const results = payload.results ?? [];
   addResearchSection(
-    'What Berean Establishes',
+    'Directly source-backed claims',
     'Directly source-backed claims. These are represented assertions, not declarations of truth.',
     results.filter((result) => result.classification === 'DIRECTLY_SUPPORTED')
   );

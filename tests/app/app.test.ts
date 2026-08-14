@@ -335,6 +335,10 @@ describe('read-only API', () => {
     expect(response.text).toContain('id="researchStatus"');
     expect(response.text).toContain('Keyword search');
     expect(response.text).toContain('Natural-language research');
+    expect(response.text).toContain('How to interpret Berean results');
+    expect(response.text).toContain('NO_MATCH');
+    expect(response.text).toContain('NOT_REPRESENTED');
+    expect(response.text).toContain('unrestricted historical Q&amp;A');
   });
 
   it('discovers research scope from persisted sources and datasets', async () => {

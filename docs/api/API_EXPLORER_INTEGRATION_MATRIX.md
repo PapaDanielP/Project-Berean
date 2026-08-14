@@ -54,6 +54,21 @@ is a product-surface gap, not a contract defect (recorded as F-06 in
 No new API surface is required to close it; it would require an Explorer UI addition against
 existing documented endpoints.
 
+## Compatibility-route decision (constrained remediation)
+
+For this remediation pass, the Explorer remains on the `/api/*` compatibility surface by design.
+No migration to `/api/v1/*` was made solely due to versioning preference. The decision is intentional
+because all Explorer-called compatibility routes are implemented, OpenAPI-documented, and covered by
+contract tests in this repository.
+
+The Explorer UI now includes a concise interpretation guide near the research form that explains
+`ESTABLISHED`, `DERIVED`, `SCHOLARLY_CANDIDATE`, `UNRESOLVED`, `NO_MATCH`, and `NOT_REPRESENTED` in
+plain language while preserving backend classifications and epistemic boundaries. In particular:
+
+- `NO_MATCH` means a supported query found no matching persisted claim in the active scope.
+- `NOT_REPRESENTED` means the question/conclusion is outside Berean's currently represented scope.
+- Neither state is rendered as "false."
+
 ## Defect fixed as part of this integration audit
 
 The `GET /api/graph` entity-neighborhood projection previously emitted self-referential edges
