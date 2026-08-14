@@ -3,7 +3,9 @@
 **Status:** ACTIVE — repository-wide documentation and structural integrity audit
 **Scope:** Documentation governance, repository organization, and integrity enforcement only. No schema, predicate, entity/event/claim/evidence/mapping/provenance/derivation semantics, Explorer behavior, API behavior, runtime architecture, or Phase 36/37/37R/37B conclusions were changed.
 **Authority:** REVIEW / AUDIT record. Subordinate to current implementation/schema/code/tests and to the authoritative documents it audits; see the authority hierarchy below.
-**Last verified:** 2026-08-13
+**Last verified:** 2026-08-14
+
+2026-08-14 addendum: this report remains the consolidation baseline record; final enforcement and completeness findings are recorded in [`DOCUMENTATION_GOVERNANCE_AUDIT.md`](./DOCUMENTATION_GOVERNANCE_AUDIT.md).
 
 ## 1. Executive summary
 
@@ -75,6 +77,7 @@ canonical placement authority for where new material of each kind belongs.
 | `docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md` | REVIEW / AUDIT (this file, new) |
 | `docs/07-review/REMEDIATION-REPORT.md` | REVIEW / AUDIT (historical) |
 | `docs/07-review/WEB_APP_MVP_REPORT.md` | REVIEW / AUDIT (historical) |
+| `docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md` | REVIEW / AUDIT (final governance integrity pass) |
 | `docs/07-review/COPILOT_PEER_REVIEW_PROMPT.md` | REFERENCE (process record) |
 | `docs/phases/README.md` | PHASE RECORD index (new) |
 | `docs/phases/PHASE_33...PHASE_37R_37B...` | PHASE RECORD (historical) |
@@ -86,7 +89,7 @@ canonical placement authority for where new material of each kind belongs.
 | `docs/api/API_CAPABILITY_MATRIX.md` | REFERENCE (route-by-route matrix) |
 | `docs/api/OPENAPI_GAP_REPORT.md` | REFERENCE / VALIDATION RECORD (OpenAPI coverage status) |
 | `docs/api/VERIFICATION_REPORT.md` | VALIDATION RECORD |
-| `tests/app/*.test.ts`, `tests/validation/*.sql`, `tests/fixtures/*.sql` | TEST DOCUMENTATION / GENERATED (executable, not prose docs) |
+| `tests/app/app.test.ts`, `tests/app/openapi-coverage.test.ts`, `tests/app/phase28-ingestion.test.ts`, `tests/app/documentation-links.test.ts`, `tests/validation/*.sql`, `tests/fixtures/*.sql` | TEST DOCUMENTATION / GENERATED (executable, not prose docs) |
 | `data/*/README.md` | REFERENCE (dataset-scoped, cross-links to `docs/04-data/`) |
 
 No document was classified DUPLICATE, OBSOLETE, or MISPLACED. No root-level or misplaced
@@ -233,25 +236,35 @@ $ npm run build
 > tsc -p tsconfig.json
 (no errors)
 
+$ npx vitest run tests/app/app.test.ts
+ Test Files  1 passed (1)
+      Tests  61 passed (61)
+
 $ npm test
- Test Files  3 passed (3)
-      Tests  102 passed (102)
+ Test Files  4 passed (4)
+      Tests  112 passed (112)
+
+$ npx vitest run tests/app/documentation-links.test.ts
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
 
 $ bash scripts/validation/run-postgres-validation.sh
 ... (Phase 6-37R/37B fixture and validation replay) ...
 All validation self-test cases passed.
 exit code 0
 
-$ git grep -n "docs/" -- '*.md' '*.ts' '*.json' '*.sh' '.github'
-75 references found; every referenced docs/**.md path resolved to an existing file
-(verified by resolving every `` `docs/...md` `` citation against the filesystem).
+$ git grep -n "docs/"
+209 references found (current repository state), manually spot-checked and file-resolved.
+
+$ git grep -nE 'docs/(architecture|data|administration|ingestion|research|history/phases|development|operations)/' -- README.md docs tests scripts .github package.json
+No stale live canonical-path references outside intentional negative examples in this report and in documentation integrity tests.
 ```
 
 The new `tests/app/documentation-links.test.ts` suite additionally enforces, on every future
 run of `npm test`:
 
 - presence of every canonical entry point (`README.md`, `docs/README.md`, architecture, domain
-  model, schema, validation, phase indexes, this report);
+  model, schema, validation, phase indexes, this report, and `DOCUMENTATION_GOVERNANCE_AUDIT.md`);
 - presence of every canonical `docs/api/` document and absence of a competing API doc
   directory;
 - `README.md` -> `docs/README.md` -> per-domain navigation;
