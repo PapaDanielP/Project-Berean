@@ -7,6 +7,9 @@ API/OpenAPI documentation coverage
 tests, or the authoritative documents listed in [`../README.md`](../README.md)
 **Audit date:** 2026-08-14
 **Predecessor:** [`REPOSITORY_CONSOLIDATION_REPORT.md`](./REPOSITORY_CONSOLIDATION_REPORT.md)
+**Supersedes:** the earlier 2026-08-14 governance pass previously recorded at this path; its
+findings (authority model, category reporting, historical preservation, verification log) are
+carried forward here and re-measured, so this file remains the single current governance audit.
 
 ## 1. Executive summary
 
@@ -226,7 +229,7 @@ are; their content is untouched.
 
 | File | Change | Justification |
 |---|---|---|
-| `docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md` | Created | Required audit report |
+| `docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md` | Created (replacing the earlier pass at this path) | Required audit report; kept as one current governance authority rather than two competing audits |
 | `docs/api/OPENAPI_GAP_REPORT.md` | Modified | Added the six explicit coverage categories with measured counts; replaced an ambiguous "none identified" statement with the enumerated behavior-untested set |
 | `docs/api/API_CAPABILITY_MATRIX.md` | Modified | Corrected 7 "Tests / evidence" entries against measured test coverage; added an evidence-column legend defining tested / code-traced / manual |
 | `docs/README.md` | Modified | Indexed this audit, `COPILOT_PEER_REVIEW_PROMPT.md`, and `WEB_APP_MVP_PLAN.md`; marked the predecessor consolidation report as such |

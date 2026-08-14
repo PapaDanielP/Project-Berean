@@ -147,7 +147,12 @@ describe('documentation navigation and link integrity', () => {
     expect(structureDoc).toMatch(/Placement rules for new contributions/i);
   });
 
-  it('contains the consolidation audit in docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md', () => {
+  it('contains current and prior governance audits under docs/07-review', () => {
+    const governanceReport = read('docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md');
+    expect(governanceReport).toMatch(/Executive summary/i);
+    expect(governanceReport).toMatch(/Authority model/i);
+    expect(governanceReport).toMatch(/OpenAPI/i);
+
     const report = read('docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md');
     expect(report).toMatch(/Authority hierarchy/i);
     expect(report).toMatch(/API documentation audit/i);
