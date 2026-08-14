@@ -6,6 +6,12 @@ const boundedLimit = (value: number | undefined, fallback: number, max: number):
   return Math.max(1, Math.min(max, value));
 };
 
+const normalizedLabel = (value: string): string =>
+  value.toLowerCase().replace(/[_-]+/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+
+const containsLabel = (text: string, label: string): boolean =>
+  label.length > 1 && (` ${text} `).includes(` ${label} `);
+
 export class BereanRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -90,6 +96,13 @@ export class BereanRepository {
     const normalizedQuestion = question.trim();
     const requestedTruthAssertion = /\b(prove|proved|true|truth|confirm(?:ed|s)?)\b/i.test(normalizedQuestion);
     const relationshipTerms = /\b(participat\w*|who\b.*\bevents?\b|events?\b.*\bwho)\b/i.test(normalizedQuestion);
+    const participationTarget = normalizedQuestion.match(/\bparticipat\w*\s+in\s+(?:the\s+)?(.+?)(?:[?.!]|$)/i)?.[1]?.trim();
+    const genericTargets = new Set([
+      'event', 'events', 'represented event', 'represented events',
+      'observation', 'observations', 'represented observation', 'represented observations'
+    ]);
+    const normalizedTarget = participationTarget ? normalizedLabel(participationTarget) : null;
+    const explicitlyNamedTarget = normalizedTarget !== null && !genericTargets.has(normalizedTarget);
     const predicateResult = await this.pool.query(
       relationshipTerms
         ? `SELECT predicate_code FROM predicate WHERE event_participation_role_code IS NOT NULL ORDER BY predicate_code`
@@ -100,13 +113,56 @@ export class BereanRepository {
       relationshipTerms ? [] : [normalizedQuestion.toLowerCase()]
     );
     const candidatePredicates = predicateResult.rows.map((row) => row.predicate_code as string);
+    const anchorResult = await this.pool.query(
+      `SELECT 'ENTITY'::text AS kind, entity_id AS anchor_id, entity_key AS anchor_key,
+              canonical_name AS anchor_label
+       FROM entity
+       UNION ALL
+       SELECT 'EVENT', event_id, event_key, event_key
+       FROM event
+       ORDER BY kind, anchor_id`
+    );
+    const questionForResolution = normalizedTarget ?? normalizedLabel(normalizedQuestion);
+    const matchedAnchors = anchorResult.rows
+      .flatMap((row) => {
+        const labels = [...new Set([normalizedLabel(row.anchor_label), normalizedLabel(row.anchor_key)])];
+        const matchLength = Math.max(0, ...labels.filter((label) => containsLabel(questionForResolution, label)).map((label) => label.length));
+        return matchLength ? [{ ...row, matchLength }] : [];
+      });
+    const longestMatch = Math.max(0, ...matchedAnchors.map((anchor) => anchor.matchLength));
+    const resolvedAnchors = matchedAnchors.filter((anchor) => anchor.matchLength === longestMatch);
+    const namedSubject = explicitlyNamedTarget || resolvedAnchors.length > 0;
+    const subjectStatus = !namedSubject
+      ? 'NOT_REQUESTED'
+      : resolvedAnchors.length === 0
+        ? 'UNRESOLVED'
+        : resolvedAnchors.length === 1
+          ? 'RESOLVED'
+          : 'AMBIGUOUS';
+    const subjectBinding = {
+      requested: namedSubject,
+      status: subjectStatus,
+      query_label: explicitlyNamedTarget ? participationTarget : null,
+      anchors: resolvedAnchors.map((anchor) => ({
+        kind: anchor.kind,
+        id: Number(anchor.anchor_id),
+        key: anchor.anchor_key,
+        label: anchor.anchor_label
+      })),
+      meaning: subjectStatus === 'UNRESOLVED'
+        ? 'Berean could not resolve the named subject to a represented anchor under deterministic persisted-label rules. This does not imply that the subject is false or absent from reality.'
+        : subjectStatus === 'AMBIGUOUS'
+          ? 'More than one represented anchor has the same best persisted-label match; Berean does not choose between them.'
+          : null
+    };
     const plan = {
       classification: requestedTruthAssertion ? 'TRUTH_ASSERTION' : relationshipTerms ? 'PARTICIPATION' : 'PERSISTED_LABEL_SEARCH',
       scope: { dataset_ids: datasetIds, retrieval_scope: 'BEREAN_ONLY' },
+      subject_binding: subjectBinding,
       candidate_predicates: candidatePredicates,
       traversal_shape: relationshipTerms ? 'CLAIM_ASSERTED_EVENT_PARTICIPATION' : 'REGISTERED_PREDICATE_MATCH',
-      traversal: relationshipTerms ? 'Claim → Proposition → ClaimEvidence → Evidence → Citation → SourceRecord → Dataset → Source' : 'Claim → Proposition → ClaimEvidence → Evidence → SourceRecord → Dataset → Source',
-      output_constraints: requestedTruthAssertion ? ['NO_INVENTED_PREDICATE', 'NO_TRUTH_ASSERTION'] : ['BOUNDED_RESULTS'],
+      traversal: relationshipTerms ? 'Claim → Proposition → ClaimEvidence/DerivationInput → Evidence → Citation → SourceRecord → Dataset → Source' : 'Claim → Proposition → ClaimEvidence/DerivationInput → Evidence → SourceRecord → Dataset → Source',
+      output_constraints: requestedTruthAssertion ? ['NO_INVENTED_PREDICATE', 'NO_TRUTH_ASSERTION'] : ['STRUCTURAL_SUBJECT_BINDING', 'CLAIM_AGGREGATION', 'BOUNDED_RESULTS'],
       provenance_requirement: 'FULL_CHAIN'
     };
     if (requestedTruthAssertion) {
@@ -114,6 +170,8 @@ export class BereanRepository {
         question: normalizedQuestion,
         interpretation: 'The request asks Berean to establish truth or proof. That relation is not represented by the predicate registry.',
         capability: 'NOT_REPRESENTED',
+        subject_binding: subjectBinding,
+        result_bounds: { total_matched: 0, returned: 0, limit: 50, truncated: false },
         plan,
         results: [],
         limitation: 'Absence of representation is not a denial; retrieval remains limited to Berean.'
@@ -124,49 +182,130 @@ export class BereanRepository {
         question: normalizedQuestion,
         interpretation: 'No registered predicate matched this question. Berean cannot represent an answer from the available query capability.',
         capability: 'NOT_REPRESENTED',
+        subject_binding: subjectBinding,
+        result_bounds: { total_matched: 0, returned: 0, limit: 50, truncated: false },
         plan: { ...plan, output_constraints: ['NO_INVENTED_PREDICATE', 'BOUNDED_RESULTS'] },
         results: [],
         limitation: 'Absence of representation is not a denial. Try keyword search to find persisted records.'
       };
     }
+    if (namedSubject && subjectStatus !== 'RESOLVED') {
+      return {
+        question: normalizedQuestion,
+        interpretation: subjectBinding.meaning,
+        capability: 'UNRESOLVED_SUBJECT',
+        subject_binding: subjectBinding,
+        result_bounds: { total_matched: 0, returned: 0, limit: 50, truncated: false },
+        plan,
+        results: [],
+        limitation: subjectBinding.meaning
+      };
+    }
 
     const scoped = datasetIds.length > 0;
+    const entityAnchorIds = resolvedAnchors.filter((anchor) => anchor.kind === 'ENTITY').map((anchor) => Number(anchor.anchor_id));
+    const eventAnchorIds = resolvedAnchors.filter((anchor) => anchor.kind === 'EVENT').map((anchor) => Number(anchor.anchor_id));
     const { rows } = await this.pool.query(
-      `SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
-              c.proposition_id, cr.rendered_proposition, p.predicate,
-              ce.relation_type_code AS evidence_relation_type_code,
-              s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
-       FROM claim c
-       JOIN proposition p ON p.proposition_id = c.proposition_id
-       LEFT JOIN claim_rendering cr ON cr.claim_id = c.claim_id
-       LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
-       LEFT JOIN evidence e ON e.evidence_id = ce.evidence_id
-       LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
-       LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
-       LEFT JOIN source s ON s.source_id = d.source_id
-       WHERE ($1::text[] = '{}'::text[] OR p.predicate = ANY($1))
-         AND (NOT $2::boolean OR d.dataset_id = ANY($3::bigint[]))
-       ORDER BY c.claim_id
-       LIMIT 50`,
-      [candidatePredicates, scoped, datasetIds]
+      `WITH RECURSIVE claim_scope(claim_id, dataset_id, path, depth) AS (
+         SELECT ce.claim_id, sr.dataset_id, ARRAY[ce.claim_id]::bigint[], 0
+         FROM claim_evidence ce
+         JOIN evidence e ON e.evidence_id = ce.evidence_id
+         JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         UNION
+         SELECT c.claim_id, sr.dataset_id, ARRAY[c.claim_id]::bigint[], 0
+         FROM claim c
+         JOIN derivation_input di ON di.derivation_id = c.derivation_id
+         JOIN evidence e ON e.evidence_id = di.input_evidence_id
+         JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         UNION
+         SELECT derived.claim_id, inherited.dataset_id,
+                inherited.path || derived.claim_id, inherited.depth + 1
+         FROM claim_scope inherited
+         JOIN derivation_input di ON di.input_claim_id = inherited.claim_id
+         JOIN claim derived ON derived.derivation_id = di.derivation_id
+         WHERE inherited.depth < 8
+           AND NOT derived.claim_id = ANY(inherited.path)
+       ),
+       candidate_claims AS (
+         SELECT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
+                c.proposition_id, cr.rendered_proposition, p.predicate,
+                COALESCE(array_agg(DISTINCT cs.dataset_id ORDER BY cs.dataset_id)
+                  FILTER (WHERE cs.dataset_id IS NOT NULL), '{}'::bigint[]) AS scope_datasets
+         FROM claim c
+         JOIN proposition p ON p.proposition_id = c.proposition_id
+         LEFT JOIN claim_rendering cr ON cr.claim_id = c.claim_id
+         LEFT JOIN claim_scope cs ON cs.claim_id = c.claim_id
+         WHERE ($1::text[] = '{}'::text[] OR p.predicate = ANY($1))
+           AND (NOT $4::boolean
+             OR p.subject_entity_id = ANY($5::bigint[]) OR p.object_entity_id = ANY($5::bigint[])
+             OR p.subject_event_id = ANY($6::bigint[]) OR p.object_event_id = ANY($6::bigint[]))
+         GROUP BY c.claim_id, cr.rendered_proposition, p.predicate,
+                  p.subject_entity_id, p.object_entity_id, p.subject_event_id, p.object_event_id
+         HAVING (NOT $2::boolean OR COALESCE(array_agg(DISTINCT cs.dataset_id)
+                  FILTER (WHERE cs.dataset_id IS NOT NULL), '{}'::bigint[]) && $3::bigint[])
+       ),
+       bounded_claims AS (
+         SELECT candidate_claims.*, count(*) OVER ()::int AS total_matched
+         FROM candidate_claims
+         ORDER BY claim_id
+         LIMIT 50
+       )
+       SELECT bc.*,
+              COALESCE(evidence.items, '[]'::jsonb) AS evidence,
+              COALESCE(evidence.relation_types, '{}'::text[]) AS evidence_relation_types
+       FROM bounded_claims bc
+       LEFT JOIN LATERAL (
+         SELECT jsonb_agg(jsonb_build_object(
+                  'evidence_id', e.evidence_id,
+                  'evidence_key', e.evidence_key,
+                  'relation_type_code', ce.relation_type_code,
+                  'source_record_id', sr.source_record_id,
+                  'dataset_id', d.dataset_id,
+                  'dataset_key', d.dataset_key,
+                  'dataset_name', d.name,
+                  'source_key', s.source_key,
+                  'source_name', s.name
+                ) ORDER BY e.evidence_id, ce.claim_evidence_id) AS items,
+                array_agg(DISTINCT ce.relation_type_code ORDER BY ce.relation_type_code) AS relation_types
+         FROM claim_evidence ce
+         JOIN evidence e ON e.evidence_id = ce.evidence_id
+         JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         JOIN dataset d ON d.dataset_id = sr.dataset_id
+         JOIN source s ON s.source_id = d.source_id
+         WHERE ce.claim_id = bc.claim_id
+           AND (NOT $2::boolean OR d.dataset_id = ANY($3::bigint[]))
+       ) evidence ON true
+       ORDER BY bc.claim_id`,
+      [candidatePredicates, scoped, datasetIds, namedSubject, entityAnchorIds, eventAnchorIds]
     );
-    const results = rows.map((row) => ({
-      ...row,
-      classification: ['UNDER_REVIEW', 'SUPERSEDED', 'RETRACTED'].includes(row.claim_status_code)
-        ? 'UNRESOLVED'
-        : row.claim_type_code === 'DERIVED_CLAIM'
-          ? 'DERIVED_FROM_PERSISTED_GRAPH'
-          : row.claim_type_code === 'INTERPRETIVE_CLAIM'
-            ? 'SCHOLARLY_CANDIDATE'
-            : row.evidence_relation_type_code === 'SUPPORTS'
-              ? 'DIRECTLY_SUPPORTED'
-              : row.evidence_relation_type_code === 'CONTRADICTS'
+    const results = rows.map((row) => {
+      const relationTypes = row.evidence_relation_types as string[];
+      const firstEvidence = (row.evidence as Record<string, unknown>[])[0] ?? {};
+      return {
+        ...row,
+        ...firstEvidence,
+        evidence_relation_type_code: relationTypes.length === 1 ? relationTypes[0] : null,
+        subject_relevant: namedSubject ? true : null,
+        classification: ['UNDER_REVIEW', 'SUPERSEDED', 'RETRACTED'].includes(row.claim_status_code)
+          ? 'UNRESOLVED'
+          : row.claim_type_code === 'DERIVED_CLAIM'
+            ? 'DERIVED_FROM_PERSISTED_GRAPH'
+            : row.claim_type_code === 'INTERPRETIVE_CLAIM'
+              ? 'SCHOLARLY_CANDIDATE'
+              : relationTypes.includes('CONTRADICTS')
                 ? 'EVIDENCE_CONTRADICTS'
-                : row.evidence_relation_type_code === 'QUALIFIES'
+                : relationTypes.includes('QUALIFIES')
                   ? 'EVIDENCE_QUALIFIES'
-                  : 'UNRESOLVED'
-    }));
-    const capability = results.some((row) => row.classification === 'UNRESOLVED')
+                  : relationTypes.includes('SUPPORTS')
+                    ? 'DIRECTLY_SUPPORTED'
+                    : 'UNRESOLVED'
+      };
+    });
+    const totalMatched = rows.length ? Number(rows[0].total_matched) : 0;
+    const resultBounds = { total_matched: totalMatched, returned: results.length, limit: 50, truncated: totalMatched > results.length };
+    const capability = !namedSubject && results.length
+      ? 'UNRESOLVED'
+      : results.some((row) => row.classification === 'UNRESOLVED')
       ? 'UNRESOLVED'
       : results.some((row) => row.classification === 'SCHOLARLY_CANDIDATE')
         ? 'SCHOLARLY_CANDIDATE'
@@ -183,6 +322,8 @@ export class BereanRepository {
         ? 'Requested participation is resolved through registered predicate roles and persisted claim assertions.'
         : 'The question was checked against registered predicates; no independent frontend interpretation is used.',
       capability,
+      subject_binding: subjectBinding,
+      result_bounds: resultBounds,
       plan,
       results,
       limitation: results.length ? null : 'No matching persisted claims were found in the selected scope.'
@@ -620,7 +761,10 @@ export class BereanRepository {
         [claim.claim_id]
       );
 
-      if (!evidenceTraversal.rowCount || evidenceTraversal.rows.every((row) => row.claim_evidence_id === null)) {
+      if (
+        claim.claim_type_code !== 'DERIVED_CLAIM'
+        && (!evidenceTraversal.rowCount || evidenceTraversal.rows.every((row) => row.claim_evidence_id === null))
+      ) {
         claimGaps.add('MISSING_CLAIM_EVIDENCE');
       }
 
@@ -723,6 +867,7 @@ export class BereanRepository {
 
       let derivation: Record<string, unknown> | null = null;
       let derivationInputs: Record<string, unknown>[] = [];
+      let derivationPaths: Record<string, unknown>[] = [];
 
       if (claim.claim_type_code === 'DERIVED_CLAIM') {
         if (!claim.derivation_id) {
@@ -772,6 +917,45 @@ export class BereanRepository {
               claimGaps.add('INVALID_DERIVATION_INPUT');
             }
           }
+
+          const pathsResult = await this.pool.query(
+            `WITH RECURSIVE ancestry(input_claim_id, input_evidence_id, path, depth, cycle) AS (
+               SELECT di.input_claim_id, di.input_evidence_id, ARRAY[$1::bigint], 1, false
+               FROM derivation_input di
+               WHERE di.derivation_id = $2
+               UNION ALL
+               SELECT di.input_claim_id, di.input_evidence_id,
+                      ancestry.path || ancestry.input_claim_id,
+                      ancestry.depth + 1,
+                      ancestry.input_claim_id = ANY(ancestry.path)
+               FROM ancestry
+               JOIN claim input_claim ON input_claim.claim_id = ancestry.input_claim_id
+               JOIN derivation_input di ON di.derivation_id = input_claim.derivation_id
+               WHERE ancestry.depth < 8 AND NOT ancestry.cycle
+             )
+             SELECT ancestry.input_claim_id, ancestry.input_evidence_id,
+                    ancestry.path, ancestry.depth, ancestry.cycle,
+                    COALESCE(ancestry.input_evidence_id, ce.evidence_id) AS resolved_evidence_id,
+                    sr.source_record_id, sr.dataset_id, d.source_id
+             FROM ancestry
+             LEFT JOIN claim_evidence ce ON ce.claim_id = ancestry.input_claim_id
+             LEFT JOIN evidence e ON e.evidence_id = COALESCE(ancestry.input_evidence_id, ce.evidence_id)
+             LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
+             LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
+             ORDER BY ancestry.depth, ancestry.input_claim_id NULLS LAST,
+                      ancestry.input_evidence_id NULLS LAST, ce.evidence_id NULLS LAST`,
+            [claim.claim_id, claim.derivation_id]
+          );
+          derivationPaths = pathsResult.rows;
+          if (pathsResult.rows.some((row) => row.cycle)) {
+            claimGaps.add('CYCLIC_DERIVATION_PROVENANCE');
+          }
+          if (pathsResult.rows.some((row) => Number(row.depth) >= 8 && row.resolved_evidence_id === null)) {
+            claimGaps.add('DERIVATION_PROVENANCE_DEPTH_LIMIT');
+          }
+          if (!pathsResult.rows.some((row) => row.dataset_id !== null && row.source_id !== null)) {
+            claimGaps.add('MISSING_DERIVATION_PROVENANCE');
+          }
         }
       }
 
@@ -805,6 +989,7 @@ export class BereanRepository {
         source: sources,
         derivation,
         derivation_inputs: derivationInputs,
+        derivation_paths: derivationPaths,
         projected_relationships: projectedRelationshipsResult.rows,
         structural_gaps: structuralGaps,
         explanation:

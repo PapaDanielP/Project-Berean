@@ -19,7 +19,14 @@ This document records limitations evidenced by implementation, tests, and valida
 
 - Read routes never mutate state; this was verified by automated tests and manual before/after count checks on 2026-08-13.
 - Search returns lexical matches only.
-- Research is bounded to persisted Berean rows and registered predicate semantics.
+- Research is bounded to persisted Berean rows and registered predicate semantics. Named-subject questions additionally
+  require deterministic persisted-label resolution and structural Proposition binding.
+- Subject resolution has no synonym dictionary, embeddings, inference, or external lookup. `UNRESOLVED_SUBJECT` reports
+  this retrieval boundary and does not deny the subject's existence.
+- Research returns at most 50 aggregated claims and reports the full matched-claim count; general pagination is not
+  implemented.
+- Derived dataset membership is retrieval scope inherited through at most eight cycle-safe Derivation-input steps. It
+  is never presented as direct source provenance.
 - Provenance explanation is structural only.
 - Timeline and graph routes assemble persisted claims, projections, and joins; they do not persist new graph knowledge.
 

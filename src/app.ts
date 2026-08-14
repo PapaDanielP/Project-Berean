@@ -51,6 +51,7 @@ const homeHtml = `<!doctype html>
             <li><strong>DERIVED</strong>: represented derivations from persisted structure with explicit derivation metadata.</li>
             <li><strong>SCHOLARLY_CANDIDATE</strong>: represented scholarly interpretation retained without promotion to truth.</li>
             <li><strong>UNRESOLVED</strong>: represented material remains unresolved or under review.</li>
+            <li><strong>UNRESOLVED_SUBJECT</strong>: the named subject could not be bound unambiguously to a represented Entity or Event; this does not imply that it is false or absent from reality.</li>
             <li><strong>NO_MATCH</strong>: this supported question found no matching persisted claim in scope; it is not a false verdict.</li>
             <li><strong>NOT_REPRESENTED</strong>: Berean does not currently represent that question or conclusion; it is not a false verdict.</li>
           </ul>

@@ -271,13 +271,48 @@ const document: Values = {
         {
           question: { type: 'string' },
           interpretation: { type: 'string' },
-          capability: { type: 'string', enum: ['ESTABLISHED', 'DERIVED', 'SCHOLARLY_CANDIDATE', 'UNRESOLVED', 'NOT_REPRESENTED', 'NO_MATCH'] },
+          capability: { type: 'string', enum: ['ESTABLISHED', 'DERIVED', 'SCHOLARLY_CANDIDATE', 'UNRESOLVED', 'UNRESOLVED_SUBJECT', 'NOT_REPRESENTED', 'NO_MATCH'] },
+          subject_binding: {
+            type: 'object',
+            description: 'Deterministic persisted-label resolution and structural proposition-binding status. An unresolved subject is not a denial of existence.',
+            required: ['requested', 'status', 'anchors'],
+            properties: {
+              requested: { type: 'boolean' },
+              status: { type: 'string', enum: ['NOT_REQUESTED', 'RESOLVED', 'UNRESOLVED', 'AMBIGUOUS'] },
+              query_label: { type: ['string', 'null'] },
+              anchors: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['kind', 'id', 'key', 'label'],
+                  properties: {
+                    kind: { type: 'string', enum: ['ENTITY', 'EVENT'] },
+                    id: { type: 'integer' },
+                    key: { type: 'string' },
+                    label: { type: 'string' }
+                  }
+                }
+              },
+              meaning: { type: ['string', 'null'] }
+            }
+          },
+          result_bounds: {
+            type: 'object',
+            description: 'Claim-level bound applied after evidence aggregation.',
+            required: ['total_matched', 'returned', 'limit', 'truncated'],
+            properties: {
+              total_matched: { type: 'integer', minimum: 0 },
+              returned: { type: 'integer', minimum: 0, maximum: 50 },
+              limit: { type: 'integer', const: 50 },
+              truncated: { type: 'boolean' }
+            }
+          },
           plan: { type: 'object', description: 'Query plan: classification, scope, candidate predicates, traversal shape, output constraints.' },
           results: { type: 'array', items: { type: 'object' } },
-          limitation: { type: 'string' }
+          limitation: { type: ['string', 'null'] }
         },
-        ['question', 'plan', 'results'],
-        'Research answers are assembled only from persisted rows and registered predicates.'
+        ['question', 'capability', 'subject_binding', 'result_bounds', 'plan', 'results'],
+        'Research answers are assembled only from persisted rows, registered predicates, and structurally bound subjects.'
       ),
       CorpusCreate: object(
         {

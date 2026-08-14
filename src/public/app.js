@@ -96,6 +96,7 @@ const capabilityDescription = {
   DERIVED: 'Derived through persisted graph structure and explicit derivation metadata.',
   SCHOLARLY_CANDIDATE: 'A represented scholarly interpretation; no candidate is promoted to truth.',
   UNRESOLVED: 'Represented material remains under review or unresolved.',
+  UNRESOLVED_SUBJECT: 'The named subject could not be bound unambiguously to a represented Entity or Event. This does not mean that the subject is false or absent from reality.',
   NOT_REPRESENTED: 'The requested conclusion is outside the represented query capability, and this does not mean false.',
   NO_MATCH: 'This supported query found no matching represented claim in the active scope, and this does not mean false.'
 };
@@ -236,6 +237,19 @@ const renderResearch = (payload) => {
   answer.append(heading, status, element('p', { text: payload.interpretation }));
   const description = capabilityDescription[payload.capability];
   if (description) answer.append(element('p', { className: 'muted', text: description }));
+  if (payload.subject_binding) {
+    const anchors = (payload.subject_binding.anchors ?? []).map((anchor) => `${anchor.kind}: ${anchor.label}`).join(', ');
+    answer.append(element('p', {
+      className: 'muted',
+      text: `Subject binding: ${humanize(payload.subject_binding.status)}${anchors ? ` — ${anchors}` : ''}.`
+    }));
+  }
+  if (payload.result_bounds) {
+    answer.append(element('p', {
+      className: 'muted',
+      text: `Returned ${payload.result_bounds.returned} of ${payload.result_bounds.total_matched} matched claims (limit ${payload.result_bounds.limit}).`
+    }));
+  }
   if (payload.limitation) answer.append(element('p', { className: 'limitation', text: payload.limitation }));
   researchResults.append(answer);
 
@@ -319,7 +333,8 @@ researchForm.addEventListener('submit', async (event) => {
       signal: researchController.signal
     });
     renderResearch(payload);
-    researchStatus.textContent = `${humanize(payload.capability)}. ${(payload.results ?? []).length} bounded results.`;
+    const bounds = payload.result_bounds;
+    researchStatus.textContent = `${humanize(payload.capability)}. ${bounds ? `${bounds.returned} of ${bounds.total_matched}` : (payload.results ?? []).length} bounded claims.`;
   } catch (error) {
     if (error.name !== 'AbortError') {
       renderMessage(researchResults, 'Research could not be completed. Please revise the question or try again.', 'error');

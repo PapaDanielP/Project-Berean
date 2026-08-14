@@ -22,6 +22,9 @@ catalogues limitations; this document is about enforcement.
 | Competing claims ≠ Contradiction resolved | Multiple claims over one proposition are preserved | No merge, overwrite, or winner route exists | `tests/app/app.test.ts` |
 | `NOT_REPRESENTED` ≠ `FALSE` | Unrepresentable requests return `501 NOT_REPRESENTED` or `capability:"NOT_REPRESENTED"` with an explicit "absence is not denial" statement | `src/api/v1.ts`, `src/repository.ts` | `tests/app/app.test.ts` |
 | `NO_MATCH` ≠ `FALSE` | Empty search results are classified `NO_MATCH` with an explicit non-denial statement | `src/api/v1.ts` search handler | `tests/app/app.test.ts` |
+| Subject resolution ≠ existence | `UNRESOLVED_SUBJECT` reports that deterministic persisted-label resolution failed or was ambiguous; it does not deny the subject | `src/repository.ts` subject-binding guard | `tests/app/app.test.ts` |
+| Predicate match ≠ answer relevance | A named-subject result must bind the resolved Entity/Event in its authoritative Proposition before it can be returned or classified `ESTABLISHED` | `src/repository.ts` candidate-claim query | `tests/app/app.test.ts` |
+| Dataset scope ≠ source provenance | A derived claim may inherit retrieval scope from bounded Derivation inputs without acquiring direct `ClaimEvidence` | `src/repository.ts` recursive `claim_scope` CTE | `tests/app/app.test.ts` |
 | Locator-only ≠ Source silence | Withheld raw content and quoted text are reported as `NOT_STORED_BY_POLICY` | `src/repository.ts` provenance explanation | `tests/app/app.test.ts` |
 | Workflow state ≠ Knowledge | Corpus, topic, discovery, job, validation, and audit rows never become propositions | Separate tables; no promotion path exists | `docs/api/API_CAPABILITY_MATRIX.md`, `tests/app/app.test.ts` |
 | Queued ≠ Completed | Queueing routes return `202` and persist `QUEUED` state only | No in-process execution exists | `tests/app/app.test.ts` |
@@ -30,13 +33,14 @@ catalogues limitations; this document is about enforcement.
 
 ## 2. Absence semantics
 
-Berean distinguishes four different kinds of "nothing here", and the API must never collapse them:
+Berean distinguishes five different kinds of "nothing here", and the API must never collapse them:
 
 | Situation | Response | Meaning |
 |---|---|---|
 | The record does not exist | `404 NOT_FOUND` | Berean holds no such row |
 | The capability is not representable | `501 NOT_REPRESENTED` | The schema cannot express the request; this is not a denial of the subject |
 | Nothing matched the search term | `200` with `classification:"NO_MATCH"` | No persisted record matched; the subject may still be real |
+| A named research subject cannot be bound deterministically | `200` with `capability:"UNRESOLVED_SUBJECT"` | Resolution failed or was ambiguous; the subject may still be real |
 | Content is intentionally withheld | `NOT_STORED_BY_POLICY` | The source may well say something; Berean does not store the text |
 
 ## 3. Routes that must never exist

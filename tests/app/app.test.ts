@@ -360,6 +360,73 @@ describe('read-only API', () => {
     expect(response.body.plan.scope.retrieval_scope).toBe('BEREAN_ONLY');
     expect(response.body.plan.candidate_predicates.length).toBeGreaterThan(0);
     expect(response.body.results.length).toBeLessThanOrEqual(50);
+    expect(response.body.capability).not.toBe('ESTABLISHED');
+    expect(response.body.subject_binding.status).toBe('NOT_REQUESTED');
+    expect(response.body.result_bounds).toMatchObject({
+      returned: response.body.results.length,
+      limit: 50
+    });
+    expect(response.body.result_bounds.total_matched).toBeGreaterThanOrEqual(response.body.result_bounds.returned);
+  });
+
+  it('never promotes predicate-only results for an unresolved named subject', async () => {
+    const response = await request(app)
+      .post('/api/research')
+      .send({ question: 'Who participated in the Moon Landing?' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.capability).toBe('UNRESOLVED_SUBJECT');
+    expect(response.body.subject_binding).toMatchObject({
+      requested: true,
+      status: 'UNRESOLVED',
+      anchors: []
+    });
+    expect(response.body.results).toEqual([]);
+    expect(response.body.result_bounds).toMatchObject({ total_matched: 0, returned: 0, truncated: false });
+    expect(response.body.limitation).toContain('does not imply');
+  });
+
+  it('requires every result for a resolved named subject to bind that structural anchor', async () => {
+    const response = await request(app)
+      .post('/api/research')
+      .send({ question: 'Who participated in phase32_principe_observation_1919?' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.subject_binding.status).toBe('RESOLVED');
+    expect(response.body.subject_binding.anchors).toHaveLength(1);
+    expect(response.body.capability).toBe('ESTABLISHED');
+    expect(response.body.results.length).toBeGreaterThan(0);
+    expect(response.body.results.every((result: { subject_relevant: boolean }) => result.subject_relevant)).toBe(true);
+
+    const claimIds = response.body.results.map((result: { claim_id: number | string }) => Number(result.claim_id));
+    const bound = await pool.query(
+      `SELECT count(*)::int AS count
+       FROM claim c
+       JOIN proposition p ON p.proposition_id = c.proposition_id
+       JOIN event ev ON ev.event_id = p.object_event_id
+       WHERE c.claim_id = ANY($1::bigint[])
+         AND ev.event_key = 'phase32_principe_observation_1919'`,
+      [claimIds]
+    );
+    expect(bound.rows[0].count).toBe(claimIds.length);
+  });
+
+  it('inherits dataset retrieval scope for derived claims without direct ClaimEvidence', async () => {
+    const scope = await request(app).get('/api/research/scope');
+    const mtDatasetId = Number(scope.body.datasets.find(
+      (dataset: { dataset_key: string }) => dataset.dataset_key === 'GEN_MT_REF'
+    ).dataset_id);
+    const response = await request(app)
+      .post('/api/research')
+      .send({ question: 'yearsFromCreation', datasetIds: [mtDatasetId] });
+    const derived = response.body.results.find(
+      (result: { claim_key: string }) => result.claim_key === 'CLAIM_MT_ENOSH_YEAR_DERIVED'
+    );
+
+    expect(derived).toBeTruthy();
+    expect(derived.classification).toBe('DERIVED_FROM_PERSISTED_GRAPH');
+    expect(derived.evidence).toEqual([]);
+    expect(derived.scope_datasets.map(Number)).toContain(mtDatasetId);
   });
 
   it('supports all, single, and multiple persisted dataset scopes', async () => {

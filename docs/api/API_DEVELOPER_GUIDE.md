@@ -168,7 +168,17 @@ Actual research behaviors:
 - Questions containing `prove|proved|true|truth|confirm*` return `capability: "NOT_REPRESENTED"`.
 - Participation questions use all predicates whose registry row has `event_participation_role_code`.
 - Other questions match registered `predicate_code` or `predicate.description`.
-- Results are limited to 50 rows.
+- Named subjects are resolved deterministically from persisted Entity/Event labels. Resolution does not use embeddings,
+  synonyms, external retrieval, or silent disambiguation.
+- Every claim returned for a resolved named subject structurally binds the resolved Entity/Event in its authoritative
+  Proposition. An unresolved or ambiguous named subject returns `UNRESOLVED_SUBJECT` with no claims; that status does
+  not mean the subject is false or absent from reality.
+- Unnamed inventory questions may return exploratory claims but cannot return `ESTABLISHED`.
+- Evidence is aggregated under claims before the claim count and 50-claim presentation bound are applied.
+- `result_bounds.total_matched` reports the complete matching claim count; `returned`, `limit`, and `truncated`
+  characterize the bounded response.
+- Derived claims inherit retrieval-only `scope_datasets` through a bounded, cycle-safe traversal of Derivation inputs.
+  Inherited scope is not direct source provenance.
 - Scope is always `BEREAN_ONLY`; no external retrieval happens.
 - `NO_MATCH` means no persisted claim in the selected scope matched the registered predicate set.
 
