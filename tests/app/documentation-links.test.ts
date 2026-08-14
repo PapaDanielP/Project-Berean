@@ -27,7 +27,8 @@ const CANONICAL_ENTRY_POINTS = [
   'docs/phases/README.md',
   'docs/04-data/README.md',
   'docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md',
-  'docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md'
+  'docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md',
+  'docs/07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md'
 ];
 
 const CANONICAL_API_DOCS = [
@@ -182,6 +183,16 @@ describe('documentation navigation and link integrity', () => {
     const audit = read('docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md');
     expect(audit).toMatch(/Authority model/i);
     expect(audit).toMatch(/Broken-link and stale-path audit/i);
+  });
+
+  it('indexes the final platform architecture audit from docs/README.md', () => {
+    const docsIndex = read('docs/README.md');
+    expect(docsIndex).toContain('07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md');
+
+    const audit = read('docs/07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md');
+    expect(audit).toMatch(/Executive summary/i);
+    expect(audit).toMatch(/Explorer/i);
+    expect(audit).toMatch(/Final classification/i);
   });
 
   it('resolves every local Markdown link in the repository to an existing file or directory', () => {
