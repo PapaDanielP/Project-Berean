@@ -84,3 +84,12 @@ Focused API tests cover the Explorer shell, dynamic/all/single/multiple scope be
 read-only research, inspectable plans, unsupported proof requests, and invalid/bounded inputs. Run
 `npm run typecheck`, `npm run lint`, `npm test`, and the repository's PostgreSQL validation script
 when a database is available.
+
+## Related records
+
+- [`../api/API_EXPLORER_INTEGRATION_MATRIX.md`](../api/API_EXPLORER_INTEGRATION_MATRIX.md) — canonical
+  per-endpoint Explorer/API request/response/epistemic matrix.
+- [`../07-review/EXPLORER_API_INTEGRATION_AUDIT.md`](../07-review/EXPLORER_API_INTEGRATION_AUDIT.md) —
+  Explorer/API integration audit findings, fixes, and remaining issues.
+- [`../07-review/EXPLORER_TEST_REPORT.md`](../07-review/EXPLORER_TEST_REPORT.md) — exact test/browser
+  commands and results.

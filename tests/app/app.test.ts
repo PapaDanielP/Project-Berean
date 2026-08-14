@@ -447,6 +447,25 @@ describe('read-only API', () => {
     expect(Array.isArray(response.body.events)).toBe(true);
   });
 
+  it('projects an entity graph neighborhood with no self-referential edges', async () => {
+    const entitySearch = await request(app).get('/api/search').query({ q: 'adam', limit: 50 });
+    const entity = entitySearch.body.results.find((r: { type: string; key: string }) => r.type === 'entity' && r.key === 'adam');
+    expect(entity).toBeTruthy();
+    const response = await request(app).get('/api/graph').query({ nodeType: 'entity', nodeId: entity.id });
+    expect(response.status).toBe(200);
+    const centerNodeId = `entity:${entity.id}`;
+    const selfLoops = response.body.edges.filter(
+      (edge: { source: string; target: string }) => edge.source === centerNodeId && edge.target === centerNodeId
+    );
+    expect(selfLoops).toEqual([]);
+    expect(
+      response.body.edges.some(
+        (edge: { source: string; target: string; relation: string }) =>
+          edge.relation === 'fatherOf' && (edge.source === centerNodeId || edge.target === centerNodeId)
+      )
+    ).toBe(true);
+  });
+
   it('returns claim provenance chain to source', async () => {
     const claimSearch = await request(app).get('/api/search').query({ q: 'CLAIM_MT_ADAM_FATHER_SETH', limit: 5 });
     const claim = claimSearch.body.results.find((r: { type: string }) => r.type === 'claim');

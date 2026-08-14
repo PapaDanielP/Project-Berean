@@ -34,6 +34,7 @@ If a phase or validation record conflicts with current implementation or authori
 - [`00-project/DEVELOPER_GUIDE.md`](./00-project/DEVELOPER_GUIDE.md) — environment setup and development commands.
 - [`00-project/PROJECT_OVERVIEW.md`](./00-project/PROJECT_OVERVIEW.md) — concise project framing.
 - [`api/API_CAPABILITY_MATRIX.md`](./api/API_CAPABILITY_MATRIX.md) — route-by-route capability matrix.
+- [`api/API_EXPLORER_INTEGRATION_MATRIX.md`](./api/API_EXPLORER_INTEGRATION_MATRIX.md) — canonical Explorer/API integration matrix (capability, request, response, epistemic interpretation, auth, tests).
 - [`api/OPENAPI_GAP_REPORT.md`](./api/OPENAPI_GAP_REPORT.md) — OpenAPI/documentation/test coverage gap status.
 - [`api/VERIFICATION_REPORT.md`](./api/VERIFICATION_REPORT.md) — verification evidence and command logs.
 - [`01-architecture/EXPLORER_READ_ONLY_ADAPTER.md`](./01-architecture/EXPLORER_READ_ONLY_ADAPTER.md) — Explorer-specific read-only behavior.
@@ -54,6 +55,8 @@ If a phase or validation record conflicts with current implementation or authori
 
 ### REVIEW / AUDIT
 - [`07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md`](./07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md) — repository-wide platform, API, administration, provenance, Explorer, and coverage audit (includes browser-tested Explorer workflow results).
+- [`07-review/EXPLORER_API_INTEGRATION_AUDIT.md`](./07-review/EXPLORER_API_INTEGRATION_AUDIT.md) — Explorer/API integration audit: architecture, request/response contract, auth/authz, epistemic-safety review, defects fixed, and remaining findings.
+- [`07-review/EXPLORER_TEST_REPORT.md`](./07-review/EXPLORER_TEST_REPORT.md) — exact database/startup/test/browser commands and results for the Explorer/API integration audit.
 - [`07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md`](./07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md) — current documentation governance, authority, link-integrity, and API-coverage audit.
 - [`07-review/REPOSITORY_CONSOLIDATION_REPORT.md`](./07-review/REPOSITORY_CONSOLIDATION_REPORT.md) — repository-wide documentation and structural integrity audit (predecessor pass).
 - [`07-review/REMEDIATION-REPORT.md`](./07-review/REMEDIATION-REPORT.md) — architecture alignment and remediation record.

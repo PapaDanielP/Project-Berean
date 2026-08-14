@@ -28,12 +28,15 @@ const CANONICAL_ENTRY_POINTS = [
   'docs/04-data/README.md',
   'docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md',
   'docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md',
-  'docs/07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md'
+  'docs/07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md',
+  'docs/07-review/EXPLORER_API_INTEGRATION_AUDIT.md',
+  'docs/07-review/EXPLORER_TEST_REPORT.md'
 ];
 
 const CANONICAL_API_DOCS = [
   'docs/api/API_DEVELOPER_GUIDE.md',
   'docs/api/API_CAPABILITY_MATRIX.md',
+  'docs/api/API_EXPLORER_INTEGRATION_MATRIX.md',
   'docs/api/API_EPISTEMIC_BOUNDARIES.md',
   'docs/api/API_LIMITATIONS.md',
   'docs/api/API_SECURITY_MODEL.md',
