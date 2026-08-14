@@ -173,6 +173,32 @@ following the F-EXP-01 fix rather than FAIL, re-verified live in this pass (§6 
   `tests/app/openapi-coverage.test.ts`) and documented in `src/api/openapi.ts`. This closes the
   contract-drift gap identified by F-13 without adding a browser-test framework as a dependency.
 
+### F-EXP-03 — Unmatched `/api` paths returned `200` HTML instead of a JSON 404 (FIXED, 2026-08-14 verification pass)
+- **Severity:** MINOR (API-contract correctness; no epistemic, provenance, or data impact).
+- **Observed live** against a running server on the validated corpus:
+  `GET /api/nope` → `200 text/html` with the full Explorer HTML shell, and
+  `POST /api/unknown` → Express' default HTML 404 page. Only `/api/v1/*` had a JSON 404
+  (`{"error":{"code":"NOT_FOUND",…}}`).
+- **Cause:** the `app.get('*')` Explorer-shell fallback in `src/app.ts` was reached by any unmatched
+  `GET`, including `/api` paths, because no `/api`-scoped terminal handler existed ahead of it.
+- **Impact:** an API consumer that requests a mistyped, renamed, or removed compatibility endpoint
+  receives a success status and an HTML body. In the Explorer this surfaces through `fetchJson` as
+  the misleading `Request failed (200)` (the body is not JSON) instead of a real "not found" error,
+  which would mask exactly the contract drift `tests/app/explorer-contract.test.ts` guards against.
+- **Fix:** a terminal `app.use('/api', …)` handler mounted after every compatibility and versioned
+  route now returns `404 {"error":"route not found"}` in the legacy routes' string-error envelope.
+  The non-`/api` HTML shell fallback and every existing route are unchanged; `/api/v1/*` still
+  returns its own `501/404` envelope because that router is mounted earlier.
+- **Regression test added:** `tests/app/app.test.ts` — `answers unmatched compatibility API paths
+  with a JSON 404 instead of the Explorer HTML shell` (asserts JSON 404 for `GET` and `POST` on an
+  unknown `/api` path, and that a non-`/api` `GET` still returns the HTML shell).
+- **Documentation updated:** the fallback is now declared in `src/api/openapi.ts`
+  (`x-berean-fallback-routes`), in [`../api/API_DEVELOPER_GUIDE.md`](../api/API_DEVELOPER_GUIDE.md),
+  and in [`../api/OPENAPI_GAP_REPORT.md`](../api/OPENAPI_GAP_REPORT.md), so documentation follows the
+  implementation rather than the reverse.
+- **Verified after the fix:** `GET /api/no-such-endpoint` → `404 application/json`
+  `{"error":"route not found"}`; `GET /` → `200 text/html`; full suite `142 passed`.
+
 ## 8. Items unchanged / assessed as still accurate
 
 All remaining findings in `FINAL_PLATFORM_ARCHITECTURE_AUDIT.md` §21 (F-01, F-03 through F-12, F-14)
@@ -205,6 +231,15 @@ epistemically safe API consumer. One implementation defect it exposed (self-refe
 edges) was fixed with a regression test; one test-coverage gap (Explorer↔API contract) was closed
 with the smallest useful test. Remaining findings (F-01, F-05 through F-12 in the predecessor audit)
 are non-blocking, previously documented, and out of this pass's minimal-change scope.
+
+**2026-08-14 verification pass (this session):** re-verified end to end against a clean disposable
+PostgreSQL 16 database and a live server, including a real headless-Chromium re-execution of the
+Explorer prompt matrix (see [`EXPLORER_TEST_REPORT.md`](./EXPLORER_TEST_REPORT.md) §9). Every §1–§6
+conclusion above was re-confirmed unchanged: no DB/SQL access from the client, no fixture-specific
+ids, no admin affordance, no token handling, no self-loop regression, `MATCHED`/`NO_MATCH`/
+`NOT_REPRESENTED`/`UNRESOLVED`/`DERIVED`/`SCHOLARLY_CANDIDATE` labels preserved, and 0 console/page
+errors across the whole workflow. One new MINOR contract defect was found and fixed (F-EXP-03).
+The classification is unchanged: **PASS WITH NON-BLOCKING FINDINGS.**
 
 ## 10. Related records
 

@@ -229,3 +229,129 @@ automated accessibility tool in this pass and remains a documented gap (see §7)
   per-endpoint matrix.
 - [`FINAL_PLATFORM_ARCHITECTURE_AUDIT.md`](./FINAL_PLATFORM_ARCHITECTURE_AUDIT.md) — predecessor
   platform-wide audit and its own (still-accurate) browser-test record.
+
+## 9. Final verification pass — 2026-08-14 (re-executed end to end)
+
+This section records a complete re-execution in a fresh sandbox (PostgreSQL 16 apt package, clean
+disposable `berean_test` database). Nothing below is copied from the sections above; every command
+was run again and every observation was captured from the running system.
+
+### 9.1 Commands and exit codes
+
+| Command | Exit | Observed result |
+|---|---|---|
+| `npm ci` | 0 | dependencies installed |
+| `npm run typecheck` | 0 | no diagnostics |
+| `npm run lint` | 0 | no findings (`src/**/*.ts`, `tests/app/**/*.ts`) |
+| `npm run build` | 0 | `tsc -p tsconfig.json` clean |
+| `npm test` | 0 | **141 passed (5 files)** before the fix below; **142 passed** after the added regression test |
+| `bash scripts/validation/run-postgres-validation.sh` | 0 | `All validation self-test cases passed.` (run twice: before and after the change) |
+| `npx vitest run tests/app/documentation-links.test.ts` | 0 | 11 passed |
+| `npx vitest run tests/app/openapi-coverage.test.ts` | 0 | 6 passed |
+| `npx vitest run tests/app/explorer-contract.test.ts` | 0 | 27 passed |
+
+Sequencing note from §4 was reconfirmed: the `phase28_ingestion` and `public` schemas must be
+dropped (and `public` recreated) between `npm test` and the validation script in either direction.
+
+### 9.2 Browser automation
+
+The sandboxed Playwright MCP browser tool was again unavailable (`MCP request failed: Transport
+closed`, then `MCPOAuthBrowserRequiredError: Browser-based OAuth required for
+http://localhost:3100/mcp`). As in the earlier passes, real browser testing was performed instead
+with Playwright 1.49.1 + Chromium Headless Shell 131.0.6778.33 installed under `/tmp/browsertest`
+(outside the repository; `package.json` unchanged). The server was started with
+`PORT=3210 npx tsx src/server.ts` against the database left by the validation script
+(`36 of 36 datasets · 378 linked claims`).
+
+An incidental confirmation of the deployed CSP: Playwright's `waitForFunction` polling failed with
+`Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed source of
+script`, i.e. the `script-src 'self'` policy is genuinely enforced in a real browser. The scripts
+were rewritten to poll through the DOM instead.
+
+### 9.3 Live prompt / workflow matrix (all rows LIVE_TESTED)
+
+| # | Prompt / action | Observed result | Verdict |
+|---|---|---|---|
+| 1 | Search `Nikola Tesla` | 9 hits (citation, 2 claims, entity, event, evidence…), "9 matched records. Matches are not established claims." | PASS |
+| 2 | Search `George Westinghouse` | 2 hits: evidence `EV_P37R_BARRETT_WESTINGHOUSE`, source identity `phase37r-barrett-george-westinghouse` | PASS |
+| 3 | Search `World's Columbian Exposition` | 7 hits (events, sources); no narrative synthesis | PASS |
+| 4 | Search `AC` | 25 bounded lexical hits, all labelled `MATCHED` | PASS |
+| 5 | Search `DC` | 2 lexical hits (dataset + source record); no AC/DC comparison or verdict | PASS |
+| 6 | Search `1893` | 25 bounded hits incl. "identity context unresolved" citation text | PASS |
+| 7 | Search `Genesis` | 25 bounded citation hits | PASS |
+| 8 | Search `zzzznonsenseterm999` | exactly "No represented records matched this keyword." | PASS |
+| 9 | Open entity `Nikola Tesla` | sections "Source identities and reconciliation (1)", "Events (2)", "Claims (2)"; mapping status `ACTIVE` with justification and stored confidence `0.9800` | PASS |
+| 10 | Expand graph neighborhood | exactly `entity:196 —PARTICIPANT→ event:122` and `→ event:123`; **0 self-loops** | PASS (F-EXP-01 fix holds) |
+| 11 | Inspect claim + trace provenance | `CLAIM_P37R_TESLA_PARTICIPATES_IN_TESLA_EXHIBIT` → proposition → Evidence (2) `SOURCE_OBSERVATION`/`SUPPORTS` → citation → source record → dataset → source | PASS |
+| 12 | Derived claim `CLAIM_MT_ENOSH_YEAR_DERIVED` | `DERIVED_CLAIM`, Derivation method/assumptions shown, **no evidence or citation invented**, competing `CONTRADICTS` relation to `CLAIM_LXX_ENOSH_YEAR_DERIVED` preserved | PASS |
+| 12b | Derived claim `CLAIM_XSRC_ADAM_FATHER_SETH_SHARED_DERIVED` | cross-source derivation rendered as derivation, assumptions state the differing numerals remain separate competing claims | PASS |
+| 13 | Superseded claim `CLAIM_MT_ADAM_AGE_AT_SETH_DRAFT` | `SUPERSEDED` badge, supporting evidence retained, `SUPERSEDES` relation shown; not deleted, not promoted | PASS |
+| 14 | Search `Edison` | 4 hits incl. `Source identity · phase37r-directory-edison-name` and the "identity context unresolved" citation; no person record asserted | PASS |
+| 15 | Research "Who participated in represented events?" | `CAPABILITY: ESTABLISHED`, 50 bounded results, sections Answer / What Berean Establishes (50) / Sources (1) | PASS |
+| 16 | Research "Prove that alternating current is true" | `NOT REPRESENTED`, 0 results, "Absence of representation is not a denial…" | PASS |
+| 17 | Research "What did the exhibits confirm about AC?" | `NOT REPRESENTED`, 0 results | PASS |
+| 18 | Research `ageAtFatherhoodYears` | `UNRESOLVED`, 14 results split into Establishes (7) / Unresolved (1) / Evidence (6) / Sources (2) | PASS |
+| 19 | Research "Which unicorn attended the exposition?" | `NOT REPRESENTED` with non-denial text | PASS |
+| 20 | Research with empty scope | client blocks submission and shows "No scope selected…" (button disabled until a dataset is selected) | PASS |
+| 21 | Dashboard / Genesis coverage / sources | rendered; Genesis locators still report `populated:false, source_unavailable:true` rather than absence of the text | PASS |
+| 22 | Administrative flow through the UI | DOM scan for admin/ingest/token/delete/approve/reject affordances returned **0** | N/A (intentionally unsupported) |
+| 23 | XSS probe `<img src=x onerror=alert(1)>` | 0 injected nodes, no alert, container HTML `<p class="empty">No represented records matched this keyword.</p>` | PASS |
+| A1 | Search `Adam` | 13 hits, all labelled `MATCHED` (incl. the superseded draft claim) | PASS |
+| A2 | Search `Seth` | 25 bounded hits | PASS |
+| A3 | Research "What is represented about Adam and Seth?" | `NOT REPRESENTED` + non-denial text (no registered predicate matched) — no fabricated summary | PASS |
+| A4 | Research "Which scholarly interpretations are represented?" | `NOT REPRESENTED` + non-denial text | PASS |
+| A5 | Research "Who won the AC/DC current war?" | `NOT REPRESENTED`, 0 results — no winner, no ranking, no causal conclusion | PASS |
+| A6 | Research "What derived relationships are represented?" | `NOT REPRESENTED` + non-denial text | PASS |
+
+Across the whole session: **0 console errors, 0 page errors**, and the only network calls were the
+documented compatibility endpoints (`/api/research/scope`, `/api/search`, `/api/research`,
+`/api/entities/{id}`, `/api/claims/{id}`, `/api/provenance/claims/{id}`, `/api/graph`,
+`/api/dashboard/quality`, `/api/genesis/coverage`, `/api/sources`). No `/api/v1` call, no
+`Authorization` header, no request outside the origin.
+
+### 9.4 Accessibility / UX observations (measured in the browser)
+
+Measured from the live DOM: `documentElement.lang="en"`, single `<h1>` "Project Berean Explorer",
+`HEADER`/`MAIN`/`NAV` landmarks present, **0** form controls without a `<label>` or `aria-label`,
+**0** buttons without an accessible name, `aria-live` regions on `#researchStatus`, `#scopeOptions`,
+`#researchResults`, `#searchStatus`, `#graphText`, and `role="status"` on `#searchStatus` and
+`#researchStatus`. Loading/empty/error states were each observed live (loading text while a detail
+loads, empty state for `NO_MATCH`, error copy path in `fetchJson`). No automated accessibility
+scanner (axe-core/Lighthouse) exists in the repository and none was added; contrast and screen-reader
+behavior remain unverified.
+
+### 9.5 Error-path and header probes
+
+```
+GET /api/entities/999999            → 404 {"error":"entity not found"}
+GET /api/entities/abc               → 400 {"error":"entityId must be an integer"}
+GET /api/claims/999999              → 404 {"error":"claim not found"}
+GET /api/graph?nodeType=bogus&…     → 400 {"error":"nodeType must be entity or claim …"}
+GET /api/search   (no q)            → 400 {"error":"query parameter q is required"}
+POST /api/research {"question":""}  → 400 {"error":"question is required and must be at most 1000 characters"}
+GET /api/provenance/claims/999999   → 200 {"claim_present":false,"classification":"CLAIM_NOT_REPRESENTED",…}  (documented compatibility behavior)
+GET /api/v1/nope                    → 404 {"error":{"code":"NOT_FOUND",…}}
+GET /  headers                      → CSP default-src 'self'; script-src 'self'; …; X-Content-Type-Options: nosniff; Referrer-Policy: no-referrer; no X-Powered-By
+```
+
+One defect was found here and fixed: `GET /api/nope` returned **200 text/html** (the Explorer shell)
+and `POST /api/unknown` returned Express' default HTML 404. See F-EXP-03 in
+[`EXPLORER_API_INTEGRATION_AUDIT.md`](./EXPLORER_API_INTEGRATION_AUDIT.md) §7. After the fix:
+`GET /api/no-such-endpoint → 404 application/json {"error":"route not found"}` and `GET / → 200
+text/html` (shell unchanged). The full live matrix in §9.3 was re-run after the fix with identical
+results and 0 console/page errors.
+
+### 9.6 Limitations of this pass
+
+- The Playwright MCP browser tool remained unavailable; a locally installed Playwright/Chromium was
+  used instead (recorded above) — real browser, not the sandboxed tool.
+- No automated accessibility scanner and no visual/responsive regression tooling exists in the
+  repository; none was added. Contrast ratios, screen-reader output, and small-viewport layout are
+  therefore unverified.
+- The corpus contains only `DIRECT_SOURCE_CLAIM`/`DERIVED_CLAIM` types and `ACTIVE`/`SUPERSEDED`
+  statuses, so scholarly-candidate and unresolved *claim-level* presentation could only be exercised
+  through the research classifications (row 18) and the `CONTRADICTS`/`SUPERSEDES` claim relations
+  (rows 12, 13), not through a dedicated scholarly claim row.
+- No load, concurrency, or long-running-job testing was performed; queued-job and administrative
+  behavior remains covered by `tests/app/app.test.ts` and `tests/app/phase28-ingestion.test.ts`
+  rather than by live Explorer workflows (the Explorer exposes no administrative surface).
