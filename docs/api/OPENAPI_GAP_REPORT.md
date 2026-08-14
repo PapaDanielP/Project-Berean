@@ -42,9 +42,14 @@ Express path to its OpenAPI form, and asserts:
 
 ## Explicit current gap status
 
-- **Implemented but undocumented endpoints:** none identified.
-- **Implemented but untested endpoints:** none identified at route-surface level; route/documentation drift is enforced by `tests/app/openapi-coverage.test.ts`.
-- **Remaining OpenAPI gaps:** none at route-surface level for implemented non-static routes.
+| Category | Status | Evidence |
+|---|---|---|
+| `IMPLEMENTED_AND_DOCUMENTED` | All currently implemented non-static routes are present in `src/api/openapi.ts`. | `tests/app/openapi-coverage.test.ts` (`implemented routes are all documented`) |
+| `IMPLEMENTED_BUT_UNDOCUMENTED` | None identified. | Same coverage test; implemented -> documented assertion. |
+| `DOCUMENTED_BUT_NOT_IMPLEMENTED` | None identified. | Same coverage test; documented -> implemented assertion. |
+| `IMPLEMENTED_BUT_UNTESTED` | None identified at route-surface drift level. | `tests/app/openapi-coverage.test.ts`; note behavior-level testing still varies by route. |
+| `DOCUMENTED_AND_TESTED` | Documented route surface is continuously verified against runtime route registration and OpenAPI serving behavior. | `tests/app/openapi-coverage.test.ts` assertions for route mapping, metadata, mutation extensions, and `/openapi.json` serving. |
+| `OPENAPI_ONLY` | None identified. | No OpenAPI path/method pair exists without a matching registered route. |
 
 Note: route-surface completeness does not replace behavior-level testing for every response shape.
 
