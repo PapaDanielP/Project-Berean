@@ -53,6 +53,7 @@ If a phase or validation record conflicts with current implementation or authori
 - Later independent phase studies (Phase 33–37R/37B) in [`phases/`](./phases/).
 
 ### REVIEW / AUDIT
+- [`07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md`](./07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md) — repository-wide documentation governance, consolidation, and integrity enforcement audit.
 - [`07-review/REPOSITORY_CONSOLIDATION_REPORT.md`](./07-review/REPOSITORY_CONSOLIDATION_REPORT.md) — repository-wide documentation and structural integrity audit.
 - [`07-review/REMEDIATION-REPORT.md`](./07-review/REMEDIATION-REPORT.md) — architecture alignment and remediation record.
 - [`07-review/WEB_APP_MVP_REPORT.md`](./07-review/WEB_APP_MVP_REPORT.md) — MVP review record.
