@@ -42,8 +42,15 @@ Express path to its OpenAPI form, and asserts:
 
 ## Explicit current gap status
 
-- **Implemented but undocumented endpoints:** none identified.
-- **Implemented but untested endpoints:** none identified at route-surface level; route/documentation drift is enforced by `tests/app/openapi-coverage.test.ts`.
+| Category | Current status | Evidence |
+|---|---|---|
+| `IMPLEMENTED_AND_DOCUMENTED` | All implemented non-static route method/path pairs are documented in `src/api/openapi.ts`. | `tests/app/openapi-coverage.test.ts` assertion `documents every implemented route and method` |
+| `IMPLEMENTED_BUT_UNDOCUMENTED` | None identified. | `tests/app/openapi-coverage.test.ts` fails on any missing operation |
+| `DOCUMENTED_BUT_NOT_IMPLEMENTED` | None identified. | `tests/app/openapi-coverage.test.ts` assertion `does not document routes that are not implemented` |
+| `IMPLEMENTED_BUT_UNTESTED` | None identified at route-surface level; route/documentation drift and fallback declarations are tested. Some behavior-level checks remain `code-traced` in `API_CAPABILITY_MATRIX.md`. | `tests/app/openapi-coverage.test.ts`; `docs/api/API_CAPABILITY_MATRIX.md` |
+| `DOCUMENTED_AND_TESTED` | Documented route surface and OpenAPI metadata are test-enforced; behavior-level API assertions are covered in `tests/app/app.test.ts` and `tests/app/phase28-ingestion.test.ts`. | `tests/app/openapi-coverage.test.ts`; `tests/app/app.test.ts`; `tests/app/phase28-ingestion.test.ts` |
+| `OPENAPI_ONLY` | None identified for live route definitions. Fallback behavior is intentionally recorded in `x-berean-fallback-routes` instead of fake concrete paths. | `src/api/openapi.ts`; `tests/app/openapi-coverage.test.ts` |
+
 - **Remaining OpenAPI gaps:** none at route-surface level for implemented non-static routes.
 
 Note: route-surface completeness does not replace behavior-level testing for every response shape.
