@@ -143,7 +143,7 @@ export const registerV1Routes = (repository: BereanRepository): Router => {
   });
 
   router.get('/research/capabilities', (_req, res) => {
-    res.json({ mode: 'transient_read_only', classifications: ['ESTABLISHED', 'DERIVED', 'SCHOLARLY_CANDIDATE', 'UNRESOLVED', 'NOT_REPRESENTED', 'NO_MATCH'] });
+    res.json({ mode: 'transient_read_only', classifications: ['ESTABLISHED', 'DERIVED', 'SCHOLARLY_CANDIDATE', 'UNRESOLVED', 'UNRESOLVED_SUBJECT', 'NOT_REPRESENTED', 'NO_MATCH'] });
   });
 
   router.get('/provenance/claim/:id', async (req, res, next) => {

@@ -386,10 +386,43 @@ describe('read-only API', () => {
     expect(response.body.limitation).toContain('does not imply');
   });
 
+  it('requires participation targets to resolve to the proposition object Event role', async () => {
+    const [wrongKind, capabilities] = await Promise.all([
+      request(app).post('/api/research').send({ question: 'Who participated in Adam?' }),
+      request(app).get('/api/v1/research/capabilities')
+    ]);
+
+    expect(wrongKind.status).toBe(200);
+    expect(wrongKind.body.capability).toBe('UNRESOLVED_SUBJECT');
+    expect(wrongKind.body.subject_binding.status).toBe('UNRESOLVED');
+    expect(wrongKind.body.results).toEqual([]);
+    expect(capabilities.body.classifications).toContain('UNRESOLVED_SUBJECT');
+  });
+
+  it('reports ambiguous persisted-label subject resolution without choosing an anchor', async () => {
+    await pool.query(
+      `INSERT INTO event (event_key, event_type_code)
+       VALUES ('r1_ambiguous_anchor', 'OTHER'),
+              ('R1-Ambiguous-Anchor', 'OTHER')`
+    );
+    try {
+      const response = await request(app)
+        .post('/api/research')
+        .send({ question: 'Who participated in R1 Ambiguous Anchor?' });
+      expect(response.status).toBe(200);
+      expect(response.body.capability).toBe('UNRESOLVED_SUBJECT');
+      expect(response.body.subject_binding.status).toBe('AMBIGUOUS');
+      expect(response.body.subject_binding.anchors).toHaveLength(2);
+      expect(response.body.results).toEqual([]);
+    } finally {
+      await pool.query(`DELETE FROM event WHERE event_key IN ('r1_ambiguous_anchor', 'R1-Ambiguous-Anchor')`);
+    }
+  });
+
   it('requires every result for a resolved named subject to bind that structural anchor', async () => {
     const response = await request(app)
       .post('/api/research')
-      .send({ question: 'Who participated in phase32_principe_observation_1919?' });
+      .send({ question: 'Who participated in phase32_principe_eclipse_observation_1919?' });
 
     expect(response.status).toBe(200);
     expect(response.body.subject_binding.status).toBe('RESOLVED');
@@ -405,7 +438,7 @@ describe('read-only API', () => {
        JOIN proposition p ON p.proposition_id = c.proposition_id
        JOIN event ev ON ev.event_id = p.object_event_id
        WHERE c.claim_id = ANY($1::bigint[])
-         AND ev.event_key = 'phase32_principe_observation_1919'`,
+         AND ev.event_key = 'phase32_principe_eclipse_observation_1919'`,
       [claimIds]
     );
     expect(bound.rows[0].count).toBe(claimIds.length);
@@ -686,6 +719,9 @@ describe('read-only API', () => {
     expect(response.body.claims[0].claim.claim_type_code).toBe('DERIVED_CLAIM');
     expect(response.body.claims[0].derivation).toBeTruthy();
     expect(response.body.claims[0].derivation_inputs.length).toBeGreaterThan(0);
+    expect(response.body.claims[0].derivation_paths.length).toBeGreaterThan(0);
+    expect(response.body.claims[0].provenance_status).toBe('DERIVED');
+    expect(response.body.claims[0].structural_gaps).not.toContain('MISSING_CLAIM_EVIDENCE');
     expect(response.body.claims[0].structural_gaps).not.toContain('MISSING_DERIVATION_INPUT');
   });
 

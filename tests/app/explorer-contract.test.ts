@@ -111,6 +111,8 @@ describe('Explorer <-> API contract', () => {
     expect(explorerSource).toContain('NO_MATCH');
     expect(explorerSource).toContain('supported query found no matching represented claim');
     expect(explorerSource).toContain('Directly source-backed claims');
+    expect(explorerSource).toContain('result.evidence');
+    expect(explorerSource).toContain('Evidence records');
     expect(explorerSource).not.toContain('What Berean Establishes');
   });
 });

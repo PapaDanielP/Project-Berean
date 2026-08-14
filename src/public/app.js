@@ -193,6 +193,10 @@ clearScopes.addEventListener('click', () => {
 
 const resultCard = (result) => {
   const classification = safeText(result.classification);
+  const evidence = result.evidence ?? [];
+  const relations = [...new Set(evidence.map((item) => safeText(item.relation_type_code)).filter(Boolean))];
+  const sources = [...new Set(evidence.map((item) => safeText(item.source_name)).filter(Boolean))];
+  const datasets = [...new Set(evidence.map((item) => safeText(item.dataset_name)).filter(Boolean))];
   const article = element('article', { className: `result-card state-${classification.toLowerCase().replaceAll('_', '-')}` });
   article.setAttribute('aria-label', `${humanize(classification)} claim ${safeText(result.claim_key)}`);
   const heading = element('h4', { text: safeText(result.rendered_proposition) || safeText(result.claim_key) });
@@ -201,9 +205,10 @@ const resultCard = (result) => {
     ['Claim', result.claim_key],
     ['Predicate', result.predicate],
     ['Claim status', result.claim_status_code],
-    ['Evidence relation', result.evidence_relation_type_code],
-    ['Source', result.source_name],
-    ['Dataset', result.dataset_name]
+    ['Evidence relations', relations.join(', ') || 'None directly linked'],
+    ['Evidence records', evidence.length],
+    ['Sources', sources.join(', ') || 'Inherited derivation scope only'],
+    ['Datasets', datasets.join(', ') || (result.scope_datasets ?? []).join(', ')]
   ]);
   if (result.statement) {
     metadata.append(element('dt', { text: 'Display label' }), element('dd', { text: result.statement }));
@@ -282,7 +287,11 @@ const renderResearch = (payload) => {
 
   const sources = new Map();
   for (const result of results) {
-    if (result.source_key) sources.set(result.source_key, `${safeText(result.source_name)} — ${safeText(result.dataset_name)}`);
+    for (const evidence of result.evidence ?? []) {
+      if (evidence.source_key) {
+        sources.set(evidence.source_key, `${safeText(evidence.source_name)} — ${safeText(evidence.dataset_name)}`);
+      }
+    }
   }
   if (sources.size) {
     const section = element('section', { className: 'response-section' });

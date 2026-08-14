@@ -129,8 +129,11 @@ export class BereanRepository {
         const matchLength = Math.max(0, ...labels.filter((label) => containsLabel(questionForResolution, label)).map((label) => label.length));
         return matchLength ? [{ ...row, matchLength }] : [];
       });
-    const longestMatch = Math.max(0, ...matchedAnchors.map((anchor) => anchor.matchLength));
-    const resolvedAnchors = matchedAnchors.filter((anchor) => anchor.matchLength === longestMatch);
+    const eligibleAnchors = relationshipTerms && explicitlyNamedTarget
+      ? matchedAnchors.filter((anchor) => anchor.kind === 'EVENT')
+      : matchedAnchors;
+    const longestMatch = Math.max(0, ...eligibleAnchors.map((anchor) => anchor.matchLength));
+    const resolvedAnchors = eligibleAnchors.filter((anchor) => anchor.matchLength === longestMatch);
     const namedSubject = explicitlyNamedTarget || resolvedAnchors.length > 0;
     const subjectStatus = !namedSubject
       ? 'NOT_REQUESTED'
@@ -206,11 +209,12 @@ export class BereanRepository {
     const entityAnchorIds = resolvedAnchors.filter((anchor) => anchor.kind === 'ENTITY').map((anchor) => Number(anchor.anchor_id));
     const eventAnchorIds = resolvedAnchors.filter((anchor) => anchor.kind === 'EVENT').map((anchor) => Number(anchor.anchor_id));
     const { rows } = await this.pool.query(
-      `WITH RECURSIVE claim_scope(claim_id, dataset_id, path, depth) AS (
+      `WITH RECURSIVE derived_scope(claim_id, dataset_id, path, depth) AS (
          SELECT ce.claim_id, sr.dataset_id, ARRAY[ce.claim_id]::bigint[], 0
          FROM claim_evidence ce
          JOIN evidence e ON e.evidence_id = ce.evidence_id
          JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         WHERE ce.relation_type_code = 'SUPPORTS'
          UNION
          SELECT c.claim_id, sr.dataset_id, ARRAY[c.claim_id]::bigint[], 0
          FROM claim c
@@ -220,11 +224,20 @@ export class BereanRepository {
          UNION
          SELECT derived.claim_id, inherited.dataset_id,
                 inherited.path || derived.claim_id, inherited.depth + 1
-         FROM claim_scope inherited
+         FROM derived_scope inherited
          JOIN derivation_input di ON di.input_claim_id = inherited.claim_id
          JOIN claim derived ON derived.derivation_id = di.derivation_id
          WHERE inherited.depth < 8
            AND NOT derived.claim_id = ANY(inherited.path)
+       ),
+       claim_scope AS (
+         SELECT ce.claim_id, sr.dataset_id
+         FROM claim_evidence ce
+         JOIN evidence e ON e.evidence_id = ce.evidence_id
+         JOIN source_record sr ON sr.source_record_id = e.source_record_id
+         UNION
+         SELECT ds.claim_id, ds.dataset_id
+         FROM derived_scope ds
        ),
        candidate_claims AS (
          SELECT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
@@ -237,8 +250,11 @@ export class BereanRepository {
          LEFT JOIN claim_scope cs ON cs.claim_id = c.claim_id
          WHERE ($1::text[] = '{}'::text[] OR p.predicate = ANY($1))
            AND (NOT $4::boolean
-             OR p.subject_entity_id = ANY($5::bigint[]) OR p.object_entity_id = ANY($5::bigint[])
-             OR p.subject_event_id = ANY($6::bigint[]) OR p.object_event_id = ANY($6::bigint[]))
+             OR ($7::boolean AND p.object_event_id = ANY($6::bigint[]))
+             OR (NOT $7::boolean AND (
+               p.subject_entity_id = ANY($5::bigint[]) OR p.object_entity_id = ANY($5::bigint[])
+               OR p.subject_event_id = ANY($6::bigint[]) OR p.object_event_id = ANY($6::bigint[])
+             )))
          GROUP BY c.claim_id, cr.rendered_proposition, p.predicate,
                   p.subject_entity_id, p.object_entity_id, p.subject_event_id, p.object_event_id
          HAVING (NOT $2::boolean OR COALESCE(array_agg(DISTINCT cs.dataset_id)
@@ -276,7 +292,7 @@ export class BereanRepository {
            AND (NOT $2::boolean OR d.dataset_id = ANY($3::bigint[]))
        ) evidence ON true
        ORDER BY bc.claim_id`,
-      [candidatePredicates, scoped, datasetIds, namedSubject, entityAnchorIds, eventAnchorIds]
+      [candidatePredicates, scoped, datasetIds, namedSubject, entityAnchorIds, eventAnchorIds, relationshipTerms]
     );
     const results = rows.map((row) => {
       const relationTypes = row.evidence_relation_types as string[];
@@ -303,9 +319,7 @@ export class BereanRepository {
     });
     const totalMatched = rows.length ? Number(rows[0].total_matched) : 0;
     const resultBounds = { total_matched: totalMatched, returned: results.length, limit: 50, truncated: totalMatched > results.length };
-    const capability = !namedSubject && results.length
-      ? 'UNRESOLVED'
-      : results.some((row) => row.classification === 'UNRESOLVED')
+    const classifiedCapability = results.some((row) => row.classification === 'UNRESOLVED')
       ? 'UNRESOLVED'
       : results.some((row) => row.classification === 'SCHOLARLY_CANDIDATE')
         ? 'SCHOLARLY_CANDIDATE'
@@ -316,6 +330,9 @@ export class BereanRepository {
           : results.length
             ? 'ESTABLISHED'
             : 'NO_MATCH';
+    const capability = !namedSubject && classifiedCapability === 'ESTABLISHED'
+      ? 'UNRESOLVED'
+      : classifiedCapability;
     return {
       question: normalizedQuestion,
       interpretation: relationshipTerms
@@ -919,12 +936,13 @@ export class BereanRepository {
           }
 
           const pathsResult = await this.pool.query(
-            `WITH RECURSIVE ancestry(input_claim_id, input_evidence_id, path, depth, cycle) AS (
-               SELECT di.input_claim_id, di.input_evidence_id, ARRAY[$1::bigint], 1, false
+            `WITH RECURSIVE ancestry(root_input_id, input_claim_id, input_evidence_id, path, depth, cycle) AS (
+               SELECT di.derivation_input_id, di.input_claim_id, di.input_evidence_id,
+                      ARRAY[$1::bigint], 1, false
                FROM derivation_input di
                WHERE di.derivation_id = $2
                UNION ALL
-               SELECT di.input_claim_id, di.input_evidence_id,
+               SELECT ancestry.root_input_id, di.input_claim_id, di.input_evidence_id,
                       ancestry.path || ancestry.input_claim_id,
                       ancestry.depth + 1,
                       ancestry.input_claim_id = ANY(ancestry.path)
@@ -933,16 +951,19 @@ export class BereanRepository {
                JOIN derivation_input di ON di.derivation_id = input_claim.derivation_id
                WHERE ancestry.depth < 8 AND NOT ancestry.cycle
              )
-             SELECT ancestry.input_claim_id, ancestry.input_evidence_id,
+             SELECT ancestry.root_input_id, ancestry.input_claim_id, ancestry.input_evidence_id,
                     ancestry.path, ancestry.depth, ancestry.cycle,
                     COALESCE(ancestry.input_evidence_id, ce.evidence_id) AS resolved_evidence_id,
+                    e.evidence_type_code, ec.citation_id,
                     sr.source_record_id, sr.dataset_id, d.source_id
              FROM ancestry
              LEFT JOIN claim_evidence ce ON ce.claim_id = ancestry.input_claim_id
+                                        AND ce.relation_type_code = 'SUPPORTS'
              LEFT JOIN evidence e ON e.evidence_id = COALESCE(ancestry.input_evidence_id, ce.evidence_id)
+             LEFT JOIN evidence_citation ec ON ec.evidence_id = e.evidence_id
              LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
              LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
-             ORDER BY ancestry.depth, ancestry.input_claim_id NULLS LAST,
+             ORDER BY ancestry.root_input_id, ancestry.depth, ancestry.input_claim_id NULLS LAST,
                       ancestry.input_evidence_id NULLS LAST, ce.evidence_id NULLS LAST`,
             [claim.claim_id, claim.derivation_id]
           );
@@ -953,8 +974,24 @@ export class BereanRepository {
           if (pathsResult.rows.some((row) => Number(row.depth) >= 8 && row.resolved_evidence_id === null)) {
             claimGaps.add('DERIVATION_PROVENANCE_DEPTH_LIMIT');
           }
-          if (!pathsResult.rows.some((row) => row.dataset_id !== null && row.source_id !== null)) {
-            claimGaps.add('MISSING_DERIVATION_PROVENANCE');
+          for (const input of derivationInputs) {
+            const inputPaths = pathsResult.rows.filter(
+              (row) => String(row.root_input_id) === String(input.derivation_input_id)
+            );
+            const resolvedPaths = inputPaths.filter((row) => row.resolved_evidence_id !== null);
+            if (
+              resolvedPaths.length === 0
+              || resolvedPaths.some((row) => row.source_record_id === null || row.dataset_id === null || row.source_id === null)
+            ) {
+              claimGaps.add('MISSING_DERIVATION_PROVENANCE');
+            }
+            if (
+              resolvedPaths.some(
+                (row) => row.evidence_type_code === 'SOURCE_OBSERVATION' && row.citation_id === null
+              )
+            ) {
+              claimGaps.add('MISSING_DERIVATION_CITATION');
+            }
           }
         }
       }
