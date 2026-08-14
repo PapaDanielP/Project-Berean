@@ -66,6 +66,7 @@ If a phase or validation record conflicts with current implementation or authori
 - SQL fixtures: `tests/fixtures/`
 - Validation SQL and shell checks: `tests/validation/`
 - Candidate review CSVs: `data/candidates/`
+- External source metadata index: [`../data/external/README.md`](../data/external/README.md)
 
 ## API documentation set (canonical location: `docs/api/`)
 

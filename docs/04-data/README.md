@@ -15,6 +15,9 @@ Reference material that is not a phase record also lives here for historical/tra
 reasons: [`DATA_POLICY.md`](./DATA_POLICY.md), [`GENESIS_1_1-5_SLICE.md`](./GENESIS_1_1-5_SLICE.md),
 [`POPULATION_SPECIFICATION.md`](./POPULATION_SPECIFICATION.md), and
 [`STEPBIBLE_ACQUISITION_REPORT.md`](./STEPBIBLE_ACQUISITION_REPORT.md).
+`DATA_POLICY.md` remains here for continuity with the legacy data-population records; if Project
+Berean later establishes a broader policy hierarchy, it can be moved with redirects/cross-links
+instead of silently changing historical references.
 
 ## Phase index
 

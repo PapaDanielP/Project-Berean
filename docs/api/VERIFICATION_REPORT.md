@@ -138,3 +138,22 @@ partial commit. The documentation under `docs/api/*.md` matches **current code b
 Final classification: **PASS WITH INTENTIONAL LIMITATION** — the remaining limitation is that queued jobs
 (`INGESTION`, `VALIDATION`, `EXPORT`, discovery) persist state but are never executed, because no `SYSTEM` worker
 exists. That is classified **REQUIRES_SYSTEM_WORKER** and is out of scope for an API-hardening change.
+
+## Documentation governance verification (2026-08-14)
+
+The final documentation-governance pass re-ran the automated API/documentation verification from a
+fresh dependency install and a disposable local PostgreSQL 16 database. Results:
+
+| Command | Exit code | Result |
+|---|---:|---|
+| `npm ci` | 0 | Installed the existing lockfile dependencies; npm audit reported 0 vulnerabilities. |
+| `npm run typecheck` | 0 | Passed. |
+| `npm run lint` | 0 | Passed. |
+| `npm run build` | 0 | Passed. |
+| `npx vitest run tests/app/documentation-links.test.ts` | 0 | Passed: **1 file, 10 tests**. |
+| `npx vitest run tests/app/openapi-coverage.test.ts` | 0 | Passed: **1 file, 6 tests**. |
+| `npm test` | 0 | Passed: **4 files, 112 tests**. |
+| `bash scripts/validation/run-postgres-validation.sh` | 0 | Full PostgreSQL validation passed end-to-end after resetting `phase28_ingestion` and `public`. |
+| `npx vitest run tests/app/documentation-links.test.ts` (post-index rerun) | 0 | Passed after adding `data/external/README.md`: **1 file, 10 tests**. |
+
+The 2026-08-14 pass made no runtime, schema, fixture, API semantic, or validation semantic changes.
