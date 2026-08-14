@@ -1211,10 +1211,16 @@ document['x-berean-fallback-routes'] = [
     description: 'After more-specific V1 routes are considered, otherwise unmatched methods and paths return 501 NOT_REPRESENTED. Generic V1 GET resource routes can instead return 404 NOT_FOUND for an unknown resource. Absence of representation is not falsity.'
   },
   {
+    method: 'ALL',
+    path: '/api/*',
+    response: '404 {"error":"route not found"}',
+    description: 'After every compatibility and V1 route is considered, an unmatched /api path returns a JSON 404 rather than the Explorer HTML shell, so API consumers never receive a 200 HTML body for a path that does not exist. Absence of a route is not a statement about the represented material.'
+  },
+  {
     method: 'GET',
     path: '*',
     response: '200 text/html',
-    description: 'Any other GET returns the read-only Explorer HTML shell.'
+    description: 'Any other non-/api GET returns the read-only Explorer HTML shell.'
   }
 ];
 

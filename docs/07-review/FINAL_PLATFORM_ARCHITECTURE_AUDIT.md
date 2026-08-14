@@ -753,3 +753,19 @@ violation keep this below `SIGNIFICANT GAPS`.
 - [`../api/OPENAPI_GAP_REPORT.md`](../api/OPENAPI_GAP_REPORT.md) and
   [`../api/VERIFICATION_REPORT.md`](../api/VERIFICATION_REPORT.md) — API coverage and verification
   evidence relied upon and independently re-verified by this audit.
+
+## 28. Subsequent verification (appended 2026-08-14; findings above unchanged)
+
+This section is an append-only pointer; nothing above it was rewritten. The Explorer/API findings of
+this audit were narrowed, re-verified, and (where fixed) marked in
+[`EXPLORER_API_INTEGRATION_AUDIT.md`](./EXPLORER_API_INTEGRATION_AUDIT.md), with live evidence in
+[`EXPLORER_TEST_REPORT.md`](./EXPLORER_TEST_REPORT.md) §9 and the canonical endpoint matrix in
+[`../api/API_EXPLORER_INTEGRATION_MATRIX.md`](../api/API_EXPLORER_INTEGRATION_MATRIX.md).
+
+- **F-02 / F-03** (self-referential entity graph edges, untested edge content) — fixed as F-EXP-01
+  with a regression test; re-confirmed live (2 `PARTICIPANT` edges, 0 self-loops).
+- **F-13** (no Explorer↔API contract test) — closed as F-EXP-02 by
+  `tests/app/explorer-contract.test.ts`.
+- **New, found after this audit:** unmatched `/api` paths returned `200 text/html` (the Explorer
+  shell) instead of a JSON 404 — fixed as F-EXP-03 with a regression test and OpenAPI/guide updates.
+- **F-01, F-04 through F-12, F-14** remain open exactly as recorded in §21; none was silently closed.

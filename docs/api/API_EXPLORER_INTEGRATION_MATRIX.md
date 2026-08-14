@@ -63,6 +63,15 @@ The `GET /api/graph` entity-neighborhood projection previously emitted self-refe
 [`../07-review/EXPLORER_API_INTEGRATION_AUDIT.md`](../07-review/EXPLORER_API_INTEGRATION_AUDIT.md)
 §7 (F-EXP-01) for full detail.
 
+## Unmatched `/api` paths (2026-08-14 verification pass)
+
+Any `/api` path that matches no compatibility or versioned route now returns
+`404 {"error":"route not found"}` as JSON. Previously an unmatched `GET /api/...` fell through to the
+Explorer HTML shell and returned `200 text/html`, which the client's `fetchJson` helper surfaced as
+the misleading `Request failed (200)`. The Explorer calls no such path, so no capability row above
+changes; the fix makes contract drift observable to the Explorer and to any other API consumer
+instead of silently succeeding. See `EXPLORER_API_INTEGRATION_AUDIT.md` §7 (F-EXP-03).
+
 ## Contract-test coverage
 
 `tests/app/explorer-contract.test.ts` (added in this pass) extracts the endpoint path Explorer calls

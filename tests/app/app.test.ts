@@ -503,6 +503,20 @@ describe('read-only API', () => {
     expect(response.status).toBe(404);
   });
 
+  it('answers unmatched compatibility API paths with a JSON 404 instead of the Explorer HTML shell', async () => {
+    for (const response of [
+      await request(app).get('/api/no-such-endpoint'),
+      await request(app).post('/api/no-such-endpoint').send({})
+    ]) {
+      expect(response.status).toBe(404);
+      expect(response.type).toBe('application/json');
+      expect(response.body.error).toBe('route not found');
+    }
+    const shell = await request(app).get('/not-an-api-path');
+    expect(shell.status).toBe(200);
+    expect(shell.type).toBe('text/html');
+  });
+
   it('explains complete direct claim provenance', async () => {
     const claimId = await getClaimIdByKey('CLAIM_MT_ADAM_FATHER_SETH');
     const before = await snapshotPersistentTableCounts();
