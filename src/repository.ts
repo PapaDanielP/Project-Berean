@@ -1521,12 +1521,12 @@ export class BereanRepository {
       );
 
       for (const row of related.rows) {
-        if (row.subject_entity_id && row.subject_entity_id !== nodeId) {
-          const from = addNode('entity', row.subject_entity_id as number, row.subject_entity_name as string);
+        if (row.subject_entity_id != null && Number(row.subject_entity_id) !== nodeId) {
+          const from = addNode('entity', Number(row.subject_entity_id), row.subject_entity_name as string);
           edges.push({ source: from, target: center, relation: row.predicate as string, claimId: row.claim_id as number });
         }
-        if (row.object_entity_id && row.object_entity_id !== nodeId) {
-          const to = addNode('entity', row.object_entity_id as number, row.object_entity_name as string);
+        if (row.object_entity_id != null && Number(row.object_entity_id) !== nodeId) {
+          const to = addNode('entity', Number(row.object_entity_id), row.object_entity_name as string);
           edges.push({ source: center, target: to, relation: row.predicate as string, claimId: row.claim_id as number });
         }
       }

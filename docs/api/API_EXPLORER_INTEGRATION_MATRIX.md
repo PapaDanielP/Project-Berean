@@ -1,0 +1,71 @@
+# API ↔ Explorer Integration Matrix
+
+This is the canonical Explorer/API integration matrix: for every endpoint the Explorer
+(`src/public/app.js` + the HTML shell in `src/app.ts`) calls, the actual request shape, actual
+response shape, epistemic interpretation, authentication, and test coverage. It does not duplicate
+the full endpoint reference in [`API_DEVELOPER_GUIDE.md`](./API_DEVELOPER_GUIDE.md) or the
+route-level matrix in [`API_CAPABILITY_MATRIX.md`](./API_CAPABILITY_MATRIX.md); it cross-references
+them and adds the Explorer-specific columns (UI entry point, client-side field usage, and the
+Explorer's own epistemic-safety handling).
+
+Ground truth inspected: `src/public/app.js` (630 lines), `src/app.ts`, `src/api/openapi.ts`,
+`tests/app/app.test.ts`, `tests/app/openapi-coverage.test.ts`, and
+`tests/app/explorer-contract.test.ts` (added alongside this document — see
+[`../07-review/EXPLORER_API_INTEGRATION_AUDIT.md`](../07-review/EXPLORER_API_INTEGRATION_AUDIT.md)
+§7).
+
+## Classification key
+
+- **IMPLEMENTED_AND_DOCUMENTED** — the route exists in the Express router and in `GET /openapi.json`.
+- **DOCUMENTED_AND_TESTED** — additionally covered by a behavior-level test.
+- All ten Explorer-called routes below are both.
+
+## Matrix
+
+| Capability | UI entry point | API | Request | Response fields the client reads | Epistemic interpretation | Auth | Tests |
+|---|---|---|---|---|---|---|---|
+| Research scope discovery | scope `<details>` panel, loaded on page load | `GET /api/research/scope` | none | `datasets[].dataset_id`, `.name`, `.source_name`, `.claim_count` | Scope selection is presentation over persisted datasets; it never creates a domain or reconciles identities (stated in the UI copy itself) | none (read-only, unauthenticated) | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Research question | "Ask Berean" form → `#researchButton` | `POST /api/research` | JSON `{question: string, datasetIds: number[]}` (empty array = all persisted datasets) | `capability`, `interpretation`, `plan.classification`, `plan.traversalShape`, `results[].classification`, `results[].claim_status_code`, `limitation` | `capability` values (`ESTABLISHED`, `NOT_REPRESENTED`, `UNRESOLVED`) are rendered as labelled sections, never collapsed into a single answer; `NOT_REPRESENTED` always renders the non-denial limitation text | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Keyword search | "Find represented records" form → `#searchButton` | `GET /api/search?q&limit` | `q` (≤ 200 chars), `limit` (positive integer; effective cap 50 rows server-side) | `results[].type`, `.id`, `.key`, `.label` | Every hit is labelled "Matched"; the standing note "Matches are not established claims" is always shown alongside results | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Entity detail | click an entity search/research hit | `GET /api/entities/{id}` | numeric `id` from a prior search/research response | `entity.canonical_name`, `sourceMappings[]`, `events[]`, `claims[]` | Source identity mappings are rendered with `mapping_status`, not collapsed into "identified" | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Claim detail | click a claim search/research hit | `GET /api/claims/{id}` | numeric `id` | `claim.claim_type_code`, `.claim_status_code`, `proposition`, `evidence[]`, `derivation`, `claimRelations[]` | `SUPERSEDED` claims render their status badge and retained evidence, never promoted; derived claims render a `Derivation` section instead of an invented citation | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Proposition detail | claim detail link | `GET /api/propositions/{id}` | numeric `id` | `proposition`, `claims[]` (may list multiple competing claims for one proposition) | Competing claims for the same proposition are listed side by side, not merged into one answer | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Event detail | click an event search/research hit | `GET /api/events/{id}` | numeric `id` | `event`, `participation[]` (from the `event_participation` view), `claims[]` | Participation rows render as "claim-asserted participation" with the asserting claim id, never as a synthesized relationship (e.g. employment) | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Source / dataset browsing | click a source search hit / source list | `GET /api/sources`, `GET /api/sources/{id}` | none / numeric `id` | `sources[]` / `source`, `datasets[]`, `sourceRecords[]` | none (pass-through metadata display) | none | code-traced; `tests/app/explorer-contract.test.ts` |
+| Provenance traversal | claim detail "Trace provenance" | `GET /api/provenance/claims/{id}` | numeric `id` | `traversal[]` (evidence → citation → source record → dataset → source chain) | A derived claim's traversal row with null evidence fields renders no invented citation; the intentional 200-with-empty-traversal behavior for a missing claim (vs. the versioned API's 404) is documented in OpenAPI, not treated as a bug | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Genesis coverage / quality dashboard | dashboard links | `GET /api/genesis/coverage`, `GET /api/dashboard/quality` | none | arbitrary structured JSON rendered as formatted text | Locator population state (e.g. `populated:false, source_unavailable:true`) is rendered as absence-of-representation, not as a false statement | none | `tests/app/app.test.ts`; `tests/app/explorer-contract.test.ts` |
+| Bounded relationship graph | "Expand selected node neighborhood" | `GET /api/graph?nodeType&nodeId` | `nodeType ∈ {entity, claim}`, numeric `nodeId` | `edges[].source`, `.target`, `.relation`, `.claimId` | An edge represents a persisted proposition between two distinct nodes; the client renders no edge as an assertion for a node not connected by a persisted proposition (self-referential edges were a defect — see below) | none | `tests/app/app.test.ts` (including the graph-content regression test added in this pass); `tests/app/explorer-contract.test.ts` |
+
+## Authentication
+
+The Explorer never sends an `Authorization` header, never stores or reads a token/credential, and
+never calls an authenticated or administrative route. All ten endpoints above are unauthenticated
+by design; the full authentication/authorization model for the routes the Explorer does **not**
+call is documented in [`API_SECURITY_MODEL.md`](./API_SECURITY_MODEL.md).
+
+## Endpoints the Explorer does not use
+
+The Explorer never calls `/api/v1/*`, `/api/exploration/timeline`, `/api/provenance/explain`, or
+`/api/derivations/check-eligibility`, although those are implemented, documented, and tested. This
+is a product-surface gap, not a contract defect (recorded as F-06 in
+[`../07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md`](../07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md)).
+No new API surface is required to close it; it would require an Explorer UI addition against
+existing documented endpoints.
+
+## Defect fixed as part of this integration audit
+
+The `GET /api/graph` entity-neighborhood projection previously emitted self-referential edges
+(`entity:X —predicate→ entity:X`) because of a string/number type-comparison bug in
+`src/repository.ts`. This has been fixed (numeric coercion) with a regression test in
+`tests/app/app.test.ts`. See
+[`../07-review/EXPLORER_API_INTEGRATION_AUDIT.md`](../07-review/EXPLORER_API_INTEGRATION_AUDIT.md)
+§7 (F-EXP-01) for full detail.
+
+## Contract-test coverage
+
+`tests/app/explorer-contract.test.ts` (added in this pass) extracts the endpoint path Explorer calls
+from `src/public/app.js` with a regular expression and asserts each one resolves to a route
+registered on the live Express application and documented in `GET /openapi.json`, reusing the
+route-collection approach already established in `tests/app/openapi-coverage.test.ts`. This is the
+smallest useful Explorer↔API contract test: it fails if a route the Explorer depends on is renamed,
+removed, or undocumented, without adding a browser-test framework or new dependency.
