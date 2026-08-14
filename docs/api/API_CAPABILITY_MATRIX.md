@@ -11,7 +11,7 @@ Authoritative architecture references:
 
 | Method / path | Auth / minimum role | Sync / async | Idempotent? | Concurrency control | Authoritative-knowledge impact | Classification | Tests / evidence |
 |---|---|---|---|---|---|---|---|
-| GET `/health` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
+| GET `/health` | none | sync | n/a | none | none | IMPLEMENTED | code-traced (behavior tests exercise `GET /api/v1/health`, not this compatibility alias) |
 | GET `/openapi.json` | none | sync | n/a | none | none | IMPLEMENTED (complete for the implemented route surface) | `tests/app/app.test.ts`, `tests/app/openapi-coverage.test.ts` |
 | GET `/api-docs` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/research/scope` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts`, manual 2026-08-13 |
@@ -34,19 +34,19 @@ Authoritative architecture references:
 | GET `/api/v1/health` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/v1/capabilities` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/v1/schema` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
-| GET `/api/v1/registry/:registry` | none | sync | n/a | none | none | IMPLEMENTED | manual 2026-08-13 |
+| GET `/api/v1/registry/:registry` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (`registry/predicates`), `tests/app/openapi-coverage.test.ts` (`registry/capabilities` 307 redirect), manual 2026-08-13 |
 | GET `/api/v1/search/:resource?` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (every supported filter, unknown filter 404, unindexed 501, `NO_MATCH`) |
-| POST `/api/v1/research` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
+| POST `/api/v1/research` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/v1/research/capabilities` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/v1/provenance/claim/:id` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (missing claim returns 404) |
 | GET `/api/v1/graph/entity/:id` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
-| GET `/api/v1/:resource/:id` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts`, code-traced |
-| GET `/api/v1/:resource` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts`, code-traced |
+| GET `/api/v1/:resource/:id` | none | sync | n/a | none | none | IMPLEMENTED | code-traced (route surface asserted by `tests/app/openapi-coverage.test.ts`; no behavior test issues a generic single-resource read) |
+| GET `/api/v1/:resource` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (`/api/v1/entities`) |
 | wildcard other `/api/v1/*` methods/paths | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (`501 NOT_REPRESENTED` for unmatched methods/paths) |
 | GET `/api/v1/admin/:resource` | bearer / `READER` | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (unsupported resource returns 404 without leakage) |
 | POST `/api/v1/corpora` | bearer / `ADMINISTRATOR` | sync | no | none | none (workflow only) | IMPLEMENTED | `tests/app/app.test.ts`, manual 2026-08-13 |
 | PATCH `/api/v1/corpora/:id` | bearer / `ADMINISTRATOR` | sync | no | `If-Match` integer version; stale => `409 STALE_VERSION`, no partial commit | none (workflow only) | IMPLEMENTED | `tests/app/app.test.ts` (stale write leaves name, status, version, and audit count unchanged) |
-| POST `/api/v1/research-topics` | bearer / `RESEARCHER` | sync | no | none | none (workflow only) | IMPLEMENTED | code-traced, manual 2026-08-13 |
+| POST `/api/v1/research-topics` | bearer / `RESEARCHER` | sync | no | none | none (workflow only) | IMPLEMENTED | `tests/app/app.test.ts`, manual 2026-08-13 |
 | POST `/api/v1/discovery-requests` | bearer / `RESEARCHER` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none (workflow only) | IMPLEMENTED, REQUIRES_SYSTEM_WORKER | `tests/app/app.test.ts`, manual 2026-08-13 |
 | POST `/api/v1/discovery-requests/:id/candidates` | bearer / `RESEARCHER` | sync | no | none | proposed workflow only | IMPLEMENTED, REQUIRES_HUMAN_REVIEW | `tests/app/app.test.ts`, manual 2026-08-13 |
 | POST `/api/v1/candidates/:id/review` | bearer / `REVIEWER` | sync | upsert by candidate | none | reviewed workflow only | IMPLEMENTED, REQUIRES_HUMAN_REVIEW | `tests/app/app.test.ts`, manual 2026-08-13 |
@@ -60,8 +60,20 @@ Authoritative architecture references:
 | POST `/api/v1/ingestion-jobs` | bearer / `CONTENT_EDITOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | IMPLEMENTED (queue persistence), REQUIRES_SYSTEM_WORKER (execution) | code-traced |
 | POST `/api/v1/validation-runs` | bearer / `REVIEWER` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | IMPLEMENTED (queue persistence), REQUIRES_SYSTEM_WORKER (execution) | `tests/app/app.test.ts` |
 | POST `/api/v1/export-jobs` | bearer / `ADMINISTRATOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | IMPLEMENTED (queue persistence), REQUIRES_SYSTEM_WORKER (execution) | code-traced |
-| POST `/api/v1/jobs/:id/cancel` | bearer / `CONTENT_EDITOR` plus job-type/ownership checks | sync | no | job status gate | none (workflow only) | IMPLEMENTED | manual 2026-08-13 |
+| POST `/api/v1/jobs/:id/cancel` | bearer / `CONTENT_EDITOR` plus job-type/ownership checks | sync | no | job status gate | none (workflow only) | IMPLEMENTED | `tests/app/app.test.ts` (unknown job returns `404` without leakage), manual 2026-08-13 |
 | POST `/api/v1/jobs/:id/retry` | bearer / `CONTENT_EDITOR` plus job-type/ownership checks | sync | no | job status gate | none (workflow only) | IMPLEMENTED | manual 2026-08-13 |
+
+### Evidence column legend
+
+- **`tests/app/*.ts`** — the route is exercised at HTTP behavior level by the named suite.
+- **code-traced** — the route's existence and documentation are enforced by
+  [`tests/app/openapi-coverage.test.ts`](../../tests/app/openapi-coverage.test.ts), which walks the live Express
+  route stack, but no suite asserts its response body. Route-surface coverage is not behavior coverage.
+- **manual `<date>`** — a one-time manual observation recorded in
+  [`VERIFICATION_REPORT.md`](./VERIFICATION_REPORT.md); it is not re-executed by CI.
+
+The current code-traced (behavior-untested) set is enumerated under `IMPLEMENTED_BUT_UNTESTED` in
+[`OPENAPI_GAP_REPORT.md`](./OPENAPI_GAP_REPORT.md).
 
 ## What APIs can do today
 

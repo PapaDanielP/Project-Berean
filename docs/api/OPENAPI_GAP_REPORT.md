@@ -42,18 +42,71 @@ Express path to its OpenAPI form, and asserts:
 
 ## Explicit current gap status
 
-| Category | Current status | Evidence |
-|---|---|---|
-| `IMPLEMENTED_AND_DOCUMENTED` | All implemented non-static route method/path pairs are documented in `src/api/openapi.ts`. | `tests/app/openapi-coverage.test.ts` assertion `documents every implemented route and method` |
-| `IMPLEMENTED_BUT_UNDOCUMENTED` | None identified. | `tests/app/openapi-coverage.test.ts` fails on any missing operation |
-| `DOCUMENTED_BUT_NOT_IMPLEMENTED` | None identified. | `tests/app/openapi-coverage.test.ts` assertion `does not document routes that are not implemented` |
-| `IMPLEMENTED_BUT_UNTESTED` | None identified at route-surface level; route/documentation drift and fallback declarations are tested. Some behavior-level checks remain `code-traced` in `API_CAPABILITY_MATRIX.md`. | `tests/app/openapi-coverage.test.ts`; `docs/api/API_CAPABILITY_MATRIX.md` |
-| `DOCUMENTED_AND_TESTED` | Documented route surface and OpenAPI metadata are test-enforced; behavior-level API assertions are covered in `tests/app/app.test.ts` and `tests/app/phase28-ingestion.test.ts`. | `tests/app/openapi-coverage.test.ts`; `tests/app/app.test.ts`; `tests/app/phase28-ingestion.test.ts` |
-| `OPENAPI_ONLY` | None identified for live route definitions. Fallback behavior is intentionally recorded in `x-berean-fallback-routes` instead of fake concrete paths. | `src/api/openapi.ts`; `tests/app/openapi-coverage.test.ts` |
+Measured on 2026-08-14 by introspecting the live Express route stack of `createApp()` and the object returned by
+`openApiDocument()` (the same mechanism used by `tests/app/openapi-coverage.test.ts`), and by cross-referencing the
+paths exercised in `tests/app/app.test.ts`, `tests/app/openapi-coverage.test.ts`, and `tests/app/phase28-ingestion.test.ts`.
 
-- **Remaining OpenAPI gaps:** none at route-surface level for implemented non-static routes.
+Measured surface: **51 registered Express route/method pairs** — 49 addressable routes plus 2 wildcard fallback
+layers (`GET *` Explorer shell, `ALL /api/v1/*`). The OpenAPI document declares **50 operations across 50 paths**;
+the count differs from 49 because the single Express layer `GET /api/v1/search/:resource?` is documented as the two
+addressable paths `/api/v1/search` and `/api/v1/search/{resource}`, and the 2 fallback layers are described under
+`x-berean-fallback-routes` rather than as paths.
 
-Note: route-surface completeness does not replace behavior-level testing for every response shape.
+### IMPLEMENTED_AND_DOCUMENTED
+
+All 49 addressable routes, plus both fallback layers. Enforced in both directions by
+`tests/app/openapi-coverage.test.ts`.
+
+### IMPLEMENTED_BUT_UNDOCUMENTED
+
+None. Every registered method/path pair resolves to an operation in `paths` or to an entry in
+`x-berean-fallback-routes`; a new undocumented route fails the suite.
+
+### DOCUMENTED_BUT_NOT_IMPLEMENTED
+
+None. Every documented path/method maps to a registered route; the suite rejects phantom operations.
+
+### OPENAPI_ONLY
+
+None. This category is empty for the same reason as `DOCUMENTED_BUT_NOT_IMPLEMENTED`: the document cannot describe a
+path that the route stack does not register.
+
+### IMPLEMENTED_BUT_UNTESTED
+
+Route-surface coverage is complete, but the following 12 routes have **no behavior-level assertion** in any suite.
+They are documented and their existence is enforced, yet no test inspects their responses:
+
+| Route | Documented | Route surface enforced | Behavior test |
+|---|---|---|---|
+| `GET /health` | yes | yes | none (only `GET /api/v1/health` is asserted) |
+| `GET /api-docs` | yes | yes | none |
+| `GET /api/sources` | yes | yes | none |
+| `GET /api/sources/{sourceId}` | yes | yes | none |
+| `GET /api/dashboard/quality` | yes | yes | none |
+| `GET /api/v1/schema` | yes | yes | none |
+| `GET /api/v1/research/capabilities` | yes | yes | none |
+| `GET /api/v1/graph/entity/{id}` | yes | yes | none |
+| `GET /api/v1/{resource}/{id}` | yes | yes | none (generic single-resource read) |
+| `POST /api/v1/ingestion-jobs` | yes | yes | none over HTTP; the ingestion pipeline module is covered by `tests/app/phase28-ingestion.test.ts` |
+| `POST /api/v1/export-jobs` | yes | yes | none |
+| `POST /api/v1/jobs/{id}/retry` | yes | yes | none (`POST /api/v1/jobs/{id}/cancel` is asserted) |
+
+This is a **reported test-coverage gap, not a documentation gap**. It is recorded here rather than closed, because
+closing it means adding behavior tests, which is an implementation change outside the scope of a documentation audit.
+An earlier statement in this report ("implemented but untested endpoints: none identified at route-surface level")
+was true only of the route surface; the enumeration above is the behavior-level answer.
+
+### DOCUMENTED_AND_TESTED
+
+The remaining **37 addressable routes plus both fallback layers** are documented *and* have behavior-level
+assertions in `tests/app/app.test.ts` (with `GET /openapi.json` and the `GET /api/v1/registry/capabilities`
+redirect additionally asserted in `tests/app/openapi-coverage.test.ts`). Per-route evidence is recorded in
+[`API_CAPABILITY_MATRIX.md`](./API_CAPABILITY_MATRIX.md).
+
+### Remaining OpenAPI gaps
+
+None at route-surface level for implemented non-static routes. Route-surface completeness does not replace
+behavior-level testing for every response shape, and no runtime change was made to improve any count above.
 
 ## Deliberate documentation boundaries
 
