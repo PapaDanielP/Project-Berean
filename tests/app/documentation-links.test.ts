@@ -140,7 +140,11 @@ describe('documentation navigation and link integrity', () => {
     expect(structureDoc).toMatch(/Placement rules for new contributions/i);
   });
 
-  it('contains the consolidation audit in docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md', () => {
+  it('contains current and prior governance audits under docs/07-review', () => {
+    const governanceReport = read('docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md');
+    expect(governanceReport).toMatch(/Executive summary/i);
+    expect(governanceReport).toMatch(/Authority model/i);
+
     const report = read('docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md');
     expect(report).toMatch(/Authority hierarchy/i);
     expect(report).toMatch(/API documentation audit/i);
@@ -156,7 +160,10 @@ describe('documentation navigation and link integrity', () => {
     // The consolidation report itself discusses these fragments as illustrative negative
     // examples (paths that were considered and intentionally not adopted); exclude it from
     // this scan so that discussing them does not trip the guard meant for live references.
-    const exemptFiles = new Set(['docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md']);
+    const exemptFiles = new Set([
+      'docs/07-review/REPOSITORY_CONSOLIDATION_REPORT.md',
+      'docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md'
+    ]);
     const markdownFiles = collectMarkdownFiles('docs')
       .concat(collectMarkdownFiles('.').filter(
         (file) => !file.startsWith('docs/') && !file.includes('node_modules')
