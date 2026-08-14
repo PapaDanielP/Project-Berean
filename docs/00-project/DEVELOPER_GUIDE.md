@@ -2,7 +2,7 @@
 
 ## Scope and prerequisites
 
-This is a pre-beta PostgreSQL 16 reference baseline, not an application or ingestion tool. Install a PostgreSQL 16 server and client (`psql`), create an empty database, and set `DATABASE_URL` to its connection URL.
+This is a pre-beta PostgreSQL 16 reference baseline with a read-only Explorer/API and an ingestion entry point. Install a PostgreSQL 16 server and client (`psql`), create an empty database, and set `DATABASE_URL` to its connection URL.
 
 ## Clean setup and validation
 

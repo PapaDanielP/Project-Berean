@@ -355,3 +355,35 @@ results and 0 console/page errors.
 - No load, concurrency, or long-running-job testing was performed; queued-job and administrative
   behavior remains covered by `tests/app/app.test.ts` and `tests/app/phase28-ingestion.test.ts`
   rather than by live Explorer workflows (the Explorer exposes no administrative surface).
+
+## 10. Constrained Explorer maturity remediation verification (2026-08-14, this change set)
+
+### 10.1 Commands executed and outcomes
+
+| Command | Exit | Observations |
+|---|---|---|
+| `npm ci` | 0 | 287 packages installed, 0 vulnerabilities |
+| `npm run typecheck` | 0 | `tsc --noEmit` clean |
+| `npm run lint` | 0 | ESLint clean |
+| `npm run build` | 0 | `tsc -p tsconfig.json` clean |
+| `npm test` (first run) | 1 | failed with `relation "source_type" already exists` due pre-existing schema state |
+| `psql ... DROP SCHEMA IF EXISTS phase28_ingestion; DROP SCHEMA IF EXISTS public; CREATE SCHEMA public;` | 0 | required reset applied |
+| `npm test` (after reset) | 0 | 5 files, 143 tests passed |
+| `npx vitest run tests/app/documentation-links.test.ts` | 0 | 11 passed |
+| `bash scripts/validation/run-postgres-validation.sh` | 0 | completed; `All validation self-test cases passed.` |
+| `npx vitest run tests/app/explorer-contract.test.ts tests/app/app.test.ts` | 0 | affected Explorer/API tests passed (91 tests) |
+
+### 10.2 Implemented behavior checks covered by tests
+
+- Explorer shell now includes the "How to interpret Berean results" guidance and explicit
+  `NO_MATCH` / `NOT_REPRESENTED` distinction (`tests/app/app.test.ts`).
+- Explorer client wording keeps `NO_MATCH` and `NOT_REPRESENTED` distinct and replaces the
+  ambiguous "What Berean Establishes" heading with "Directly source-backed claims"
+  (`tests/app/explorer-contract.test.ts`).
+- Explorer↔API compatibility-route contract coverage remains enforced (`tests/app/explorer-contract.test.ts`).
+
+### 10.3 Browser limitation for this change set
+
+No browser automation was run in this constrained pass. Existing browser evidence for Explorer
+runtime behavior remains documented in §9 above; this pass relied on focused + full automated tests
+and did not claim additional live-browser verification.

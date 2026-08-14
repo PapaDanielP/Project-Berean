@@ -104,4 +104,13 @@ describe('Explorer <-> API contract', () => {
   it.each(explorerCalls)('Explorer call %s is documented in the OpenAPI paths', (call) => {
     expect(normalizedDocumented.has(call), `no OpenAPI path matches Explorer call ${call}`).toBe(true);
   });
+
+  it('keeps NO_MATCH and NOT_REPRESENTED distinct in Explorer wording', () => {
+    expect(explorerSource).toContain('NOT_REPRESENTED');
+    expect(explorerSource).toContain('outside the represented query capability');
+    expect(explorerSource).toContain('NO_MATCH');
+    expect(explorerSource).toContain('supported query found no matching represented claim');
+    expect(explorerSource).toContain('Directly source-backed claims');
+    expect(explorerSource).not.toContain('What Berean Establishes');
+  });
 });

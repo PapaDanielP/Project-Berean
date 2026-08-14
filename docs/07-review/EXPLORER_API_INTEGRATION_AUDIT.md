@@ -250,3 +250,19 @@ The classification is unchanged: **PASS WITH NON-BLOCKING FINDINGS.**
 - [`EXPLORER_TEST_REPORT.md`](./EXPLORER_TEST_REPORT.md) — exact commands and results for this pass.
 - [`DOCUMENTATION_GOVERNANCE_AUDIT.md`](./DOCUMENTATION_GOVERNANCE_AUDIT.md) — documentation
   governance and link-integrity audit.
+
+## 11. Constrained remediation finding classification (A/B/C/D/E)
+
+| ID | Finding | Classification | Action in this pass |
+|---|---|---|---|
+| R-01 | Explorer heading "What Berean Establishes" could be read as universal truth | **A MUST FIX** | Fixed: wording changed to "Directly source-backed claims" and explanatory copy retained in `src/public/app.js` |
+| R-02 | Ask Berean wording could be interpreted as unrestricted reasoning | **A MUST FIX** | Fixed: research copy now states bounded persisted retrieval and no unrestricted historical Q&A in `src/app.ts` |
+| R-03 | `NO_MATCH` vs `NOT_REPRESENTED` distinction not explicit enough for first-time users | **A MUST FIX** | Fixed: interpretation guide + capability descriptions explicitly distinguish both and state neither means false |
+| R-04 | Explorer `fetchJson` should preserve safe distinctions for known API error categories when available | **B SHOULD FIX** | Fixed minimally: known-code mapping for `NOT_FOUND`, `NOT_REPRESENTED`, and `INVALID_REQUEST` while preserving safe generic fallback |
+| R-05 | Compatibility `/api/*` surface should be audited before any migration | **C DOCUMENT** | Documented: compatibility route preserved intentionally; no forced migration to `/api/v1/*` |
+| R-06 | Search result types without dedicated detail routes (`dataset`, `source_record`, `citation`, `source_identity`) | **D DEFER** | Unchanged by design: explicit bounded limitation message retained (`No dedicated bounded detail endpoint exists…`) |
+| R-07 | Provenance elements should only be interactive when routes exist | **E FALSE POSITIVE** | No defect found: only claim provenance button is interactive and calls existing `GET /api/provenance/claims/{id}` route |
+| R-08 | Identity mapping statuses may imply certainty | **C DOCUMENT** | Existing mapping-status rendering retained; interpretation guide clarifies represented status is not truth/certainty |
+
+No schema, ingestion, or administrative-route semantics were changed. Explorer remains read-only and
+API-mediated.

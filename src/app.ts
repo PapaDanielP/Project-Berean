@@ -32,7 +32,7 @@ const homeHtml = `<!doctype html>
   <header>
     <p class="eyebrow">Provenance-aware scholarly research</p>
     <h1>Project Berean Explorer</h1>
-    <p class="subtitle">Inspect what represented sources, evidence, claims, relationships, and provenance can establish—and what remains unresolved or unrepresented.</p>
+    <p class="subtitle">Inspect what represented sources, evidence, claims, relationships, and provenance report—and what remains unresolved or unrepresented.</p>
     <span class="read-only">Read-only</span>
   </header>
   <main>
@@ -43,7 +43,18 @@ const homeHtml = `<!doctype html>
       <div>
         <p class="eyebrow">Natural-language research</p>
         <h2 id="research-heading">Ask Berean</h2>
-        <p>Berean answers only from represented, persisted structures. It does not generate conclusions.</p>
+        <p>Berean answers only from represented, persisted structures. It does not generate conclusions or provide unrestricted historical Q&amp;A.</p>
+        <details class="interpretation-guide">
+          <summary>How to interpret Berean results</summary>
+          <ul>
+            <li><strong>ESTABLISHED</strong>: represented direct source-backed claims in persisted data, not universal truth.</li>
+            <li><strong>DERIVED</strong>: represented derivations from persisted structure with explicit derivation metadata.</li>
+            <li><strong>SCHOLARLY_CANDIDATE</strong>: represented scholarly interpretation retained without promotion to truth.</li>
+            <li><strong>UNRESOLVED</strong>: represented material remains unresolved or under review.</li>
+            <li><strong>NO_MATCH</strong>: this supported question found no matching persisted claim in scope; it is not a false verdict.</li>
+            <li><strong>NOT_REPRESENTED</strong>: Berean does not currently represent that question or conclusion; it is not a false verdict.</li>
+          </ul>
+        </details>
         <form id="researchForm">
           <label for="researchQuestion">Research question</label>
           <div class="row">
