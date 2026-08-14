@@ -364,3 +364,165 @@ research-integrity next step.
   - D-7 derived provenance semantic split refinements;
   - D-8 expanded per-result provenance payload;
   - D-5 broader pagination architecture work.
+
+## 13. D-1/D-2 post-remediation verification follow-up (2026-08-14)
+
+### 13.1 Frozen system under test and complete diff review
+
+- **Repository/ref:** `PapaDanielP/Project-Berean`,
+  `copilot/verify-d1-d2-remediation`.
+- **Frozen verification baseline:** `b68ed049fbdebea613defc2d9bb256b643a718fe`. Its tree is
+  identical to remediation merge `27cd328968b183d5978910839d6f30f931e55da4` (PR #77);
+  `b68ed049` only records the follow-up plan.
+- **Initial status:** clean, tracking `origin/copilot/verify-d1-d2-remediation`, with no staged,
+  unstaged, or untracked files.
+- The clone was unshallowed before comparison. The complete 759-line patch from the remediation
+  merge's first parent was read, not only its stat/name-status. It changes 10 expected files:
+  `src/repository.ts`, `src/api/openapi.ts`, `src/public/app.js`, `tests/app/app.test.ts`, this
+  current audit, and five current API documents.
+- No schema, fixture, historical phase record, data record, secret, database, log, generated, or
+  scratch file occurs in that diff. `git diff --check 27cd328^1..27cd328` passed.
+
+Verification used Node.js 24.18.0, npm 11.16.0, PostgreSQL 16.14, and Chromium 150.0.7871.0.
+The clean disposable `berean_test` database was loaded by
+`scripts/validation/run-postgres-validation.sh`, which creates both core and administration
+schemas and replays the Phase 30–37 fixtures/validations. The resulting corpus contained 45 public
+base tables, 157 entities, 115 events, 361 claims, 349 propositions, and 191 evidence rows.
+
+### 13.2 D-1 semantic verification
+
+**PASS.** `resolveResearchSubject()` searches existing `entity`, `event`, and `source_identity`
+labels. A source identity is promoted only through exactly one `ACTIVE`
+`entity_source_mapping`; zero active mappings remain `UNRESOLVED_SOURCE_IDENTITY`, and multiple
+active mappings remain `AMBIGUOUS`. Equal strongest candidates consolidate only when they identify
+the same represented entity.
+
+Retrieval then joins `claim` to its authoritative `proposition` and requires either
+`p.subject_entity_id = resolved entity` or `p.subject_event_id = resolved event` before dataset
+scope, classification, or result return. Predicate-only cross-subject rows therefore cannot enter
+the result set. No subject-specific answer map, unrestricted inference, truth adjudication, new
+relationship authority, or fabricated provenance was introduced.
+
+Code review plus tests/live requests covered:
+
+| Case | Observed outcome |
+|---|---|
+| One represented entity (`God`) | `RESOLVED`; 23 subject-bound direct rows; `ESTABLISHED` |
+| Wrong-subject participation predicate | `RESOLVED`; zero rows; `NO_MATCH` |
+| Same question names `Adam` and `Seth` | `AMBIGUOUS`; zero rows; `UNRESOLVED` |
+| Unmapped source identity (`Edison`) | `UNRESOLVED_SOURCE_IDENTITY`; zero rows; `UNRESOLVED` |
+| Active source-identity alias (`the tablets of the covenant`) | `RESOLVED` via `SOURCE_IDENTITY_ACTIVE_MAPPING` |
+| Absent subject | `NO_SUBJECT`; zero rows; `NOT_REPRESENTED` |
+| Represented entity with no matching claim (`Earth`/`fatherOf`) | zero rows; `NO_MATCH` |
+| Event subject (`enosh_begetting`) | subject-bound derived rows only; `DERIVED` |
+| Direct/derived boundary | direct rows remain evidence-classified; derived rows remain `DERIVED_FROM_PERSISTED_GRAPH` |
+
+Ambiguous/unresolved identity responses cannot reach result classification and therefore cannot
+yield `ESTABLISHED`. The permanent wrong-subject, ambiguity, unresolved-identity, absent-subject,
+and represented-no-match assertions in `tests/app/app.test.ts` exercise response semantics rather
+than weakening expected values.
+
+### 13.3 D-2 truncation transparency and contract parity
+
+**PASS with one demonstrated-corpus limitation.** The `subject_bound` CTE is counted with
+`COUNT(*) OVER()` before `LIMIT 50`. Results are ordered by
+`claim_id, claim_evidence_id NULLS LAST, dataset_id NULLS LAST, source_key NULLS LAST`. The response
+sets `returned` from the actual result-array length and `truncated` from
+`total_matched > returned`; the explicit limit is 50. Both research routes call the same repository
+method and returned byte-identical successful payloads. OpenAPI and current API documents describe
+the same fields/order, and actual Chromium rendering displayed “Returned 23 of 23 matched rows.”
+
+The validated corpus's largest subject/predicate result set was 23 rows. It therefore demonstrated
+the below-limit path (`total_matched = returned = 23`, `truncated = false`) but could not produce a
+real over-limit response. No artificial claims or provenance were inserted merely to force
+truncation. The pre-limit window count and truncation expression were instead verified directly in
+the complete SQL/logic review. This is a documented verification limitation, not evidence of a
+runtime defect.
+
+### 13.4 Explicit non-mutation evidence
+
+Nine representative cases (direct, ambiguous, unresolved identity, absent subject, `NO_MATCH`,
+`NOT_REPRESENTED`, derived, bounded, active mapping/wrong-subject) were each sent twice to each
+research route: 36 requests total. Before and after, every row of every one of the 45 public base
+tables was serialized deterministically and SHA-256 hashed, so updates as well as row-count changes
+would be detected. All table counts and hashes were unchanged.
+
+The focused snapshot digest was
+`8515a2f72ab3b7396a045ace2331680f652a67fab51a79881e3b0d8f8867ee92`.
+Representative counts included: source 30; dataset 36; source_record 179; citation 179; evidence
+191; evidence_citation 191; claim 361; claim_evidence 379; proposition 349; derivation 3;
+derivation_input 6; entity_source_mapping 110; audit_event 0; asynchronous_job 0; research_topic
+0; discovery_request 0; validation_run 0. Research inserted, updated, and deleted none of them.
+
+### 13.5 Reproducibility
+
+Within one unchanged corpus, all repeated responses were byte-identical; no response fields were
+excluded. Comparisons included capability, complete `subject_resolution`, plan, ordered claim keys,
+classifications, bounded metadata, source/dataset provenance fields, and result ordering.
+Compatibility and v1 responses were also identical.
+
+After dropping/recreating both schemas and rerunning the deterministic validation loader, the same
+representative responses remained byte-identical; their combined evidence digest was
+`ba57e7aed0aac7393e30d2006c6a32094d18cafce3146c3994169b9dd15cb7c9`.
+Raw database hashes across the two independent loads were not expected to be identical:
+`source.created_at`, `dataset.created_at`, `source_record.imported_at`, and
+`derivation.created_at` use `CURRENT_TIMESTAMP`. Counts and API outputs were identical, and these
+database-only load timestamps do not occur in research responses.
+
+### 13.6 Actual browser, API/UI parity, and security verification
+
+The Playwright MCP transport was unavailable, but a real installed Chromium process was launched
+headlessly and driven through the browser's DevTools protocol against the built app and validated
+database. This is actual browser execution, not a static-contract-only claim.
+
+The run verified page and 36-dataset scope load; keyword search; entity detail; claim/evidence
+detail; graph expansion; direct, `NO_MATCH`, `NOT_REPRESENTED`, ambiguous, unresolved, and derived
+research; and bounded metadata display. It observed 13 API requests, all to read-only compatibility
+routes, with zero `Authorization` headers and zero administration-route calls. Static client review
+also found no SQL, database connection, token, credential, or `/api/v1` administration call.
+
+The XSS-like search `<img src=x onerror=alert(1)>` produced the safe empty state, zero injected
+`img` nodes, and zero injected event-handler attributes. Browser totals were zero console errors
+and zero page exceptions.
+
+### 13.7 Commands and results
+
+| Command/evidence | Result |
+|---|---|
+| `npm ci` | exit 0; 287 packages; 0 vulnerabilities; warning for locked `esbuild` install script approval |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | exit 0 |
+| `npm run build` | exit 0 |
+| `npx vitest run tests/app/documentation-links.test.ts` | exit 0; 11 passed |
+| `npx vitest run tests/app/openapi-coverage.test.ts` | initial exit 1: shell lacked `DATABASE_URL`; rerun exit 0, 6 passed |
+| `npx vitest run tests/app/explorer-contract.test.ts` | exit 0; 28 passed |
+| `npx vitest run tests/app/app.test.ts` | initial exit 1: hostless URL selected TCP/SCRAM; explicit Unix-socket URL rerun exit 0, 67 passed |
+| `npm test` | exit 0; 147 passed in 5 files |
+| `bash scripts/validation/run-postgres-validation.sh` on a clean database | exit 0; no warning/error matches; “All validation self-test cases passed.” |
+| Fresh-schema validation reload and response comparison | loader exit 0; representative responses identical |
+| 36-request hash/repeat/parity probe | exit 0; all 45 table snapshots unchanged |
+| Actual Chromium DevTools-protocol smoke run | exit 0; 0 console errors, 0 page errors, 0 XSS nodes |
+| GitHub Actions run `31843801786` | `action_required`, zero jobs and therefore no failed-job logs; approval/infrastructure state, not a repository failure |
+
+### 13.8 Findings and disposition
+
+| ID | Finding | Classification | Disposition |
+|---|---|---|---|
+| PV-01 | Residual D-1 subject-binding concern | **E FALSE POSITIVE** | Complete SQL review, regressions, and live adversarial cases verify subject-bound retrieval |
+| PV-02 | Residual D-2 metadata/route/UI parity concern | **E FALSE POSITIVE** | Count/order/limit logic, route parity, OpenAPI, and browser display agree |
+| PV-03 | No represented result set exceeds 50 rows | **C DOCUMENT** | Limitation recorded; no fabricated knowledge added |
+| PV-04 | Fresh loads have differing database timestamps | **C DOCUMENT** | Expected `CURRENT_TIMESTAMP` metadata; response reproducibility is exact |
+| PV-05 | `/api/v1/research` validation text does not mention the 1000-character question bound | **D DEFER** | Existing non-semantic wording issue; validation and OpenAPI are correct and unrelated to D-1/D-2 |
+| PV-06 | Actions run has `action_required` and no jobs | **E FALSE POSITIVE** | External approval/runtime state; local repository gates pass |
+
+### 13.9 Recommendation
+
+**PASS WITH NON-BLOCKING FINDINGS.** D-1 and D-2 are semantically and operationally verified on the
+frozen remediation tree. Research is read-only and reproducible, API/OpenAPI/Explorer behavior is
+aligned, actual browser execution passed, and no scholarly data or provenance was fabricated.
+PV-03 through PV-05 are non-blocking and do not justify implementation changes in this focused
+follow-up.
+
+Project Berean is ready for **Blind Scholarly Research Evaluation #2**, subject to treating the
+documented lack of an organically over-limit corpus case as a coverage limitation rather than a
+claim that truncation itself was observed.
