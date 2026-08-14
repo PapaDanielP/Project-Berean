@@ -115,10 +115,15 @@ Implementation reviewed:
 - `src/administration/service.ts`
 - `src/administration/repository.ts`
 - `src/ingestion/*`
-- `schema/sql/*.sql`
-- `tests/app/*.test.ts`
-- `tests/fixtures/*.sql`
-- `tests/validation/*`
+- `schema/sql/001_core_schema.sql`
+- `schema/sql/002_validation_queries.sql`
+- `schema/sql/003_administration_workflow.sql`
+- `tests/app/app.test.ts`
+- `tests/app/openapi-coverage.test.ts`
+- `tests/app/phase28-ingestion.test.ts`
+- `tests/app/documentation-links.test.ts`
+- `tests/fixtures/010-synthetic-structural-fixture.sql` through `tests/fixtures/145-phase37r-worlds-columbian-exposition-expanded-population-fixture.sql`
+- `tests/validation/phase6-regression.sql` through `tests/validation/phase37r-worlds-columbian-exposition-population-validation.sql` and supporting coverage/slice validators in the same directory
 - `scripts/validation/run-postgres-validation.sh`
 - `scripts/acquisition/fetch-stepbible.sh`
 - relevant existing docs under `docs/**`

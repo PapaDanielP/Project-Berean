@@ -150,6 +150,12 @@ describe('documentation navigation and link integrity', () => {
     expect(report).toMatch(/API documentation audit/i);
   });
 
+  it('contains the documentation governance audit in docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md', () => {
+    const report = read('docs/07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md');
+    expect(report).toMatch(/Executive summary/i);
+    expect(report).toMatch(/OpenAPI/i);
+  });
+
   it('contains no references to obsolete/superseded canonical documentation paths', () => {
     // The consolidation report itself discusses these fragments as illustrative negative
     // examples (paths that were considered and intentionally not adopted); exclude it from
