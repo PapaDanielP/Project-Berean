@@ -1,8 +1,8 @@
 # Documentation Governance Audit
 
-**Status:** ACTIVE — current documentation governance and integrity audit  
-**Scope:** Documentation authority, consolidation enforcement, API-documentation integrity, OpenAPI status, and local-link/path integrity.  
-**Authority:** REVIEW / AUDIT (non-authoritative for runtime behavior; implementation/schema/tests remain authoritative).  
+**Status:** ACTIVE — current documentation governance and integrity audit
+**Scope:** Documentation authority, consolidation enforcement, API-documentation integrity, OpenAPI status, and local-link/path integrity.
+**Authority:** REVIEW / AUDIT (non-authoritative for runtime behavior; implementation/schema/tests remain authoritative).
 **Last verified:** 2026-08-14
 
 ## Executive summary
