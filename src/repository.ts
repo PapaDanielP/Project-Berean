@@ -6,6 +6,19 @@ const boundedLimit = (value: number | undefined, fallback: number, max: number):
   return Math.max(1, Math.min(max, value));
 };
 
+// Deterministic presentation order for research results. Ordering is derived from durable,
+// project-defined knowledge keys (never generated surrogate ids) so logically equivalent databases
+// return the same sequence. It is a presentation order only: earlier rows are not more true,
+// more authoritative, or more relevant than later rows. Generated ids remain only as a final
+// tie-breaker after the durable keys have already fully determined the order.
+const RESEARCH_RESULT_ORDER = [
+  'claim_key',
+  'evidence_key',
+  'evidence_relation_type_code',
+  'dataset_key',
+  'source_key'
+] as const;
+
 export class BereanRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -310,7 +323,7 @@ export class BereanRepository {
         capability: 'NOT_REPRESENTED',
         plan,
         results: [],
-        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: [...RESEARCH_RESULT_ORDER], ordering_stable: true },
         limitation: 'No represented subject was identified for subject-bound retrieval. Absence of representation is not a denial.'
       };
     }
@@ -323,7 +336,7 @@ export class BereanRepository {
         capability: 'UNRESOLVED',
         plan,
         results: [],
-        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: [...RESEARCH_RESULT_ORDER], ordering_stable: true },
         limitation: 'Subject resolution must be unambiguous and represented before ESTABLISHED can be assigned.'
       };
     }
@@ -334,7 +347,7 @@ export class BereanRepository {
         capability: 'NOT_REPRESENTED',
         plan: { ...plan, output_constraints: ['NO_INVENTED_PREDICATE', 'BOUNDED_RESULTS'] },
         results: [],
-        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: [...RESEARCH_RESULT_ORDER], ordering_stable: true },
         limitation: 'Absence of representation is not a denial. Try keyword search to find persisted records.'
       };
     }
@@ -348,6 +361,7 @@ export class BereanRepository {
          SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
                  c.proposition_id, cr.rendered_proposition, p.predicate,
                  ce.claim_evidence_id, ce.relation_type_code AS evidence_relation_type_code,
+                 e.evidence_key,
                  s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
           FROM claim c
           JOIN proposition p ON p.proposition_id = c.proposition_id
@@ -368,10 +382,15 @@ export class BereanRepository {
          SELECT subject_bound.*,
                 COUNT(*) OVER()::int AS total_matched
          FROM subject_bound
-         ORDER BY claim_id, claim_evidence_id NULLS LAST, dataset_id NULLS LAST, source_key NULLS LAST
        )
        SELECT *
        FROM ranked
+       ORDER BY claim_key COLLATE "C",
+                evidence_key COLLATE "C" NULLS LAST,
+                evidence_relation_type_code COLLATE "C" NULLS LAST,
+                dataset_key COLLATE "C" NULLS LAST,
+                source_key COLLATE "C" NULLS LAST,
+                claim_id, claim_evidence_id NULLS LAST
        LIMIT 50`,
       [candidatePredicates, resolvedKind, resolvedEntityId, resolvedEventId, scoped, datasetIds]
     );
@@ -397,7 +416,8 @@ export class BereanRepository {
       returned: results.length,
       truncated: totalMatched > results.length,
       limit: 50,
-      order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']
+      order: [...RESEARCH_RESULT_ORDER],
+      ordering_stable: true
     };
     const capability = results.some((row) => row.classification === 'UNRESOLVED')
       ? 'UNRESOLVED'

@@ -366,7 +366,8 @@ describe('read-only API', () => {
       returned: 0,
       truncated: false,
       limit: 50,
-      order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']
+      order: ['claim_key', 'evidence_key', 'evidence_relation_type_code', 'dataset_key', 'source_key'],
+      ordering_stable: true
     });
   });
 

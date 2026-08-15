@@ -178,7 +178,13 @@ Actual research behaviors:
   - `bounded.total_matched`
   - `bounded.returned`
   - `bounded.truncated`
-  - deterministic `bounded.order`.
+  - `bounded.order`: the deterministic presentation order
+    (`claim_key`, `evidence_key`, `evidence_relation_type_code`, `dataset_key`, `source_key`,
+    applied lexicographically with generated ids only as a final tie-breaker);
+  - `bounded.ordering_stable`: `true`, because the order derives from durable knowledge keys and is
+    therefore reproducible across logically equivalent databases.
+- The presentation order is not a relevance ranking: an earlier row is not more true, more
+  authoritative, or more relevant than a later row.
 - Scope is always `BEREAN_ONLY`; no external retrieval happens.
 - `NO_MATCH` means no persisted claim in the selected scope matched the registered predicate set.
 
@@ -200,7 +206,8 @@ Manual example (2026-08-13):
     "returned": 2,
     "truncated": false,
     "limit": 50,
-    "order": ["claim_id", "claim_evidence_id", "dataset_id", "source_key"]
+    "order": ["claim_key", "evidence_key", "evidence_relation_type_code", "dataset_key", "source_key"],
+    "ordering_stable": true
   },
   "results": [
     {

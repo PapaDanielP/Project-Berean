@@ -280,9 +280,17 @@ const document: Values = {
               returned: { type: 'integer', minimum: 0 },
               truncated: { type: 'boolean' },
               limit: { type: 'integer', minimum: 1 },
-              order: { type: 'array', items: { type: 'string' } }
+              order: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Deterministic presentation order, expressed as durable knowledge keys (claim_key, evidence_key, evidence_relation_type_code, dataset_key, source_key) applied lexicographically with generated ids only as a final tie-breaker. It is not a relevance ranking.'
+              },
+              ordering_stable: {
+                type: 'boolean',
+                description: 'True when the ordering is reproducible across logically equivalent databases because it does not depend on generated ids.'
+              }
             },
-            ['total_matched', 'returned', 'truncated', 'limit', 'order'],
+            ['total_matched', 'returned', 'truncated', 'limit', 'order', 'ordering_stable'],
             'Bounded retrieval metadata so a partial result set is never mistaken for a complete answer.'
           ),
           limitation: { type: 'string' }

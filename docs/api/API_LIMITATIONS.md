@@ -22,6 +22,11 @@ This document records limitations evidenced by implementation, tests, and valida
 - Research is bounded to persisted Berean rows and registered predicate semantics, and is now
   subject-bound (`question -> subject resolution -> predicate resolution -> claims`) to prevent
   cross-subject predicate contamination.
+- Research results are returned in a deterministic presentation order built from durable knowledge
+  keys (`claim_key`, `evidence_key`, `evidence_relation_type_code`, `dataset_key`, `source_key`),
+  never from generated surrogate ids. The order is reproducible across logically equivalent
+  databases and is explicitly not a relevance, authority, or truth ranking; Berean has no ranking
+  model.
 - Provenance explanation is structural only.
 - Timeline and graph routes assemble persisted claims, projections, and joins; they do not persist new graph knowledge.
 
