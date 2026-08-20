@@ -402,6 +402,53 @@ describe('read-only API', () => {
     expect(multiple.body.results.every((result: { dataset_id: number | string }) => datasetIds.includes(Number(result.dataset_id)))).toBe(true);
   });
 
+  it('returns deterministic, identically ordered results across repeated identical requests', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const question = 'In which represented events does Seth participate?';
+
+    const responses = await Promise.all(
+      [0, 1, 2].map(() => request(app).post('/api/research').send({ question }))
+    );
+
+    const after = await snapshotPersistentTableCounts();
+    expect(after).toEqual(before);
+
+    for (const response of responses) {
+      expect(response.status).toBe(200);
+      expect(response.body.results.length).toBeGreaterThan(0);
+    }
+
+    const [first, ...rest] = responses;
+    for (const response of rest) {
+      expect(response.body).toEqual(first.body);
+    }
+
+    expect(first.body.bounded.order).toEqual(['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']);
+
+    type OrderedResult = {
+      claim_id: number | string;
+      claim_evidence_id: number | string | null;
+      dataset_id: number | string | null;
+      source_key: string | null;
+    };
+    const orderKey = (result: OrderedResult): [number, number, number, string] => [
+      Number(result.claim_id),
+      result.claim_evidence_id === null ? Number.POSITIVE_INFINITY : Number(result.claim_evidence_id),
+      result.dataset_id === null ? Number.POSITIVE_INFINITY : Number(result.dataset_id),
+      result.source_key === null ? '\uffff' : result.source_key
+    ];
+    const compareOrderKeys = (a: [number, number, number, string], b: [number, number, number, string]): number => {
+      for (let index = 0; index < a.length; index += 1) {
+        if (a[index] < b[index]) return -1;
+        if (a[index] > b[index]) return 1;
+      }
+      return 0;
+    };
+    const results = first.body.results as OrderedResult[];
+    const sortedResults = [...results].sort((a, b) => compareOrderKeys(orderKey(a), orderKey(b)));
+    expect(results.map(orderKey)).toEqual(sortedResults.map(orderKey));
+  });
+
   it('excludes predicate matches that are unrelated to the resolved subject', async () => {
     const noParticipationSubject = await pool.query(
       `SELECT e.canonical_name
