@@ -313,6 +313,7 @@ export class BereanRepository {
         capability: 'NOT_REPRESENTED',
         plan,
         results: [],
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: [...RESEARCH_RESULT_ORDER], ordering_stable: true },
         limitation: 'Absence of representation is not a denial; retrieval remains limited to Berean.'
       };
     }

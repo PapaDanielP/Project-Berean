@@ -516,6 +516,14 @@ describe('read-only API', () => {
     expect(response.status).toBe(200);
     expect(response.body.capability).toBe('NOT_REPRESENTED');
     expect(response.body.results).toEqual([]);
+    expect(response.body.bounded).toEqual({
+      total_matched: 0,
+      returned: 0,
+      truncated: false,
+      limit: 50,
+      order: ['claim_key', 'evidence_key', 'evidence_relation_type_code', 'dataset_key', 'source_key'],
+      ordering_stable: true
+    });
   });
 
   it('validates bounded research and keyword-search input', async () => {

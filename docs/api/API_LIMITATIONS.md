@@ -32,6 +32,24 @@ This document records limitations evidenced by implementation, tests, and valida
 
 Classification: **IMPLEMENTED boundary**, not a missing feature.
 
+### Current HTTP research boundaries
+
+- Subject binding: `/api/research` and `/api/v1/research` currently resolve and bind the named subject using the
+  proposition's subject position. They do not perform object-position event binding, so questions such as
+  "Who participated in [event]?" are outside the implemented HTTP research subject-binding capability. This is a
+  capability boundary, not evidence that the corresponding knowledge is absent from the Berean corpus.
+- Dataset-scoped derived claims: dataset-scoped HTTP research currently does not traverse
+  `claim → derivation → derivation_input` to inherit dataset scope. Valid derived claims can therefore disappear from
+  dataset-scoped HTTP research results. This limitation is deferred to R2.
+- Scholarly classifiers: the `SCHOLARLY_CANDIDATE` classification path and `EVIDENCE_QUALIFIES` relationship handling
+  are implemented, but the current corpus contains `0 INTERPRETIVE_CLAIM` and `0 QUALIFIES` relationships. The
+  classifiers are implemented, but the current corpus does not contain the data required to exercise them.
+- SQL validation harness versus HTTP API: the natural-language demonstrations in
+  `tests/validation/phase35-query-interpreter.sql` are PostgreSQL validation-harness demonstrations. They are not
+  demonstrations of equivalent capability in `BereanRepository.research()`, `/api/research`, or `/api/v1/research`.
+  The SQL validation harness currently demonstrates capabilities that the HTTP research engine does not expose,
+  including object-position participation queries and other Phase 35 demonstrations.
+
 ## 3. Workflow versus authoritative knowledge
 
 The workflow tables (`corpus`, `research_topic`, `discovery_request`, `discovery_candidate`, `candidate_review`, `asynchronous_job`, `validation_run`, `export_job`, `audit_event`) coordinate work but do not replace authoritative `source`, `dataset`, `source_record`, `citation`, `evidence`, `proposition`, `claim`, `entity_source_mapping`, or `derivation` rows.
