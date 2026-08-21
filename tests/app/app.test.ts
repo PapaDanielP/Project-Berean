@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
@@ -28,12 +29,13 @@ const repoRoot = path.resolve(__dirname, '../..');
 const pool = new Pool({ connectionString: databaseUrl });
 const app = createApp(databaseUrl);
 const administratorToken = 'test-only-berean-administration-credential';
-const secureApp = createApp(databaseUrl, [{
+const administratorCredentials = [{
   key: 'test-administrator',
   displayName: 'Test Administrator',
-  role: 'ADMINISTRATOR',
+  role: 'ADMINISTRATOR' as const,
   tokenHash: createHash('sha256').update(administratorToken).digest('hex')
-}]);
+}];
+const secureApp = createApp(databaseUrl, administratorCredentials);
 const authorization = `${['Bear', 'er'].join('')} ${administratorToken}`;
 const authorized = (method: 'get' | 'post' | 'patch', route: string) =>
   request(secureApp)[method](route).set('Authorization', authorization);
@@ -150,6 +152,284 @@ describe('read-only API', () => {
     expect(predicates.body.results.length).toBeGreaterThan(0);
     expect(openapi.body.openapi).toBe('3.1.0');
     expect(after).toEqual(before);
+  });
+
+  describe('deterministic local export executor', () => {
+    it('publishes one immutable, checksummed artifact and serves it only by opaque key', async () => {
+      const artifactDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'berean-export-'));
+      try {
+        const artifactApp = createApp(databaseUrl, administratorCredentials, artifactDirectory);
+        const corpus = await authorized('post', '/api/v1/corpora').send({
+          key: `export-corpus-${Date.now()}`,
+          name: 'Deterministic export corpus',
+          scopeNote: 'Bounded test corpus for source-backed claim/evidence export.'
+        });
+        expect(corpus.status).toBe(201);
+        const corpusId = Number(corpus.body.corpus_id);
+        const datasets = await pool.query('SELECT dataset_id FROM dataset ORDER BY dataset_key LIMIT 2');
+        const actor = await pool.query(`SELECT actor_id FROM workflow_actor WHERE actor_key = 'test-administrator'`);
+        for (const row of datasets.rows) {
+          await pool.query(
+            'INSERT INTO corpus_dataset (corpus_id, dataset_id, added_by_actor_id) VALUES ($1,$2,$3)',
+            [corpusId, row.dataset_id, actor.rows[0].actor_id]
+          );
+        }
+
+        const queue = async (key: string) => authorized('post', '/api/v1/export-jobs')
+          .set('Idempotency-Key', key)
+          .send({
+            corpusId,
+            format: 'JSONL',
+            includeRawContent: false,
+            reproducibilityNote: 'Same corpus state and bounded canonical format.'
+          });
+      const clientPath = await authorized('post', '/api/v1/export-jobs')
+          .set('Idempotency-Key', `export-client-path-${Date.now()}`)
+          .send({
+            corpusId,
+            format: 'JSONL',
+            reproducibilityNote: 'A client path must never be accepted.',
+            artifactPath: '../../etc/passwd'
+          });
+      expect(clientPath).toMatchObject({
+          status: 400,
+          body: { error: { code: 'INVALID_REQUEST' } }
+      });
+        const worker = new WorkerRepository(pool);
+        const workerActorId = await worker.resolveSystemActor('export-worker-test', 'Export worker test');
+        const executeOne = async (key: string) => {
+          const queued = await queue(key);
+          expect(queued.status).toBe(202);
+          const job = await worker.claimOne(workerActorId, 60, 3, ['EXPORT']);
+          expect(Number(job?.job_id)).toBe(Number(queued.body.job_id));
+          const outcome = await EXECUTORS.EXPORT({
+            pool,
+            repository: worker,
+            actorId: workerActorId,
+            jobId: Number(job!.job_id),
+            leaseToken: String(job!.lease_token),
+            job: job!,
+            exportArtifactDir: artifactDirectory
+          });
+          expect(outcome.status).toBe('COMPLETED');
+          const finalized = await worker.finalize(
+            Number(job!.job_id),
+            String(job!.lease_token),
+            workerActorId,
+            outcome.status,
+            null,
+            null,
+            { exportArtifact: outcome.exportArtifact!.record }
+          );
+          expect(finalized).toMatchObject({ status: 'COMPLETED' });
+          return { queued, outcome };
+        };
+
+        const knowledgeBefore = await snapshotKnowledgeTables(pool);
+        const first = await executeOne(`export-first-${Date.now()}`);
+        const firstMetadata = await pool.query(
+          'SELECT * FROM export_artifact WHERE job_id = $1',
+          [first.queued.body.job_id]
+        );
+        expect(firstMetadata.rowCount).toBe(1);
+        const metadata = firstMetadata.rows[0];
+        expect(metadata).toMatchObject({
+          content_type: 'application/x-ndjson',
+          format_version: 'berean.claim-evidence.v1'
+        });
+        expect(String(metadata.artifact_key)).toMatch(/^[0-9a-f-]{36}$/);
+        expect(String(metadata.relative_locator)).toBe(`${metadata.artifact_key}.jsonl`);
+        expect(path.isAbsolute(String(metadata.relative_locator))).toBe(false);
+        const firstBytes = await fs.readFile(path.join(artifactDirectory, metadata.relative_locator));
+        expect(firstBytes.byteLength).toBe(Number(metadata.byte_length));
+        expect(createHash('sha256').update(firstBytes).digest('hex')).toBe(metadata.sha256);
+        const lines = firstBytes.toString('utf8').trimEnd().split('\n').map((line) => JSON.parse(line));
+        expect(lines[0]).toMatchObject({
+          format: 'berean.claim-evidence.v1',
+          scope: { type: 'CORPUS_SOURCE_BACKED_CLAIM_EVIDENCE', corpus_key: corpus.body.corpus_key },
+          epistemic_notice: expect.stringContaining('not verified facts')
+        });
+        expect(lines.slice(1).map((line) => line.claim.key))
+          .toEqual([...lines.slice(1).map((line) => line.claim.key)].sort());
+        expect(lines.slice(1).some((line) =>
+          line.claim.type && line.claim.status && line.evidence.type &&
+          line.evidence.claim_relation && line.dataset.key && line.source.key
+        )).toBe(true);
+
+        const second = await executeOne(`export-second-${Date.now()}`);
+        const secondMetadata = await pool.query(
+          'SELECT * FROM export_artifact WHERE job_id = $1',
+          [second.queued.body.job_id]
+        );
+        const secondBytes = await fs.readFile(
+          path.join(artifactDirectory, secondMetadata.rows[0].relative_locator)
+        );
+        expect(secondBytes.equals(firstBytes)).toBe(true);
+        expect(secondMetadata.rows[0].sha256).toBe(metadata.sha256);
+        expect(await snapshotKnowledgeTables(pool)).toEqual(knowledgeBefore);
+
+        const unauthenticated = await request(artifactApp)
+          .get(`/api/v1/export-artifacts/${metadata.artifact_key}`);
+        expect(unauthenticated.status).toBe(401);
+        const metadataResponse = await request(artifactApp)
+          .get(`/api/v1/export-artifacts/${metadata.artifact_key}`)
+          .set('Authorization', authorization);
+        expect(metadataResponse.status).toBe(200);
+        expect(metadataResponse.body).toMatchObject({
+          artifact_key: String(metadata.artifact_key),
+          job_id: String(metadata.job_id),
+          export_job_id: String(metadata.export_job_id),
+          sha256: metadata.sha256,
+          relative_locator: metadata.relative_locator
+        });
+        expect(JSON.stringify(metadataResponse.body)).not.toContain(artifactDirectory);
+        const download = await request(artifactApp)
+          .get(`/api/v1/export-artifacts/${metadata.artifact_key}/download`)
+          .set('Authorization', authorization)
+          .buffer(true)
+          .parse((response, callback) => {
+            const chunks: Buffer[] = [];
+            response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+            response.on('end', () => callback(null, Buffer.concat(chunks)));
+          });
+        expect(download.status).toBe(200);
+        expect(Buffer.from(download.body).equals(firstBytes)).toBe(true);
+        expect((await request(artifactApp)
+          .get('/api/v1/export-artifacts/..%2F..%2Fetc%2Fpasswd/download')
+          .set('Authorization', authorization)).status).toBe(400);
+        await expect(pool.query(
+          'UPDATE export_artifact SET byte_length = byte_length + 1 WHERE artifact_key = $1',
+          [metadata.artifact_key]
+        )).rejects.toThrow(/immutable/);
+        expect((await fs.readdir(artifactDirectory)).some((name) => name.startsWith('.tmp-'))).toBe(false);
+      } finally {
+        await fs.rm(artifactDirectory, { recursive: true, force: true });
+      }
+    });
+
+    it('fails safely for configuration, cancellation, stale lease, and duplicate execution', async () => {
+      const artifactDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'berean-export-failure-'));
+      try {
+        const corpus = await pool.query('SELECT corpus_id FROM corpus ORDER BY corpus_id LIMIT 1');
+        const worker = new WorkerRepository(pool);
+        const actorId = await worker.resolveSystemActor('export-failure-worker-test', 'Export failure worker test');
+        const administration = new AdministrationRepository(pool);
+        const admin = { key: 'export-failure-admin', displayName: 'Export failure admin', role: 'ADMINISTRATOR' as const };
+        const create = async (key: string) => administration.createJob(
+          'EXPORT',
+          {
+            idempotencyKey: key,
+            requestFingerprint: createHash('sha256').update(key).digest('hex'),
+            corpusId: Number(corpus.rows[0].corpus_id),
+            format: 'JSONL',
+            includeRawContent: false,
+            reproducibilityNote: 'Failure boundary test.'
+          },
+          admin,
+          '00000000-0000-0000-0000-000000000099'
+        );
+        const run = async (job: Record<string, unknown>, directory: string | undefined) => EXECUTORS.EXPORT({
+          pool,
+          repository: worker,
+          actorId,
+          jobId: Number(job.job_id),
+          leaseToken: String(job.lease_token),
+          job,
+          exportArtifactDir: directory
+        });
+
+        await create(`export-missing-root-${Date.now()}`);
+        const missing = await worker.claimOne(actorId, 60, 3, ['EXPORT']);
+        const missingOutcome = await run(missing!, undefined);
+        expect(missingOutcome).toMatchObject({ status: 'FAILED', errorCode: 'EXPORT_ARTIFACT_DIR_MISSING' });
+        expect((await pool.query('SELECT 1 FROM export_artifact WHERE job_id = $1', [missing!.job_id])).rowCount).toBe(0);
+        await worker.finalize(Number(missing!.job_id), String(missing!.lease_token), actorId, 'FAILED', missingOutcome.errorCode);
+
+        await create(`export-cancel-${Date.now()}`);
+        const cancelled = await worker.claimOne(actorId, 60, 3, ['EXPORT']);
+        await administration.changeJob(
+          Number(cancelled!.job_id),
+          'cancel',
+          admin,
+          '00000000-0000-0000-0000-000000000098'
+        );
+        const cancelledOutcome = await run(cancelled!, artifactDirectory);
+        expect(cancelledOutcome).toMatchObject({ status: 'CANCELLED', errorCode: 'CANCELLED_BY_REQUEST' });
+        expect((await pool.query('SELECT 1 FROM export_artifact WHERE job_id = $1', [cancelled!.job_id])).rowCount).toBe(0);
+        await worker.finalize(Number(cancelled!.job_id), String(cancelled!.lease_token), actorId, 'CANCELLED', cancelledOutcome.errorCode);
+
+        await create(`export-stale-${Date.now()}`);
+        const stale = await worker.claimOne(actorId, 60, 3, ['EXPORT']);
+        const staleOutcome = await run(stale!, artifactDirectory);
+        expect(staleOutcome.status).toBe('COMPLETED');
+        await pool.query(
+          `UPDATE asynchronous_job SET lease_expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE job_id = $1`,
+          [stale!.job_id]
+        );
+        expect(await worker.finalize(
+          Number(stale!.job_id),
+          String(stale!.lease_token),
+          actorId,
+          'COMPLETED',
+          null,
+          null,
+          { exportArtifact: staleOutcome.exportArtifact!.record }
+        )).toBeNull();
+        await staleOutcome.exportArtifact!.discard();
+        expect((await pool.query('SELECT 1 FROM export_artifact WHERE job_id = $1', [stale!.job_id])).rowCount).toBe(0);
+
+        await create(`export-post-write-check-${Date.now()}`);
+        const postWriteCheck = await worker.claimOne(actorId, 60, 3, ['EXPORT']);
+        const originalCancellationRequested = worker.cancellationRequested.bind(worker);
+        let cancellationChecks = 0;
+        worker.cancellationRequested = async (jobId, leaseToken, workerActorId) => {
+          cancellationChecks += 1;
+          if (cancellationChecks === 3) throw new Error('simulated cancellation check failure');
+          return originalCancellationRequested(jobId, leaseToken, workerActorId);
+        };
+        const postWriteOutcome = await run(postWriteCheck!, artifactDirectory);
+        worker.cancellationRequested = originalCancellationRequested;
+        expect(postWriteOutcome).toMatchObject({ status: 'FAILED', errorCode: 'EXPORT_EXECUTOR_FAILED' });
+        expect(await fs.readdir(artifactDirectory)).toEqual([]);
+        await worker.finalize(
+          Number(postWriteCheck!.job_id),
+          String(postWriteCheck!.lease_token),
+          actorId,
+          'FAILED',
+          postWriteOutcome.errorCode
+        );
+
+        const existing = await pool.query(
+          `SELECT a.job_id, j.requested_by_actor_id
+           FROM export_artifact a JOIN asynchronous_job j ON j.job_id = a.job_id
+           ORDER BY a.export_artifact_id LIMIT 1`
+        );
+        const duplicateToken = '00000000-0000-4000-8000-000000000097';
+        await pool.query(
+          `UPDATE asynchronous_job
+           SET status = 'RUNNING', worker_actor_id = $2, lease_token = $3,
+               lease_expires_at = CURRENT_TIMESTAMP + INTERVAL '1 minute'
+           WHERE job_id = $1`,
+          [existing.rows[0].job_id, actorId, duplicateToken]
+        );
+        const duplicateJob = (await pool.query(
+          'SELECT * FROM asynchronous_job WHERE job_id = $1',
+          [existing.rows[0].job_id]
+        )).rows[0];
+        expect(await run(duplicateJob, artifactDirectory))
+          .toMatchObject({ status: 'FAILED', errorCode: 'EXPORT_ALREADY_EXECUTED' });
+        await pool.query(
+          `UPDATE asynchronous_job
+           SET status = 'COMPLETED', worker_actor_id = NULL, lease_token = NULL,
+               lease_expires_at = NULL
+           WHERE job_id = $1`,
+          [existing.rows[0].job_id]
+        );
+        expect((await fs.readdir(artifactDirectory)).some((name) => name.startsWith('.tmp-'))).toBe(false);
+      } finally {
+        await fs.rm(artifactDirectory, { recursive: true, force: true });
+      }
+    });
   });
 
   it('rejects administrative writes when authentication is not configured', async () => {

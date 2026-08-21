@@ -39,7 +39,12 @@ This repository now includes a small read-only web application layer that consum
 ```sh
 export DATABASE_URL='postgresql://localhost:55432/berean_reference'
 export PORT=3000 # optional
+export EXPORT_ARTIFACT_DIR='/absolute/server-only/export-artifacts' # required for export execution/download
 ```
+
+The export worker creates a missing configured directory with mode `0700`. The value must be an
+absolute, non-symlinked path whose resolved path is unchanged by `realpath`; invalid or missing
+configuration fails the export safely.
 
 ### Install
 

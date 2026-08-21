@@ -123,7 +123,8 @@ const homeHtml = `<!doctype html>
 
 export const createApp = (
   databaseUrl: string,
-  credentials: ApiCredential[] = credentialsFromEnvironment()
+  credentials: ApiCredential[] = credentialsFromEnvironment(),
+  exportArtifactDirectory: string | undefined = process.env.EXPORT_ARTIFACT_DIR
 ): express.Express => {
   const app = express();
   const pool = new Pool({ connectionString: databaseUrl });
@@ -153,7 +154,11 @@ export const createApp = (
     res.type('html').send('<!doctype html><title>Project Berean API</title><h1>Project Berean API</h1><p>Machine-readable API documentation is available at <a href="/openapi.json">/openapi.json</a>.</p>');
   });
 
-  app.use('/api/v1', registerAdministrationRoutes(administrationRepository, authenticator));
+  app.use('/api/v1', registerAdministrationRoutes(
+    administrationRepository,
+    authenticator,
+    exportArtifactDirectory
+  ));
   app.use('/api/v1', registerV1Routes(repository));
 
   app.get('/api/research/scope', async (_req, res, next) => {

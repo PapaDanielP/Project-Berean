@@ -3,6 +3,7 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import { BearerAuthenticator } from '../auth.js';
 import { ADMINISTRATION_LIST_RESOURCES, AdministrationRepository } from './repository.js';
 import { AdministrationError, AdministrationService } from './service.js';
+import { ExportArtifactError, readExportArtifact } from '../worker/export-artifact.js';
 
 const positiveId = (value: string): number | null => {
   if (!/^\d+$/.test(value)) return null;
@@ -18,7 +19,8 @@ const handler = (
 
 export const registerAdministrationRoutes = (
   repository: AdministrationRepository,
-  authenticator: BearerAuthenticator
+  authenticator: BearerAuthenticator,
+  exportArtifactDirectory: string | undefined
 ): Router => {
   const router = Router();
   const service = new AdministrationService(repository);
@@ -48,6 +50,45 @@ export const registerAdministrationRoutes = (
         throw new AdministrationError(400, 'INVALID_REQUEST', 'limit must be between 1 and 100.');
       }
       res.json({ results: await repository.list(req.params.resource, rawLimit) });
+    })
+  );
+
+  const artifactKey = (value: string): string | null =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+      ? value.toLowerCase()
+      : null;
+
+  router.get(
+    '/export-artifacts/:artifactKey',
+    authenticator.require('ADMINISTRATOR'),
+    handler(async (req, res) => {
+      const key = artifactKey(req.params.artifactKey);
+      if (!key) throw new AdministrationError(400, 'INVALID_REQUEST', 'artifactKey must be an opaque UUID.');
+      const artifact = await repository.getExportArtifact(key);
+      if (!artifact) throw new AdministrationError(404, 'NOT_FOUND', 'Export artifact metadata was not found.');
+      res.json(artifact);
+    })
+  );
+
+  router.get(
+    '/export-artifacts/:artifactKey/download',
+    authenticator.require('ADMINISTRATOR'),
+    handler(async (req, res) => {
+      const key = artifactKey(req.params.artifactKey);
+      if (!key) throw new AdministrationError(400, 'INVALID_REQUEST', 'artifactKey must be an opaque UUID.');
+      const artifact = await repository.getExportArtifact(key);
+      if (!artifact) throw new AdministrationError(404, 'NOT_FOUND', 'Export artifact metadata was not found.');
+      const bytes = await readExportArtifact(
+        exportArtifactDirectory,
+        String(artifact.relative_locator),
+        Number(artifact.byte_length),
+        String(artifact.sha256)
+      );
+      res
+        .setHeader('Content-Disposition', 'attachment; filename="berean-export.jsonl"')
+        .setHeader('Cache-Control', 'private, no-store')
+        .type(String(artifact.content_type))
+        .send(bytes);
     })
   );
 
@@ -202,6 +243,19 @@ export const administrationErrorHandler = (
   if (res.headersSent) return next(error);
   if (error instanceof AdministrationError) {
     res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    return;
+  }
+  if (error instanceof ExportArtifactError) {
+    const configuration = error.code === 'EXPORT_ARTIFACT_DIR_MISSING' ||
+      error.code === 'EXPORT_ARTIFACT_DIR_INVALID';
+    res.status(configuration ? 503 : 409).json({
+      error: {
+        code: error.code,
+        message: configuration
+          ? 'Local export artifact storage is not configured safely.'
+          : 'The persisted export artifact is unavailable or failed integrity verification.'
+      }
+    });
     return;
   }
   if (error.message === 'DIRECT_CLAIM_REQUIRES_CITED_SOURCE_OBSERVATION') {

@@ -181,7 +181,7 @@ What must **not** be inferred:
 What must **not** be inferred:
 
 - `QUEUED` is not execution;
-- queued jobs do not produce `validation_result`, `ingestion_result`, or export artifacts in this process;
+- queue requests do not themselves produce `validation_result`, `ingestion_result`, or export artifacts;
 - retry/cancel only change persisted workflow state.
 
 ## Recipe 8: full administration lifecycle with explicit human gates
@@ -210,7 +210,7 @@ What is **not** implemented as an automatic chain:
 - corpus → topic → source registration is not auto-triggered;
 - candidate review does not auto-create source records, evidence, claims, or mappings;
 - derivation eligibility does not auto-create a derived claim;
-- queued export/ingestion work does not auto-complete, and queued validation work completes only when the separate SYSTEM worker process is running.
+- queued ingestion work does not auto-complete; queued validation and bounded export work complete only when the separate SYSTEM worker process is running.
 
 ## Asynchronous semantics
 
@@ -224,7 +224,7 @@ What is **not** implemented as an automatic chain:
 Rules:
 
 1. `202` means *the queue state is durably persisted*, never *the work is done*.
-2. Poll `GET /api/v1/admin/jobs` for status and `GET /api/v1/admin/validation-results` for persisted validation results. `npm run worker` executes the internal `SYSTEM_NOOP` foundation type and `VALIDATION` jobs. Ingestion, export, and discovery jobs legitimately remain `QUEUED` until their bounded executors are implemented.
+2. Poll `GET /api/v1/admin/jobs` for status, `GET /api/v1/admin/validation-results` for validation results, and resolve completed exports through `GET /api/v1/export-artifacts/:artifactKey`. `npm run worker` executes `SYSTEM_NOOP`, `VALIDATION`, and bounded `EXPORT` jobs. Ingestion and discovery jobs legitimately remain `QUEUED` until their bounded executors are implemented.
 3. Every queueing route requires `Idempotency-Key`. Replaying the same key with the same request fingerprint returns the original job; replaying it with a different fingerprint returns `409 IDEMPOTENCY_CONFLICT` and writes nothing.
 4. `POST /api/v1/jobs/:id/cancel` and `/retry` change workflow state only and return `409 INVALID_JOB_STATE` when the transition is not allowed.
 

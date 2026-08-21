@@ -194,6 +194,30 @@ CREATE TABLE export_job (
     CHECK (manifest_hash IS NULL OR manifest_hash ~ '^[0-9a-f]{64}$')
 );
 
+CREATE TABLE export_artifact (
+    export_artifact_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    artifact_key UUID NOT NULL UNIQUE,
+    job_id BIGINT NOT NULL UNIQUE REFERENCES asynchronous_job(job_id),
+    export_job_id BIGINT NOT NULL UNIQUE REFERENCES export_job(export_job_id),
+    content_type TEXT NOT NULL,
+    format_version TEXT NOT NULL,
+    byte_length BIGINT NOT NULL CHECK (byte_length >= 0),
+    sha256 CHAR(64) NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    relative_locator TEXT NOT NULL UNIQUE
+        CHECK (relative_locator ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$'),
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE OR REPLACE FUNCTION reject_export_artifact_change() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'export artifacts are immutable';
+END
+$$;
+CREATE TRIGGER export_artifact_immutable
+    BEFORE UPDATE OR DELETE ON export_artifact
+    FOR EACH ROW EXECUTE FUNCTION reject_export_artifact_change();
+
 CREATE TABLE audit_event (
     audit_event_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     actor_id BIGINT NOT NULL REFERENCES workflow_actor(actor_id),

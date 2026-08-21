@@ -281,11 +281,21 @@ export class AdministrationService {
         'DERIVATION', 'CORPUS', 'REPLAY', 'READ_ONLY', 'NEGATIVE_SEMANTIC'
       ] as const));
     }
-    if (type === 'EXPORT') Object.assign(common, {
-      format: oneOf(body.format, 'format', ['JSONL', 'CSV'] as const),
-      includeRawContent: body.includeRawContent === true,
-      reproducibilityNote: text(body.reproducibilityNote, 'reproducibilityNote', 4000)
-    });
+    if (type === 'EXPORT') {
+      const supportedFields = new Set(['corpusId', 'format', 'includeRawContent', 'reproducibilityNote']);
+      if (Object.keys(body).some((field) => !supportedFields.has(field))) {
+        throw new AdministrationError(400, 'INVALID_REQUEST', 'Export requests accept only the documented bounded fields and never accept paths or destinations.');
+      }
+      if (body.includeRawContent !== undefined && typeof body.includeRawContent !== 'boolean') {
+        throw new AdministrationError(400, 'INVALID_REQUEST', 'includeRawContent must be a boolean.');
+      }
+      Object.assign(common, {
+        corpusId: identifier(body.corpusId, 'corpusId'),
+        format: oneOf(body.format, 'format', ['JSONL', 'CSV'] as const),
+        includeRawContent: body.includeRawContent === true,
+        reproducibilityNote: text(body.reproducibilityNote, 'reproducibilityNote', 4000)
+      });
+    }
     common.requestFingerprint = fingerprint(common);
     return this.repository.createJob(type, common, actor, correlationId);
   }

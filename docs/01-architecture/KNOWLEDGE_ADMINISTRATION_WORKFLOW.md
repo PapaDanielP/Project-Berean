@@ -93,7 +93,7 @@ before it may write a SourceRecord. Until then there is no SSRF surface.
 | Reviewed candidates and source locators still require an operator to enter canonical records/evidence. | `DATA_ENTRY` | Jobs are controlled plans; no candidate auto-promotion exists. |
 | A requested relationship without a predicate cannot become a Proposition. | `REGISTRY_EXPRESSIVENESS` | Candidate insertion records `NOT_REPRESENTED`; registry has read-only APIs. |
 | A corpus can include only explicitly attached persisted datasets. | `DOMAIN_SCOPING_LIMITATION` | `corpus_dataset` is the bounded membership relation. |
-| The durable worker executes only the internal `SYSTEM_NOOP` job type and `VALIDATION` jobs. | `ARCHITECTURAL_DEFICIENCY` | `npm run worker` provides SYSTEM actor leasing, heartbeat, recovery, and cooperative cancellation, plus a read-only structural validation executor; ingestion, export, and discovery executors remain unavailable. |
+| The durable worker does not execute ingestion or discovery jobs, and export is limited to bounded local JSONL without raw content. | `ARCHITECTURAL_DEFICIENCY` | `npm run worker` provides SYSTEM actor leasing, heartbeat, recovery, cooperative cancellation, read-only structural validation, and configured-local-root deterministic export; ingestion/discovery and broader export shapes remain unavailable. |
 
 These limitations are explicit API results or documented deployment boundaries;
 none are silently converted to falsity, evidence, claims, or truth.

@@ -48,6 +48,7 @@ If a phase or validation record conflicts with current implementation or authori
 - [`06-decisions/ADR-0002-epistemic-separation.md`](./06-decisions/ADR-0002-epistemic-separation.md)
 - [`06-decisions/ADR-0003-reference-schema-boundaries.md`](./06-decisions/ADR-0003-reference-schema-boundaries.md)
 - [`06-decisions/ADR-0004-durable-system-worker.md`](./06-decisions/ADR-0004-durable-system-worker.md)
+- [`06-decisions/ADR-0005-local-export-artifacts.md`](./06-decisions/ADR-0005-local-export-artifacts.md)
 
 ### PHASE RECORD (historical, non-authoritative for current architecture)
 - [`phases/README.md`](./phases/README.md) — canonical phase-history index (Phase 6–37R/37B).

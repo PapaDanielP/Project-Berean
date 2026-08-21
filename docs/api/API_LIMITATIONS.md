@@ -64,7 +64,7 @@ Implemented queue persistence exists for:
 - export jobs.
 
 This repository ships a durable SYSTEM worker that atomically leases, heartbeats, recovers, and
-cooperatively cancels jobs. Its closed executor registry currently executes two job types:
+cooperatively cancels jobs. Its closed executor registry currently executes three job types:
 
 - the internal `SYSTEM_NOOP` foundation job type;
 - `VALIDATION` jobs, through the read-only structural validation executor
@@ -72,20 +72,24 @@ cooperatively cancels jobs. Its closed executor registry currently executes two 
   implemented `SCHEMA`, `PROVENANCE`, `READ_ONLY`, and `NEGATIVE_SEMANTIC` types and records
   `NOT_APPLICABLE` for the accepted-but-unimplemented `REGISTRY`, `IDENTITY`, `CLAIM`, `EVIDENCE`,
   `DERIVATION`, `CORPUS`, and `REPLAY` types.
+- `EXPORT` jobs for the bounded `JSONL`, `includeRawContent=false` shape. It writes canonical,
+  deterministic claim/evidence/provenance rows under `EXPORT_ARTIFACT_DIR`, then atomically
+  publishes immutable checksummed metadata with job completion.
 
-The worker still does not execute `INGESTION`, `EXPORT`, or `DISCOVERY` jobs; those remain
-queue-only and stay `QUEUED` until their bounded executors exist. No `ingestion_result` row and no
-export artefact is produced.
+The worker still does not execute `INGESTION` or `DISCOVERY` jobs; those remain queue-only. Accepted
+`CSV` or raw-content export requests fail execution with `EXPORT_REQUEST_UNSUPPORTED`; they are not
+silently converted or broadened.
 
 A validation PASS is an operational reproducibility record about structure. It is never historical
 truth, scholarly adjudication, contradiction resolution, or claim validation in the epistemic sense.
 This is a bounded structural check suite, not a full validation engine.
 
-Run `npm run worker` with `DATABASE_URL`; worker identity/configuration is bounded by
-`BEREAN_SYSTEM_WORKER_*` variables. It exposes no HTTP listener and does not retrieve URLs,
+Run `npm run worker` with `DATABASE_URL` and an absolute `EXPORT_ARTIFACT_DIR`; worker
+identity/configuration is bounded by `BEREAN_SYSTEM_WORKER_*` variables. It exposes no HTTP listener and does not retrieve URLs,
 read user-controlled paths, execute arbitrary SQL, mutate registries, or promote knowledge.
 
-Classification: **PARTIALLY_IMPLEMENTED** (validation executed), **REQUIRES_JOB_EXECUTORS** (ingestion, export, discovery).
+Classification: **PARTIALLY_IMPLEMENTED** (validation and bounded export executed),
+**REQUIRES_JOB_EXECUTORS** (ingestion and discovery).
 
 ## 6. OpenAPI coverage
 
@@ -151,9 +155,9 @@ Classification: **IMPLEMENTED** as a documented, tested divergence. Evidence: `t
 | Scholarly review | PARTIAL | Scholarly observations and candidate review are represented; no truth adjudication API |
 | Derivation | IMPLEMENTED (structural) | derivation creation + eligibility check; no automatic claim promotion |
 | Validation | PARTIAL | validation queueing, SQL validation, and SYSTEM worker execution of `SCHEMA`, `PROVENANCE`, `READ_ONLY`, and `NEGATIVE_SEMANTIC` are implemented; the remaining requested types record `NOT_APPLICABLE` |
-| Operations | PARTIAL | job queue status/retry/cancel, audit, and a durable worker executing validation jobs are implemented; ingestion, export, and discovery executors are absent |
+| Operations | PARTIAL | job queue status/retry/cancel, audit, and a durable worker executing validation plus bounded local export jobs are implemented; ingestion and discovery executors are absent |
 | Security | IMPLEMENTED | bearer auth, ordered roles, parameterized SQL, bounded inputs, transaction+audit coupling |
-| Production readiness | PARTIAL | a durable worker with a read-only validation executor exists; ingestion/export/discovery executors and external retrieval remain unavailable |
+| Production readiness | PARTIAL | a durable worker with validation and configured-local-root export executors exists; ingestion/discovery executors and external retrieval remain unavailable |
 
 ## 9. What Berean APIs cannot currently do
 
@@ -161,7 +165,7 @@ Classification: **IMPLEMENTED** as a documented, tested divergence. Evidence: `t
 - infer contradiction, superiority, winner/loser, causation, or membership from co-participation;
 - auto-promote discovery candidates to evidence, evidence to claims, or derivations to claims;
 - auto-promote `PROPOSED` identity mappings to `ACTIVE`;
-- execute validation, ingestion, export, or discovery jobs end-to-end;
+- execute ingestion or discovery jobs end-to-end, or execute export shapes beyond bounded JSONL without raw content;
 - perform arbitrary external URL retrieval, filesystem reads, SQL execution, or registry mutation.
 
 ## 10. What should deliberately remain non-automatic

@@ -35,7 +35,7 @@ Minimum role per route:
 | `POST /api/v1/research-topics`, `/discovery-requests`, `/discovery-requests/:id/candidates`, `/derivations` | `RESEARCHER` |
 | `POST /api/v1/source-registrations`, `/source-records`, `/evidence`, `/identity-mappings`, `/ingestion-jobs`, `/jobs/:id/cancel`, `/jobs/:id/retry` | `CONTENT_EDITOR` |
 | `POST /api/v1/candidates/:id/review`, `/claims`, `/identity-mappings/:id/review`, `/validation-runs` | `REVIEWER` |
-| `POST /api/v1/corpora`, `PATCH /api/v1/corpora/:id`, `POST /api/v1/export-jobs` | `ADMINISTRATOR` |
+| `POST /api/v1/corpora`, `PATCH /api/v1/corpora/:id`, `POST /api/v1/export-jobs`, `GET /api/v1/export-artifacts/:artifactKey[/download]` | `ADMINISTRATOR` |
 
 Beyond the role gate, `POST /api/v1/jobs/:id/cancel` and `/retry` apply an ownership and job-type check in the repository
 and return `403 FORBIDDEN` (`JOB_ACTION_FORBIDDEN`) when the actor may not change that job.
@@ -88,9 +88,13 @@ downgrade content based on the caller.
 
 ## 7. Deliberately absent capabilities
 
-The API exposes no route for arbitrary URL fetch, file upload or download, SQL execution, registry or predicate mutation,
+The API exposes no route for arbitrary URL fetch, file upload, arbitrary filesystem download, SQL execution, registry or predicate mutation,
 truth adjudication, conflict resolution, or canonicalisation. These are not backlog items; adding them would move
 authority out of reviewed, provenance-bearing structures. See [`API_EPISTEMIC_BOUNDARIES.md`](./API_EPISTEMIC_BOUNDARIES.md).
+
+The single export download route accepts only an opaque artifact UUID, resolves a persisted safe
+relative locator beneath the configured server-only root, rejects symlink/path escape, and verifies
+the persisted byte length and SHA-256. API clients never control a filesystem path.
 
 ## 8. Operational responsibilities not implemented here
 
@@ -98,4 +102,4 @@ Classification: **DEVELOPER/OPERATIONS ONLY**.
 
 - Credential issuance, rotation, and revocation are out-of-band operations against `BEREAN_API_CREDENTIALS`.
 - Rate limiting, TLS termination, and network access control are deployment concerns and are not implemented in the process.
-- No worker identity is provisioned here, so `SYSTEM`-role execution paths are unexercised in this repository.
+- Worker credentials and artifact retention/backup remain deployment responsibilities.

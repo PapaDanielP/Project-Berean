@@ -502,7 +502,30 @@ const document: Values = {
           reproducibilityNote: requiredString(4000, 'How the export may be reproduced.')
         },
         ['format', 'reproducibilityNote'],
-        'Queues a licence-aware export. Execution requires an external SYSTEM worker.'
+        'Queues a licence-aware export. The first executor version accepts JSONL with includeRawContent=false; other accepted request shapes fail execution with EXPORT_REQUEST_UNSUPPORTED.'
+      ),
+      ExportArtifact: object(
+        {
+          artifact_key: { type: 'string', format: 'uuid', description: 'Opaque server-generated artifact identifier.' },
+          job_id: { type: 'integer', minimum: 1 },
+          export_job_id: { type: 'integer', minimum: 1 },
+          corpus_id: { type: 'integer', minimum: 1 },
+          content_type: { type: 'string', const: 'application/x-ndjson' },
+          format_version: { type: 'string', const: 'berean.claim-evidence.v1' },
+          byte_length: { type: 'integer', minimum: 0 },
+          sha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+          relative_locator: {
+            type: 'string',
+            pattern: '^[0-9a-f-]+\\.jsonl$',
+            description: 'Safe server-generated relative locator. It is not accepted as request input.'
+          },
+          generated_at: { type: 'string', format: 'date-time' }
+        },
+        [
+          'artifact_key', 'job_id', 'export_job_id', 'corpus_id', 'content_type',
+          'format_version', 'byte_length', 'sha256', 'relative_locator', 'generated_at'
+        ],
+        'Immutable metadata persisted only after atomic final artifact publication.'
       )
     },
     responses: {
@@ -531,7 +554,10 @@ const document: Values = {
         'The requested capability is not represented by the Berean schema. Absence of representation is not falsity.',
         ['NOT_REPRESENTED']
       ),
-      AuthNotConfigured: errorResponse('No administrative credential is configured; administrative routes fail closed.', ['AUTH_NOT_CONFIGURED']),
+      AuthNotConfigured: errorResponse(
+        'No administrative credential or safe local artifact root is configured; affected routes fail closed.',
+        ['AUTH_NOT_CONFIGURED', 'EXPORT_ARTIFACT_DIR_MISSING', 'EXPORT_ARTIFACT_DIR_INVALID']
+      ),
       InternalError: {
         description: 'An unexpected error occurred. No implementation detail is disclosed.',
         content: { 'application/json': { schema: { $ref: '#/components/schemas/LegacyError' } } }
@@ -1005,6 +1031,57 @@ const paths: Values = {
       audit: true,
       epistemic: 'Export never relicenses a dataset and never removes provenance.'
     })
+  },
+  '/api/v1/export-artifacts/{artifactKey}': {
+    get: readOperation({
+      operationId: 'getExportArtifact',
+      summary: 'Read immutable export artifact metadata',
+      description: 'Resolves an opaque artifact UUID to completed immutable metadata. Filesystem paths are never accepted.',
+      parameters: [{
+        name: 'artifactKey',
+        in: 'path',
+        required: true,
+        schema: { type: 'string', format: 'uuid' }
+      }],
+      responseDescription: 'Immutable checksummed metadata for one completed export.',
+      responseSchema: { $ref: '#/components/schemas/ExportArtifact' },
+      errors: ['400', '401', '403', '404', '500', '503'],
+      tag: 'administration',
+      role: 'ADMINISTRATOR'
+    })
+  },
+  '/api/v1/export-artifacts/{artifactKey}/download': {
+    get: {
+      tags: ['administration'],
+      operationId: 'downloadExportArtifact',
+      summary: 'Download a verified local export artifact',
+      description: 'Resolves only an opaque artifact UUID through persisted metadata, then reads the configured local root with no-follow and checksum verification. No path input is accepted.',
+      security: [{ bearerAuth: [] }],
+      parameters: [{
+        name: 'artifactKey',
+        in: 'path',
+        required: true,
+        schema: { type: 'string', format: 'uuid' }
+      }],
+      responses: {
+        '200': {
+          description: 'Canonical JSON Lines bytes whose length and SHA-256 match persisted metadata.',
+          headers: {
+            'Content-Disposition': { schema: { type: 'string' } },
+            'Cache-Control': { schema: { type: 'string' } }
+          },
+          content: {
+            'application/x-ndjson': {
+              schema: { type: 'string', format: 'binary' }
+            }
+          }
+        },
+        ...errorRef('400', '401', '403', '404', '409', '500', '503')
+      },
+      'x-berean-minimum-role': 'ADMINISTRATOR',
+      'x-berean-write': false,
+      'x-berean-persistence': 'None. The route reads and integrity-checks an existing immutable artifact.'
+    }
   },
   '/api/v1/jobs/{id}/cancel': {
     post: writeOperation({

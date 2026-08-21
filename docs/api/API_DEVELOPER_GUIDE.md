@@ -87,7 +87,10 @@ All implemented administrative mutations run inside a PostgreSQL transaction in 
 
 ### Worker boundary
 
-`POST /api/v1/discovery-requests`, `/ingestion-jobs`, `/validation-runs`, and `/export-jobs` persist queue state only; execution happens in the separate `npm run worker` process. That worker executes `VALIDATION` jobs through a read-only structural validation executor and appends immutable `validation_result` rows readable at `GET /api/v1/admin/validation-results`. Discovery, ingestion, and export jobs remain `QUEUED` because their executors are not implemented. A validation `PASS` is an operational reproducibility record, never a truth determination about history or a claim.
+`POST /api/v1/discovery-requests`, `/ingestion-jobs`, `/validation-runs`, and `/export-jobs`
+persist queue state; execution happens in the separate `npm run worker` process. The worker executes
+`VALIDATION` and the bounded first-version `EXPORT` shape. Export artifacts are deterministic
+operational reproductions, not truth validation. Discovery and ingestion remain queue-only.
 
 ## Route inventory
 
@@ -1002,6 +1005,18 @@ Writes:
 - `asynchronous_job(job_type='EXPORT')`
 - `export_job`
 - audit `QUEUE export_job`
+
+Execution supports only `JSONL` with `includeRawContent=false`, at most 1,000 ordered
+source-backed claim/evidence/citation rows and 8 MiB. The canonical payload contains no generation
+timestamp. It retains recorded claim/evidence classifications and provenance without treating rows
+as verified facts.
+
+#### `GET /api/v1/export-artifacts/:artifactKey`
+
+Minimum role: `ADMINISTRATOR`. Returns immutable artifact metadata for an opaque UUID. No path is
+accepted. `GET /api/v1/export-artifacts/:artifactKey/download` resolves the UUID through metadata,
+reads only beneath `EXPORT_ARTIFACT_DIR` with no-follow semantics, and verifies size and SHA-256
+before returning bytes.
 
 #### `POST /api/v1/jobs/:id/cancel`
 

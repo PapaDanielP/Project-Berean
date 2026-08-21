@@ -27,6 +27,7 @@ const config = {
   leaseSeconds: positiveInteger('BEREAN_SYSTEM_WORKER_LEASE_SECONDS', 60, 3600),
   heartbeatSeconds: positiveInteger('BEREAN_SYSTEM_WORKER_HEARTBEAT_SECONDS', 15, 1800),
   maxAttempts: positiveInteger('BEREAN_SYSTEM_WORKER_MAX_ATTEMPTS', 3, 100),
+  exportArtifactDir: process.env.EXPORT_ARTIFACT_DIR,
   enabledTypes: enabledTypes as JobType[]
 };
 if (config.heartbeatSeconds >= config.leaseSeconds) throw new Error('BEREAN_SYSTEM_WORKER_HEARTBEAT_SECONDS must be less than BEREAN_SYSTEM_WORKER_LEASE_SECONDS');
@@ -55,7 +56,10 @@ const run = async (): Promise<void> => {
     }, config.heartbeatSeconds * 1000);
     let outcome;
     try {
-      outcome = await executor({ pool, repository, actorId, jobId, leaseToken, job });
+      outcome = await executor({
+        pool, repository, actorId, jobId, leaseToken, job,
+        exportArtifactDir: config.exportArtifactDir
+      });
     } catch {
       outcome = {
         status: 'FAILED' as const,
@@ -65,11 +69,43 @@ const run = async (): Promise<void> => {
     } finally {
       clearInterval(heartbeat);
     }
-    await repository.finalize(
-      jobId, leaseToken, actorId, outcome.status,
-      outcome.errorCode ?? null, outcome.errorMessage ?? null,
-      { completeValidationRun: outcome.completeValidationRun === true }
-    );
+    try {
+      const finalized = await repository.finalize(
+        jobId, leaseToken, actorId, outcome.status,
+        outcome.errorCode ?? null, outcome.errorMessage ?? null,
+        {
+          completeValidationRun: outcome.completeValidationRun === true,
+          exportArtifact: outcome.exportArtifact?.record
+        }
+      );
+      if (!finalized && outcome.exportArtifact) {
+        await outcome.exportArtifact.discard();
+        if (await repository.cancellationRequested(jobId, leaseToken, actorId)) {
+          await repository.finalize(
+            jobId, leaseToken, actorId, 'CANCELLED',
+            'CANCELLED_BY_REQUEST', 'Cancellation was observed before artifact metadata publication.'
+          );
+        }
+      }
+    } catch (error) {
+      if (!outcome.exportArtifact) throw error;
+      let published: boolean | undefined;
+      try {
+        published = await repository.exportArtifactPublished(
+          jobId,
+          outcome.exportArtifact.record.artifactKey
+        );
+      } catch {
+        // Preserve the file while a commit outcome cannot be established.
+      }
+      if (published === false) {
+        await outcome.exportArtifact.discard();
+        await repository.finalize(
+          jobId, leaseToken, actorId, 'FAILED',
+          'EXPORT_ARTIFACT_PERSIST_FAILED', 'Artifact metadata could not be persisted after the final write.'
+        );
+      }
+    }
   }
 };
 
