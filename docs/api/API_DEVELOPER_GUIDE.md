@@ -223,6 +223,66 @@ Failure example (`NO_MATCH`, manual 2026-08-13):
 }
 ```
 
+#### Object-position event-participant questions
+
+A deliberately narrow set of reciprocal phrasings is recognized:
+
+- `Who participates in <event>?` / `Who participated in <event>?`
+- `Who are the participants in <event>?` (also `were`, `is`, `was`)
+- `Which entities participate in <event>?` / `What entities participate in <event>?`
+
+Boundaries:
+
+- The event is resolved from represented event keys and event descriptions only. An entity
+  label, source identity, source record, or lexical predicate match never resolves an event.
+- Exactly one represented event must resolve. Several equally strong event matches return
+  `capability: "UNRESOLVED"` with no result rows.
+- When no represented event resolves, the request falls back to the existing subject-bound
+  behavior, so `NOT_REPRESENTED` and `NO_MATCH` keep their documented non-denial meaning.
+- Retrieval is restricted to claim-asserted propositions whose `object_event_id` is the
+  resolved event and whose predicate is registered with `event_participation_role_code`.
+  No participant is inferred from event descriptions, related claims, or source text.
+- Dataset scope is applied through the returned row's provenance-bearing evidence path.
+- Rows are ordered deterministically by
+  `participation_role_code`, `participant_entity_key`, `claim_key`, `claim_evidence_id`,
+  `dataset_key`, `source_key`, which is reported in `bounded.order`.
+- A source-backed row is a represented assertion, never a confirmation of truth. Support,
+  contradiction, and qualification stay distinct through `evidence_relation_type_code` and
+  `classification`.
+
+Manual example (`POST /api/research {"question": "Who participated in seth_begetting?"}`, 2026-08-21):
+
+```json
+{
+  "capability": "ESTABLISHED",
+  "plan": {
+    "classification": "EVENT_PARTICIPANT",
+    "traversal_shape": "EVENT_OBJECT_PARTICIPATION",
+    "traversal": "Event → Proposition (object_event_id) → Claim → ClaimEvidence → Evidence → Citation → SourceRecord → Dataset → Source",
+    "event_resolution": { "status": "RESOLVED", "resolved_kind": "EVENT", "resolved_from": "EVENT_KEY_OR_DESCRIPTION" }
+  },
+  "bounded": {
+    "total_matched": 2,
+    "returned": 2,
+    "truncated": false,
+    "limit": 50,
+    "order": ["participation_role_code", "participant_entity_key", "claim_key", "claim_evidence_id", "dataset_key", "source_key"]
+  },
+  "results": [
+    {
+      "participant_name": "Seth",
+      "participation_role_code": "CHILD",
+      "predicate": "childIn",
+      "event_key": "seth_begetting",
+      "claim_key": "CLAIM_SETH_CHILD_SETH_BEGETTING",
+      "evidence_relation_type_code": "SUPPORTS",
+      "dataset_key": "GEN_MT_REF",
+      "classification": "DIRECTLY_SUPPORTED"
+    }
+  ]
+}
+```
+
 ### `/api/search` and `/api/v1/search/:resource?`
 
 Validation:

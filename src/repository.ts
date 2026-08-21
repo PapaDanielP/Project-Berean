@@ -6,6 +6,48 @@ const boundedLimit = (value: number | undefined, fallback: number, max: number):
   return Math.max(1, Math.min(max, value));
 };
 
+// Represented-event candidate matching. Only event keys and event descriptions are
+// considered; entity labels, source identities, and source records never resolve an event.
+const EVENT_CANDIDATE_SQL = `SELECT event_id, event_key,
+        GREATEST(
+          CASE WHEN char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) >= 3
+                 AND strpos($1, ' ' || regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
+               THEN char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END,
+          CASE WHEN char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) >= 3
+                 AND strpos($1, ' ' || regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
+               THEN char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END
+        )::int AS match_length
+ FROM event
+ WHERE (char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) >= 3
+        AND strpos($1, ' ' || regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
+    OR (char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) >= 3
+        AND strpos($1, ' ' || regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
+ ORDER BY match_length DESC, event_id
+ LIMIT 10`;
+
+// Deliberately narrow, explainable recognition of the reciprocal, object-position
+// participation question. No natural-language parser or inference is used.
+const EVENT_PARTICIPANT_QUESTION_PATTERNS = [
+  /\bwho\s+(?:participates|participated)\s+in\b/i,
+  /\bwho\s+(?:are|were|is|was)\s+the\s+participants?\s+in\b/i,
+  /\bwhich\s+entities\s+(?:participate|participated)\s+in\b/i,
+  /\bwhat\s+entities\s+(?:participate|participated)\s+in\b/i
+];
+
+const EVENT_PARTICIPANT_RESULT_ORDER = [
+  'participation_role_code',
+  'participant_entity_key',
+  'claim_key',
+  'claim_evidence_id',
+  'dataset_key',
+  'source_key'
+];
+
+const SUBJECT_BOUND_RESULT_ORDER = ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'];
+
+const normalizeQuestionText = (question: string): string =>
+  ` ${question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+
 export class BereanRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -22,7 +64,7 @@ export class BereanRepository {
           active_mapping_count: number;
           active_entity_id: number | null;
         };
-    const normalizedQuestion = ` ${question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+    const normalizedQuestion = normalizeQuestionText(question);
     const [entityCandidates, eventCandidates, sourceIdentityCandidates] = await Promise.all([
       this.pool.query(
         `SELECT entity_id, entity_key, canonical_name,
@@ -43,25 +85,7 @@ export class BereanRepository {
          LIMIT 10`,
         [normalizedQuestion]
       ),
-      this.pool.query(
-        `SELECT event_id, event_key,
-                GREATEST(
-                  CASE WHEN char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) >= 3
-                         AND strpos($1, ' ' || regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
-                       THEN char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END,
-                  CASE WHEN char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) >= 3
-                         AND strpos($1, ' ' || regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g') || ' ') > 0
-                       THEN char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) ELSE 0 END
-                )::int AS match_length
-         FROM event
-         WHERE (char_length(regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g')) >= 3
-                AND strpos($1, ' ' || regexp_replace(lower(event_key), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
-            OR (char_length(regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g')) >= 3
-                AND strpos($1, ' ' || regexp_replace(lower(coalesce(description, '')), '[^a-z0-9]+', ' ', 'g') || ' ') > 0)
-         ORDER BY match_length DESC, event_id
-         LIMIT 10`,
-        [normalizedQuestion]
-      ),
+      this.pool.query(EVENT_CANDIDATE_SQL, [normalizedQuestion]),
       this.pool.query(
         `SELECT si.source_identity_id, si.source_identity_key, si.display_name,
                 COUNT(*) FILTER (WHERE esm.mapping_status_code = 'ACTIVE')::int AS active_mapping_count,
@@ -191,6 +215,144 @@ export class BereanRepository {
     };
   }
 
+  // Object-position event resolution for reciprocal participant questions. An entity match,
+  // source identity, source record, or lexical predicate match never resolves an event.
+  private async resolveResearchEvent(question: string): Promise<Record<string, unknown>> {
+    const { rows } = await this.pool.query(EVENT_CANDIDATE_SQL, [normalizeQuestionText(question)]);
+    const candidates = rows
+      .map((row) => ({
+        kind: 'EVENT' as const,
+        id: Number(row.event_id),
+        key: row.event_key as string,
+        label: row.event_key as string,
+        match_length: Number(row.match_length)
+      }))
+      .filter((candidate) => candidate.match_length > 0);
+
+    if (!candidates.length) {
+      return {
+        status: 'NO_EVENT',
+        candidates: [],
+        reason: 'No represented event key or description matched the question text.'
+      };
+    }
+
+    const strongestLength = Math.max(...candidates.map((candidate) => candidate.match_length));
+    const strongest = candidates.filter((candidate) => candidate.match_length === strongestLength);
+    if (strongest.length > 1) {
+      return {
+        status: 'AMBIGUOUS',
+        candidates: strongest,
+        reason: 'Multiple represented events matched the question with equal confidence.'
+      };
+    }
+
+    return {
+      status: 'RESOLVED',
+      resolved_kind: 'EVENT',
+      object_event_id: strongest[0].id,
+      resolved_from: 'EVENT_KEY_OR_DESCRIPTION',
+      candidates: strongest,
+      reason: 'Resolved to one represented event.'
+    };
+  }
+
+  private classifyResearchRow(row: Record<string, unknown>): string {
+    if (['UNDER_REVIEW', 'SUPERSEDED', 'RETRACTED'].includes(row.claim_status_code as string)) return 'UNRESOLVED';
+    if (row.claim_type_code === 'DERIVED_CLAIM') return 'DERIVED_FROM_PERSISTED_GRAPH';
+    if (row.claim_type_code === 'INTERPRETIVE_CLAIM') return 'SCHOLARLY_CANDIDATE';
+    if (row.evidence_relation_type_code === 'SUPPORTS') return 'DIRECTLY_SUPPORTED';
+    if (row.evidence_relation_type_code === 'CONTRADICTS') return 'EVIDENCE_CONTRADICTS';
+    if (row.evidence_relation_type_code === 'QUALIFIES') return 'EVIDENCE_QUALIFIES';
+    return 'UNRESOLVED';
+  }
+
+  private researchCapability(results: { classification: string }[]): string {
+    if (results.some((row) => row.classification === 'UNRESOLVED')) return 'UNRESOLVED';
+    if (results.some((row) => row.classification === 'SCHOLARLY_CANDIDATE')) return 'SCHOLARLY_CANDIDATE';
+    if (results.some((row) => row.classification === 'DERIVED_FROM_PERSISTED_GRAPH')) return 'DERIVED';
+    if (results.some((row) => row.classification.startsWith('EVIDENCE_'))) return 'UNRESOLVED';
+    return results.length ? 'ESTABLISHED' : 'NO_MATCH';
+  }
+
+  // Bounded retrieval of represented, claim-asserted participants of one resolved event.
+  private async researchEventParticipants(
+    normalizedQuestion: string,
+    eventId: number,
+    candidatePredicates: string[],
+    datasetIds: number[],
+    plan: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    const scoped = datasetIds.length > 0;
+    const { rows } = await this.pool.query(
+      `WITH event_bound AS (
+         SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
+                 c.proposition_id, cr.rendered_proposition, p.predicate,
+                 ev.event_id, ev.event_key,
+                 participant.entity_id AS participant_entity_id,
+                 participant.entity_key AS participant_entity_key,
+                 participant.canonical_name AS participant_name,
+                 pr.event_participation_role_code AS participation_role_code,
+                 ce.claim_evidence_id, ce.relation_type_code AS evidence_relation_type_code,
+                 s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
+          FROM claim c
+          JOIN proposition p ON p.proposition_id = c.proposition_id
+          JOIN predicate pr ON pr.predicate_code = p.predicate
+          JOIN event ev ON ev.event_id = p.object_event_id
+          JOIN entity participant ON participant.entity_id = p.subject_entity_id
+          LEFT JOIN claim_rendering cr ON cr.claim_id = c.claim_id
+          LEFT JOIN claim_evidence ce ON ce.claim_id = c.claim_id
+          LEFT JOIN evidence e ON e.evidence_id = ce.evidence_id
+          LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
+          LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
+          LEFT JOIN source s ON s.source_id = d.source_id
+          WHERE pr.event_participation_role_code IS NOT NULL
+            AND p.predicate = ANY($1)
+            AND p.object_event_id = $2::bigint
+            AND (NOT $3::boolean OR d.dataset_id = ANY($4::bigint[]))
+       ),
+       ranked AS (
+         SELECT event_bound.*,
+                COUNT(*) OVER()::int AS total_matched
+         FROM event_bound
+         ORDER BY participation_role_code COLLATE "C",
+                  participant_entity_key COLLATE "C",
+                  claim_key COLLATE "C",
+                  claim_evidence_id NULLS LAST,
+                  dataset_key COLLATE "C" NULLS LAST,
+                  source_key COLLATE "C" NULLS LAST
+       )
+       SELECT *
+       FROM ranked
+       ORDER BY participation_role_code COLLATE "C",
+                participant_entity_key COLLATE "C",
+                claim_key COLLATE "C",
+                claim_evidence_id NULLS LAST,
+                dataset_key COLLATE "C" NULLS LAST,
+                source_key COLLATE "C" NULLS LAST
+       LIMIT 50`,
+      [candidatePredicates, eventId, scoped, datasetIds]
+    );
+    const results = rows.map((row) => ({ ...row, classification: this.classifyResearchRow(row) }));
+    const totalMatched = rows.length ? Number(rows[0].total_matched) : 0;
+    return {
+      question: normalizedQuestion,
+      interpretation:
+        'Participants are retrieved from claim-asserted propositions whose object is the one resolved represented event; each result is a represented assertion, not a confirmation of truth.',
+      capability: this.researchCapability(results),
+      plan,
+      results,
+      bounded: {
+        total_matched: totalMatched,
+        returned: results.length,
+        truncated: totalMatched > results.length,
+        limit: 50,
+        order: EVENT_PARTICIPANT_RESULT_ORDER
+      },
+      limitation: results.length ? null : 'No matching persisted claims were found in the selected scope.'
+    };
+  }
+
   async listApiResource(resource: string, limit = 50): Promise<Record<string, unknown>[]> {
     const safeLimit = Math.max(1, Math.min(limit, 100));
     const queries: Record<string, string> = {
@@ -272,7 +434,9 @@ export class BereanRepository {
     const normalizedQuestion = question.trim();
     const requestedTruthAssertion = /\b(prove|proved|true|truth|confirm(?:ed|s)?)\b/i.test(normalizedQuestion);
     const subjectResolution = await this.resolveResearchSubject(normalizedQuestion);
-    const relationshipTerms = /\b(participat\w*|who\b.*\bevents?\b|events?\b.*\bwho)\b/i.test(normalizedQuestion);
+    const eventParticipantQuestion = EVENT_PARTICIPANT_QUESTION_PATTERNS.some((pattern) => pattern.test(normalizedQuestion));
+    const relationshipTerms =
+      eventParticipantQuestion || /\b(participat\w*|who\b.*\bevents?\b|events?\b.*\bwho)\b/i.test(normalizedQuestion);
     const predicateResult = await this.pool.query(
       relationshipTerms
         ? `SELECT predicate_code FROM predicate WHERE event_participation_role_code IS NOT NULL ORDER BY predicate_code`
@@ -303,6 +467,46 @@ export class BereanRepository {
         limitation: 'Absence of representation is not a denial; retrieval remains limited to Berean.'
       };
     }
+    const eventResolution = eventParticipantQuestion ? await this.resolveResearchEvent(normalizedQuestion) : null;
+    if (eventResolution && eventResolution.status !== 'NO_EVENT') {
+      const eventPlan = {
+        ...plan,
+        classification: 'EVENT_PARTICIPANT',
+        event_resolution: eventResolution,
+        traversal_shape: 'EVENT_OBJECT_PARTICIPATION',
+        traversal: 'Event → Proposition (object_event_id) → Claim → ClaimEvidence → Evidence → Citation → SourceRecord → Dataset → Source',
+        output_constraints: ['BOUNDED_RESULTS', 'EVENT_BOUND_RESULTS_ONLY', 'REGISTERED_PARTICIPATION_PREDICATES_ONLY']
+      };
+      if (eventResolution.status === 'AMBIGUOUS') {
+        return {
+          question: normalizedQuestion,
+          interpretation: 'Multiple represented events matched the question. Berean requires one unambiguous event before participant retrieval.',
+          capability: 'UNRESOLVED',
+          plan: eventPlan,
+          results: [],
+          bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: EVENT_PARTICIPANT_RESULT_ORDER },
+          limitation: 'Event resolution must be unambiguous and represented before participants can be retrieved.'
+        };
+      }
+      if (!candidatePredicates.length) {
+        return {
+          question: normalizedQuestion,
+          interpretation: 'No registered participation predicate is available, so Berean cannot represent participants for this event.',
+          capability: 'NOT_REPRESENTED',
+          plan: { ...eventPlan, output_constraints: ['NO_INVENTED_PREDICATE', 'BOUNDED_RESULTS'] },
+          results: [],
+          bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: EVENT_PARTICIPANT_RESULT_ORDER },
+          limitation: 'Absence of representation is not a denial. Try keyword search to find persisted records.'
+        };
+      }
+      return this.researchEventParticipants(
+        normalizedQuestion,
+        Number(eventResolution.object_event_id),
+        candidatePredicates,
+        datasetIds,
+        eventPlan
+      );
+    }
     if (subjectResolution.status === 'NO_SUBJECT') {
       return {
         question: normalizedQuestion,
@@ -310,7 +514,7 @@ export class BereanRepository {
         capability: 'NOT_REPRESENTED',
         plan,
         results: [],
-        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: SUBJECT_BOUND_RESULT_ORDER },
         limitation: 'No represented subject was identified for subject-bound retrieval. Absence of representation is not a denial.'
       };
     }
@@ -323,7 +527,7 @@ export class BereanRepository {
         capability: 'UNRESOLVED',
         plan,
         results: [],
-        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: SUBJECT_BOUND_RESULT_ORDER },
         limitation: 'Subject resolution must be unambiguous and represented before ESTABLISHED can be assigned.'
       };
     }
@@ -334,7 +538,7 @@ export class BereanRepository {
         capability: 'NOT_REPRESENTED',
         plan: { ...plan, output_constraints: ['NO_INVENTED_PREDICATE', 'BOUNDED_RESULTS'] },
         results: [],
-        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key'] },
+        bounded: { total_matched: 0, returned: 0, truncated: false, limit: 50, order: SUBJECT_BOUND_RESULT_ORDER },
         limitation: 'Absence of representation is not a denial. Try keyword search to find persisted records.'
       };
     }
@@ -375,41 +579,16 @@ export class BereanRepository {
        LIMIT 50`,
       [candidatePredicates, resolvedKind, resolvedEntityId, resolvedEventId, scoped, datasetIds]
     );
-    const results = rows.map((row) => ({
-      ...row,
-      classification: ['UNDER_REVIEW', 'SUPERSEDED', 'RETRACTED'].includes(row.claim_status_code)
-        ? 'UNRESOLVED'
-        : row.claim_type_code === 'DERIVED_CLAIM'
-          ? 'DERIVED_FROM_PERSISTED_GRAPH'
-          : row.claim_type_code === 'INTERPRETIVE_CLAIM'
-            ? 'SCHOLARLY_CANDIDATE'
-            : row.evidence_relation_type_code === 'SUPPORTS'
-              ? 'DIRECTLY_SUPPORTED'
-              : row.evidence_relation_type_code === 'CONTRADICTS'
-                ? 'EVIDENCE_CONTRADICTS'
-                : row.evidence_relation_type_code === 'QUALIFIES'
-                  ? 'EVIDENCE_QUALIFIES'
-                  : 'UNRESOLVED'
-    }));
+    const results = rows.map((row) => ({ ...row, classification: this.classifyResearchRow(row) }));
     const totalMatched = rows.length ? Number(rows[0].total_matched) : 0;
     const bounded = {
       total_matched: totalMatched,
       returned: results.length,
       truncated: totalMatched > results.length,
       limit: 50,
-      order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']
+      order: SUBJECT_BOUND_RESULT_ORDER
     };
-    const capability = results.some((row) => row.classification === 'UNRESOLVED')
-      ? 'UNRESOLVED'
-      : results.some((row) => row.classification === 'SCHOLARLY_CANDIDATE')
-        ? 'SCHOLARLY_CANDIDATE'
-        : results.some((row) => row.classification === 'DERIVED_FROM_PERSISTED_GRAPH')
-          ? 'DERIVED'
-          : results.some((row) => row.classification.startsWith('EVIDENCE_'))
-            ? 'UNRESOLVED'
-          : results.length
-            ? 'ESTABLISHED'
-            : 'NO_MATCH';
+    const capability = this.researchCapability(results);
     return {
       question: normalizedQuestion,
       interpretation: relationshipTerms

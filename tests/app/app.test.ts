@@ -496,6 +496,161 @@ describe('read-only API', () => {
     expect(multiple.body.results.every((result: { dataset_id: number | string }) => datasetIds.includes(Number(result.dataset_id)))).toBe(true);
   });
 
+  it('answers reciprocal event-participant questions from registered participation predicates', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const question = 'Who participated in seth_begetting?';
+    const response = await request(app).post('/api/research').send({ question });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(response.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(response.body.capability).toBe('ESTABLISHED');
+    expect(response.body.plan.classification).toBe('EVENT_PARTICIPANT');
+    expect(response.body.plan.traversal_shape).toBe('EVENT_OBJECT_PARTICIPATION');
+    expect(response.body.plan.event_resolution.status).toBe('RESOLVED');
+    expect(response.body.plan.event_resolution.candidates).toHaveLength(1);
+    expect(response.body.bounded).toEqual({
+      total_matched: 2,
+      returned: 2,
+      truncated: false,
+      limit: 50,
+      order: ['participation_role_code', 'participant_entity_key', 'claim_key', 'claim_evidence_id', 'dataset_key', 'source_key']
+    });
+
+    const registeredParticipationPredicates = await pool.query(
+      'SELECT predicate_code FROM predicate WHERE event_participation_role_code IS NOT NULL'
+    );
+    const registeredPredicateCodes = registeredParticipationPredicates.rows.map((row: { predicate_code: string }) => row.predicate_code);
+    type ParticipantResult = {
+      event_key: string;
+      participant_entity_key: string;
+      participant_name: string;
+      participation_role_code: string;
+      predicate: string;
+      claim_key: string;
+      claim_type_code: string;
+      claim_status_code: string;
+      evidence_relation_type_code: string;
+      classification: string;
+      dataset_key: string;
+      dataset_name: string;
+      source_key: string;
+      source_name: string;
+    };
+    const results = response.body.results as ParticipantResult[];
+    expect(results.map((result) => [result.participation_role_code, result.participant_name])).toEqual([
+      ['CHILD', 'Seth'],
+      ['PARENT', 'Adam']
+    ]);
+    for (const result of results) {
+      expect(result.event_key).toBe('seth_begetting');
+      expect(registeredPredicateCodes).toContain(result.predicate);
+      expect(result.claim_type_code).toBe('DIRECT_SOURCE_CLAIM');
+      expect(result.claim_status_code).toBe('ACTIVE');
+      expect(result.evidence_relation_type_code).toBe('SUPPORTS');
+      expect(result.classification).toBe('DIRECTLY_SUPPORTED');
+      expect(result.dataset_key).toBe('GEN_MT_REF');
+      expect(result.dataset_name).toBeTruthy();
+      expect(result.source_key).toBeTruthy();
+      expect(result.source_name).toBeTruthy();
+    }
+    expect(results.map((result) => result.claim_key).sort()).toEqual([
+      'CLAIM_ADAM_PARENT_SETH_BEGETTING',
+      'CLAIM_SETH_CHILD_SETH_BEGETTING'
+    ]);
+
+    // Participants of a different represented event must never leak into this result set.
+    const otherEvent = await request(app).post('/api/research').send({ question: 'Who participated in enosh_begetting?' });
+    expect(otherEvent.body.results.map((result: ParticipantResult) => result.participant_name).sort()).toEqual(['Enosh', 'Seth']);
+    expect(results.some((result) => result.participant_name === 'Enosh')).toBe(false);
+
+    const versioned = await request(app).post('/api/v1/research').send({ question });
+    expect(versioned.status).toBe(200);
+    expect(versioned.body).toEqual(response.body);
+  });
+
+  it('scopes event-participant results by evidence provenance and repeats deterministically', async () => {
+    const scope = await request(app).get('/api/research/scope');
+    const mtDatasetId = Number(scope.body.datasets.find((dataset: { dataset_key: string }) => dataset.dataset_key === 'GEN_MT_REF').dataset_id);
+    const lxxDatasetId = Number(scope.body.datasets.find((dataset: { dataset_key: string }) => dataset.dataset_key === 'GEN_LXX_REF').dataset_id);
+    const question = 'Who participated in seth_begetting?';
+
+    const scopedToMt = await request(app).post('/api/research').send({ question, datasetIds: [mtDatasetId] });
+    expect(scopedToMt.status).toBe(200);
+    expect(scopedToMt.body.capability).toBe('ESTABLISHED');
+    expect(scopedToMt.body.results.length).toBe(2);
+    expect(scopedToMt.body.results.every((result: { dataset_id: number | string }) => Number(result.dataset_id) === mtDatasetId)).toBe(true);
+
+    const scopedToLxx = await request(app).post('/api/research').send({ question, datasetIds: [lxxDatasetId] });
+    expect(scopedToLxx.status).toBe(200);
+    expect(scopedToLxx.body.capability).toBe('NO_MATCH');
+    expect(scopedToLxx.body.results).toEqual([]);
+    expect(scopedToLxx.body.limitation).toBe('No matching persisted claims were found in the selected scope.');
+
+    const repeated = await Promise.all([0, 1, 2].map(() => request(app).post('/api/research').send({ question })));
+    const [first, ...rest] = repeated;
+    for (const response of rest) expect(response.body).toEqual(first.body);
+
+    type OrderedParticipant = {
+      participation_role_code: string;
+      participant_entity_key: string;
+      claim_key: string;
+      claim_evidence_id: number | string | null;
+      dataset_key: string | null;
+      source_key: string | null;
+    };
+    const orderKey = (result: OrderedParticipant): string[] => [
+      result.participation_role_code,
+      result.participant_entity_key,
+      result.claim_key,
+      result.claim_evidence_id === null ? '\uffff' : String(result.claim_evidence_id).padStart(20, '0'),
+      result.dataset_key ?? '\uffff',
+      result.source_key ?? '\uffff'
+    ];
+    const ordered = first.body.results as OrderedParticipant[];
+    const sorted = [...ordered].sort((a, b) => (orderKey(a).join('\u0000') < orderKey(b).join('\u0000') ? -1 : 1));
+    expect(ordered.map(orderKey)).toEqual(sorted.map(orderKey));
+  });
+
+  it('returns UNRESOLVED without results when an event-participant question matches several events', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const response = await request(app)
+      .post('/api/research')
+      .send({ question: 'Who participated in enosh_begetting and kenan_begetting?' });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(response.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(response.body.capability).toBe('UNRESOLVED');
+    expect(response.body.plan.event_resolution.status).toBe('AMBIGUOUS');
+    expect(response.body.plan.event_resolution.candidates.length).toBeGreaterThan(1);
+    expect(response.body.results).toEqual([]);
+    expect(response.body.bounded.total_matched).toBe(0);
+    expect(response.body.limitation).toContain('unambiguous');
+  });
+
+  it('keeps unrepresented event-participant phrasing non-denying and leaves subject-bound participation unchanged', async () => {
+    const unrepresented = await request(app)
+      .post('/api/research')
+      .send({ question: 'Who participated in zzz-unrepresented-event-zzz?' });
+    expect(unrepresented.status).toBe(200);
+    expect(unrepresented.body.capability).toBe('NOT_REPRESENTED');
+    expect(unrepresented.body.plan.event_resolution).toBeUndefined();
+    expect(unrepresented.body.results).toEqual([]);
+    expect(unrepresented.body.limitation).toContain('not a denial');
+
+    const subjectBound = await request(app)
+      .post('/api/research')
+      .send({ question: 'In which represented events does Seth participate?' });
+    expect(subjectBound.status).toBe(200);
+    expect(subjectBound.body.capability).toBe('ESTABLISHED');
+    expect(subjectBound.body.plan.classification).toBe('PARTICIPATION');
+    expect(subjectBound.body.plan.traversal_shape).toBe('SUBJECT_BOUND_EVENT_PARTICIPATION');
+    expect(subjectBound.body.plan.event_resolution).toBeUndefined();
+    expect(subjectBound.body.bounded.order).toEqual(['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']);
+    expect(subjectBound.body.results.length).toBeGreaterThan(0);
+  });
+
   it('returns deterministic, identically ordered results across repeated identical requests', async () => {
     const before = await snapshotPersistentTableCounts();
     const question = 'In which represented events does Seth participate?';
