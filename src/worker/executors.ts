@@ -3,7 +3,11 @@
 
 import type { Pool } from 'pg';
 import type { JobRow, JobType, WorkerRepository } from './repository.js';
-import { ValidationExecutorError, executeValidationRun } from './validation-executor.js';
+import {
+  ValidationExecutorError,
+  executeValidationRun,
+  snapshotKnowledgeTablesConsistently
+} from './validation-executor.js';
 
 export interface ExecutorOutcome {
   status: 'COMPLETED' | 'CANCELLED' | 'FAILED';
@@ -39,9 +43,18 @@ const validationExecutor: Executor = async ({ pool, repository, jobId, leaseToke
       errorMessage: 'The claimed validation job has no owned validation run.'
     };
   }
+  if (await repository.validationRunHasResults(run.validationRunId)) {
+    return {
+      status: 'FAILED',
+      errorCode: 'VALIDATION_RUN_ALREADY_EXECUTED',
+      errorMessage: 'The validation run already holds immutable results from an earlier attempt; queue a new validation run instead of re-executing this one.'
+    };
+  }
   try {
     const outcome = await executeValidationRun({
       db: pool,
+      workerActorId: actorId,
+      snapshot: () => snapshotKnowledgeTablesConsistently(pool),
       validationTypes: run.validationTypes,
       isCancelled: () => repository.cancellationRequested(jobId, leaseToken, actorId),
       persist: async (results) => {

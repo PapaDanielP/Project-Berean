@@ -82,7 +82,8 @@ Stable result codes:
 | `PROVENANCE_DERIVED_CLAIM_MISSING_DERIVATION_INPUT` | `FAIL` | A derived claim's derivation declares no input. |
 | `PROVENANCE_VIOLATIONS_TRUNCATED` / `PROVENANCE_DERIVED_VIOLATIONS_TRUNCATED` | `WARNING` | More violations exist than the bounded reporting limit reports. |
 | `READ_ONLY_KNOWLEDGE_TABLES_UNCHANGED` | `PASS` | No authoritative knowledge or registry table changed during execution. |
-| `READ_ONLY_KNOWLEDGE_TABLE_MUTATED` | `FAIL` | A knowledge table changed during execution. |
+| `READ_ONLY_KNOWLEDGE_TABLE_MUTATED` | `FAIL` | A knowledge table changed during execution and no other actor recorded audited activity. |
+| `READ_ONLY_CONCURRENT_EXTERNAL_MUTATION` | `WARNING` | A knowledge table changed while another actor recorded audited activity, so the change is not attributable to this executor. |
 | `READ_ONLY_SNAPSHOT_INCOMPLETE` | `FAIL` | A knowledge table could not be compared across the execution window. |
 | `NEGATIVE_SEMANTIC_FORBIDDEN_CAPABILITIES_ABSENT` | `PASS` | No forbidden automatic capability is represented. |
 | `NEGATIVE_SEMANTIC_FORBIDDEN_PREDICATE_REGISTERED` | `FAIL` | A registered predicate expresses automatic truth/proof/adjudication/inference semantics. |
@@ -98,7 +99,14 @@ Job semantics:
 - a completed run sets `validation_run.completed_at` in the same transaction that finalizes the job
   as `COMPLETED` and appends the worker audit event;
 - an unexpected executor failure finalizes the job `FAILED` with a stable worker error code, and any
-  already-persisted results remain immutable.
+  already-persisted results remain immutable;
+- because `validation_result` rows are immutable and a `validation_run` belongs to exactly one job,
+  a retried or lease-recovered job whose run already holds results is refused with
+  `VALIDATION_RUN_ALREADY_EXECUTED` rather than appending a second, ambiguous result set. Queue a new
+  validation run instead;
+- each `READ_ONLY` snapshot is taken inside a read-only repeatable-read transaction so it is
+  internally consistent, and a detected change is only reported as `FAIL` when no other actor
+  recorded audited activity during the execution window.
 
 ## Related validation records
 

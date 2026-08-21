@@ -144,6 +144,15 @@ export class WorkerRepository {
     };
   }
 
+  /** Reports whether a validation run already holds immutable results. */
+  async validationRunHasResults(validationRunId: number): Promise<boolean> {
+    const result = await this.pool.query(
+      'SELECT 1 FROM validation_result WHERE validation_run_id = $1 LIMIT 1',
+      [validationRunId]
+    );
+    return Boolean(result.rowCount);
+  }
+
   /**
    * Appends immutable validation results. The insert is guarded by the current
    * lease so a stale worker cannot append to a job it no longer owns.

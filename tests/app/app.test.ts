@@ -14,6 +14,7 @@ import {
   checkProvenance,
   checkSchema,
   compareKnowledgeSnapshots,
+  hasConcurrentExternalActivity,
   snapshotKnowledgeTables
 } from '../../src/worker/validation-executor.js';
 
@@ -1784,6 +1785,13 @@ describe('SYSTEM worker validation executor', () => {
     expect(audits.rows.map((row) => row.action)).toEqual(expect.arrayContaining(['LEASE_CLAIMED', 'JOB_COMPLETED']));
   });
 
+  it('keeps the executor free of network, filesystem, and shell capability', async () => {
+    for (const file of ['src/worker/executors.ts', 'src/worker/validation-executor.ts']) {
+      const source = await fs.readFile(path.join(repoRoot, file), 'utf8');
+      expect(source).not.toMatch(/from '(express|node:fs|node:child_process|node:http|node:https)'|\.listen\(|fetch\(|https?:\/\/|readFile|child_process/i);
+    }
+  });
+
   it('exposes persisted validation results through the bounded administration read route', async () => {
     const listed = await authorized('get', '/api/v1/admin/validation-results').query({ limit: 100 });
     expect(listed.status).toBe(200);
@@ -1876,6 +1884,46 @@ describe('SYSTEM worker validation executor', () => {
     const mutated = { ...before, claim: { rowCount: before.claim.rowCount + 1, digest: 'probe' } };
     const detected = compareKnowledgeSnapshots(before, mutated);
     expect(detected).toEqual([expect.objectContaining({ status: 'FAIL', code: 'READ_ONLY_KNOWLEDGE_TABLE_MUTATED' })]);
+  });
+
+  it('refuses to re-execute a validation run that already holds immutable results', async () => {
+    const run = await pool.query(
+      `SELECT v.validation_run_id, v.job_id
+       FROM validation_run v
+       JOIN asynchronous_job j ON j.job_id = v.job_id
+       WHERE j.status = 'COMPLETED'
+       ORDER BY v.validation_run_id DESC LIMIT 1`
+    );
+    const jobId = Number(run.rows[0].job_id);
+    await pool.query(
+      `UPDATE asynchronous_job SET status = 'QUEUED', completed_at = NULL, error_code = NULL, error_message = NULL
+       WHERE job_id = $1`,
+      [jobId]
+    );
+    const worker = new WorkerRepository(pool);
+    const actorId = await worker.resolveSystemActor('validation-executor-test', 'Validation executor test');
+    const { leaseToken, job } = await claimValidationJob(worker, actorId, jobId);
+    const resultsBefore = await pool.query('SELECT count(*)::int AS count FROM validation_result WHERE validation_run_id = $1', [run.rows[0].validation_run_id]);
+
+    const outcome = await EXECUTORS.VALIDATION({ pool, repository: worker, actorId, jobId, leaseToken, job });
+    expect(outcome).toMatchObject({ status: 'FAILED', errorCode: 'VALIDATION_RUN_ALREADY_EXECUTED' });
+    expect(await worker.finalize(jobId, leaseToken, actorId, 'FAILED', outcome.errorCode ?? null, outcome.errorMessage ?? null))
+      .toMatchObject({ status: 'FAILED', error_code: 'VALIDATION_RUN_ALREADY_EXECUTED' });
+    expect((await pool.query('SELECT count(*)::int AS count FROM validation_result WHERE validation_run_id = $1', [run.rows[0].validation_run_id])).rows[0])
+      .toEqual(resultsBefore.rows[0]);
+  });
+
+  it('attributes a concurrent authorized write to other actors instead of failing the executor', async () => {
+    const before = await snapshotKnowledgeTables(pool);
+    const mutated = { ...before, claim: { rowCount: before.claim.rowCount + 1, digest: 'probe' } };
+    expect(compareKnowledgeSnapshots(before, mutated, { concurrentExternalActivity: true }))
+      .toEqual([expect.objectContaining({ status: 'WARNING', code: 'READ_ONLY_CONCURRENT_EXTERNAL_MUTATION' })]);
+
+    const worker = new WorkerRepository(pool);
+    const actorId = await worker.resolveSystemActor('validation-executor-test', 'Validation executor test');
+    const since = new Date(Date.now() + 60_000).toISOString();
+    expect(await hasConcurrentExternalActivity(pool, since, actorId)).toBe(false);
+    expect(await hasConcurrentExternalActivity(pool, new Date(0).toISOString(), actorId)).toBe(true);
   });
 
   it('cancels cooperatively and refuses stale-lease result writes', async () => {

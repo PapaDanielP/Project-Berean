@@ -313,9 +313,49 @@ export const snapshotKnowledgeTables = async (db: Queryable): Promise<KnowledgeS
   return snapshot;
 };
 
+/**
+ * Takes an internally consistent snapshot inside a read-only repeatable-read
+ * transaction, so a concurrent commit cannot be captured by some tables only.
+ */
+export const snapshotKnowledgeTablesConsistently = async (pool: Pool): Promise<KnowledgeSnapshot> => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN TRANSACTION READ ONLY ISOLATION LEVEL REPEATABLE READ');
+    const snapshot = await snapshotKnowledgeTables(client);
+    await client.query('COMMIT');
+    return snapshot;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Reports whether another actor recorded audited activity during the execution
+ * window. A knowledge-table change is only attributable to this executor when no
+ * other actor was writing; otherwise it is reported as concurrent authorized
+ * activity rather than as an executor mutation.
+ */
+export const hasConcurrentExternalActivity = async (
+  db: Queryable,
+  since: string,
+  workerActorId: number | null
+): Promise<boolean> => {
+  const result = await db.query(
+    `SELECT 1 FROM audit_event
+     WHERE occurred_at >= $1::timestamptz AND ($2::bigint IS NULL OR actor_id <> $2::bigint)
+     LIMIT 1`,
+    [since, workerActorId]
+  );
+  return Boolean(result.rowCount);
+};
+
 export const compareKnowledgeSnapshots = (
   before: KnowledgeSnapshot,
-  after: KnowledgeSnapshot
+  after: KnowledgeSnapshot,
+  options: { concurrentExternalActivity?: boolean } = {}
 ): ValidationResultInput[] => {
   const results: ValidationResultInput[] = [];
   for (const table of KNOWLEDGE_TABLES) {
@@ -331,12 +371,19 @@ export const compareKnowledgeSnapshots = (
       continue;
     }
     if (start.rowCount !== end.rowCount || start.digest !== end.digest) {
-      results.push({
-        validationType: 'READ_ONLY',
-        status: 'FAIL',
-        code: 'READ_ONLY_KNOWLEDGE_TABLE_MUTATED',
-        message: boundedMessage(`Authoritative knowledge table ${table} changed during validation execution (rows ${start.rowCount} → ${end.rowCount}).`)
-      });
+      results.push(options.concurrentExternalActivity
+        ? {
+            validationType: 'READ_ONLY',
+            status: 'WARNING',
+            code: 'READ_ONLY_CONCURRENT_EXTERNAL_MUTATION',
+            message: boundedMessage(`Authoritative knowledge table ${table} changed during validation execution (rows ${start.rowCount} → ${end.rowCount}) while another actor recorded audited activity, so the change is not attributable to this executor.`)
+          }
+        : {
+            validationType: 'READ_ONLY',
+            status: 'FAIL',
+            code: 'READ_ONLY_KNOWLEDGE_TABLE_MUTATED',
+            message: boundedMessage(`Authoritative knowledge table ${table} changed during validation execution (rows ${start.rowCount} → ${end.rowCount}).`)
+          });
     }
   }
   if (!results.length) {
@@ -362,6 +409,10 @@ export interface ValidationExecutionContext {
   validationTypes: readonly string[];
   isCancelled: () => Promise<boolean>;
   persist: (results: readonly ValidationResultInput[]) => Promise<void>;
+  /** Overrides how the READ_ONLY before/after snapshot is taken. */
+  snapshot?: () => Promise<KnowledgeSnapshot>;
+  /** Worker actor whose audited activity is expected during execution. */
+  workerActorId?: number;
 }
 
 export interface ValidationExecutionOutcome {
@@ -385,7 +436,12 @@ export const executeValidationRun = async (
     throw new ValidationExecutorError('VALIDATION_TYPE_UNRECOGNISED', 'The validation run requests an unrecognised validation type.');
   }
 
-  const before = await snapshotKnowledgeTables(context.db);
+  const snapshot = context.snapshot ?? (() => snapshotKnowledgeTables(context.db));
+  const window = await context.db.query('SELECT CURRENT_TIMESTAMP AS started_at');
+  const startedAt = String(window.rows[0].started_at instanceof Date
+    ? window.rows[0].started_at.toISOString()
+    : window.rows[0].started_at);
+  const before = await snapshot();
   let persisted = 0;
   const persist = async (results: readonly ValidationResultInput[]): Promise<void> => {
     if (!results.length) return;
@@ -399,7 +455,13 @@ export const executeValidationRun = async (
     if (type === 'SCHEMA') await persist(await checkSchema(context.db));
     else if (type === 'PROVENANCE') await persist(await checkProvenance(context.db));
     else if (type === 'NEGATIVE_SEMANTIC') await persist(await checkNegativeSemantic(context.db));
-    else await persist(compareKnowledgeSnapshots(before, await snapshotKnowledgeTables(context.db)));
+    else {
+      const after = await snapshot();
+      const concurrentExternalActivity = await hasConcurrentExternalActivity(
+        context.db, startedAt, context.workerActorId ?? null
+      );
+      await persist(compareKnowledgeSnapshots(before, after, { concurrentExternalActivity }));
+    }
   }
 
   for (const type of DEFERRED_VALIDATION_TYPES) {
