@@ -324,6 +324,12 @@ export class BereanRepository {
        )
        SELECT *
        FROM ranked
+       ORDER BY participation_role_code COLLATE "C",
+                participant_entity_key COLLATE "C",
+                claim_key COLLATE "C",
+                claim_evidence_id NULLS LAST,
+                dataset_key COLLATE "C" NULLS LAST,
+                source_key COLLATE "C" NULLS LAST
        LIMIT 50`,
       [candidatePredicates, eventId, scoped, datasetIds]
     );
