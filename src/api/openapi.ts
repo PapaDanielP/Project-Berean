@@ -279,7 +279,7 @@ const document: Values = {
             type: 'array',
             items: {
               type: 'object',
-              description: 'Bounded represented rows. Derived rows may include `derivation_scope_status` (`FULLY_IN_SCOPE` | `PARTIALLY_IN_SCOPE` | `UNSCOPED`), `scoped_derivation_input_count`, `total_derivation_input_count`, `scoped_derivation_inputs`, and `derivation_scope_limitation_code`.'
+              description: 'Bounded represented rows. One response may mix `classification` values: `DIRECTLY_SUPPORTED`, `DERIVED_FROM_PERSISTED_GRAPH`, `SCHOLARLY_CANDIDATE`, `EVIDENCE_CONTRADICTS`, `EVIDENCE_QUALIFIES`, and `UNRESOLVED`. Each value reports the represented data state, never an adjudication: contradicting and qualifying rows are not direct support, and competing interpretations are never selected or promoted. Derived rows may include `derivation_scope_status` (`FULLY_IN_SCOPE` | `PARTIALLY_IN_SCOPE` | `UNSCOPED`), `scoped_derivation_input_count`, `total_derivation_input_count`, `scoped_derivation_inputs`, and `derivation_scope_limitation_code`.'
             }
           },
           bounded: object(

@@ -185,6 +185,22 @@ Actual research behaviors:
   - `bounded.returned`
   - `bounded.truncated`
   - deterministic `bounded.order`.
+- One bounded research response can contain several result classifications at once. A single mixed
+  result set may simultaneously include:
+  - `DIRECTLY_SUPPORTED` — a direct source claim with a `SUPPORTS` claim-evidence relation;
+  - `DERIVED_FROM_PERSISTED_GRAPH` — a derived claim with persisted derivation and derivation inputs;
+  - `SCHOLARLY_CANDIDATE` — an interpretive claim, including several competing interpretations;
+  - `EVIDENCE_CONTRADICTS` — a claim whose represented relation to the evidence is `CONTRADICTS`;
+  - `EVIDENCE_QUALIFIES` — a claim whose represented relation to the evidence is `QUALIFIES`;
+  - `UNRESOLVED` — a claim whose lifecycle status is `UNDER_REVIEW`, `SUPERSEDED`, or `RETRACTED`.
+- These classifications are represented-data states, not adjudications. Contradicting and qualifying
+  rows are never rendered or classified as direct support, competing interpretations are never
+  selected, preferred, promoted, or resolved, and a derived row stays derived even when all of its
+  derivation inputs are source-backed.
+- Top-level `capability` follows the represented ladder, so a mixed set is not misreported as
+  settled: `UNRESOLVED` (any unresolved row) → `SCHOLARLY_CANDIDATE` → `DERIVED` → `UNRESOLVED` for
+  evidence-only contradiction/qualification → `ESTABLISHED` only when every row is direct support →
+  `NO_MATCH` when nothing matched.
 - Scope is always `BEREAN_ONLY`; no external retrieval happens.
 - `NO_MATCH` means no persisted claim in the selected scope matched the registered predicate set.
 - Dataset scope is provenance visibility only; it is never truth validation or adjudication.

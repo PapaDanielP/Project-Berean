@@ -113,4 +113,22 @@ describe('Explorer <-> API contract', () => {
     expect(explorerSource).toContain('Directly source-backed claims');
     expect(explorerSource).not.toContain('What Berean Establishes');
   });
+
+  // R2-11: a mixed research response can contain direct, derived, interpretive, contradicting,
+  // and qualifying rows at once. The existing generic rendering must keep a bucket for each.
+  it('retains a rendering bucket for every research result classification', () => {
+    for (const classification of [
+      'DIRECTLY_SUPPORTED',
+      'DERIVED_FROM_PERSISTED_GRAPH',
+      'SCHOLARLY_CANDIDATE',
+      'UNRESOLVED',
+      'EVIDENCE_CONTRADICTS',
+      'EVIDENCE_QUALIFIES'
+    ]) {
+      expect(explorerSource, `Explorer drops classification ${classification}`).toContain(classification);
+    }
+    expect(explorerSource).toContain('Derived Relationships');
+    expect(explorerSource).toContain('Scholarly Interpretations');
+    expect(explorerSource).toContain('is not presented as support');
+  });
 });

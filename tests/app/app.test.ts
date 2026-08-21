@@ -128,6 +128,7 @@ beforeAll(async () => {
   await runSqlFile('tests/fixtures/130-phase30-nephilim-research-fixture.sql');
   await runSqlFile('tests/fixtures/140-phase31-nephilim-research-demonstration-fixture.sql');
   await runSqlFile('tests/fixtures/141-phase32-eclipse-research-generalization-fixture.sql');
+  await runSqlFile('tests/fixtures/146-r2-11-mixed-research-evidence-fixture.sql');
 });
 
 describe('read-only API', () => {
@@ -1765,6 +1766,219 @@ describe('read-only API', () => {
        )`
     );
     expect(theoryRelationships.rowCount).toBe(0);
+  });
+});
+
+// R2-11: one bounded, fixture-backed research topic that simultaneously represents direct
+// support, a derived relationship, competing scholarly interpretations, contradicting
+// evidence, and qualifying evidence. Classifications are represented-data states; no row is
+// selected, promoted, or adjudicated as truth.
+describe('R2-11 mixed research result classifications', () => {
+  const question = 'What madeOfMaterial claim is represented for R2-11 Reference Assembly?';
+
+  interface MixedResult {
+    claim_key: string;
+    claim_type_code: string;
+    claim_status_code: string;
+    evidence_relation_type_code: string | null;
+    classification: string;
+    dataset_key: string | null;
+    dataset_id: number | string | null;
+    source_key: string | null;
+    derivation_scope_status: string | null;
+    scoped_derivation_input_count: number | string | null;
+    total_derivation_input_count: number | string | null;
+    scoped_derivation_inputs?: { dataset_id: number | string }[];
+  }
+
+  const datasetIdsByKey = async (): Promise<Record<string, number>> => {
+    const scope = await request(app).get('/api/research/scope');
+    return Object.fromEntries(
+      scope.body.datasets.map((dataset: { dataset_key: string; dataset_id: number | string }) => [
+        dataset.dataset_key,
+        Number(dataset.dataset_id)
+      ])
+    );
+  };
+
+  it('returns direct, derived, interpretive, contradicting, and qualifying rows in one bounded response', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const response = await request(app).post('/api/research').send({ question });
+    const after = await snapshotPersistentTableCounts();
+
+    expect(response.status).toBe(200);
+    expect(after).toEqual(before);
+    expect(response.body.plan.subject_resolution.status).toBe('RESOLVED');
+    expect(response.body.plan.candidate_predicates).toEqual(['madeOfMaterial']);
+    expect(response.body.plan.traversal_shape).toBe('SUBJECT_BOUND_REGISTERED_PREDICATE_MATCH');
+    expect(response.body.bounded).toEqual({
+      total_matched: 8,
+      returned: 8,
+      truncated: false,
+      limit: 50,
+      order: ['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']
+    });
+
+    const results = response.body.results as MixedResult[];
+    const classificationByClaim = Object.fromEntries(results.map((result) => [result.claim_key, result.classification]));
+    expect(classificationByClaim).toEqual({
+      CLAIM_R211_DIRECT_SUPPORT: 'DIRECTLY_SUPPORTED',
+      CLAIM_R211_CONTRADICTED: 'EVIDENCE_CONTRADICTS',
+      CLAIM_R211_QUALIFIED: 'EVIDENCE_QUALIFIES',
+      CLAIM_R211_INTERPRETATION_ONE: 'SCHOLARLY_CANDIDATE',
+      CLAIM_R211_INTERPRETATION_TWO: 'SCHOLARLY_CANDIDATE',
+      CLAIM_R211_DERIVED_COMPOSITION: 'DERIVED_FROM_PERSISTED_GRAPH'
+    });
+
+    // Contradicting and qualifying rows keep their stored relation and never appear as support.
+    const evidenceOnly = results.filter((result) => result.classification.startsWith('EVIDENCE_'));
+    expect(evidenceOnly.map((result) => result.evidence_relation_type_code).sort()).toEqual(['CONTRADICTS', 'QUALIFIES']);
+    expect(evidenceOnly.some((result) => result.classification === 'DIRECTLY_SUPPORTED')).toBe(false);
+    const directRows = results.filter((result) => result.classification === 'DIRECTLY_SUPPORTED');
+    expect(directRows).toHaveLength(1);
+    expect(directRows[0].evidence_relation_type_code).toBe('SUPPORTS');
+    expect(directRows[0].dataset_key).toBe('R211_PRIMARY_ALPHA_REF');
+    expect(directRows.some((result) => evidenceOnly.includes(result))).toBe(false);
+
+    // A mixed set containing interpretation, contradiction, and qualification is not ESTABLISHED.
+    expect(response.body.capability).toBe('SCHOLARLY_CANDIDATE');
+    expect(response.body.capability).not.toBe('ESTABLISHED');
+
+    const versioned = await request(app).post('/api/v1/research').send({ question });
+    expect(versioned.status).toBe(200);
+    expect(versioned.body).toEqual(response.body);
+  });
+
+  it('retains competing interpretive claims without selecting, preferring, or promoting one', async () => {
+    const response = await request(app).post('/api/research').send({ question });
+    const interpretations = (response.body.results as MixedResult[]).filter(
+      (result) => result.claim_type_code === 'INTERPRETIVE_CLAIM'
+    );
+
+    expect([...new Set(interpretations.map((result) => result.claim_key))]).toEqual([
+      'CLAIM_R211_INTERPRETATION_ONE',
+      'CLAIM_R211_INTERPRETATION_TWO'
+    ]);
+    for (const interpretation of interpretations) {
+      expect(interpretation.classification).toBe('SCHOLARLY_CANDIDATE');
+      expect(interpretation.claim_status_code).toBe('ACTIVE');
+      expect(interpretation.source_key).toBeTruthy();
+      expect(interpretation.dataset_key).toBeTruthy();
+      expect(Object.keys(interpretation)).not.toContain('selected');
+      expect(Object.keys(interpretation)).not.toContain('preferred');
+    }
+    // The interpretations disagree in represented data; neither is resolved by research.
+    const datasetsByInterpretation = new Map<string, Set<string | null>>();
+    for (const interpretation of interpretations) {
+      const datasets = datasetsByInterpretation.get(interpretation.claim_key) ?? new Set<string | null>();
+      datasets.add(interpretation.dataset_key);
+      datasetsByInterpretation.set(interpretation.claim_key, datasets);
+    }
+    expect([...(datasetsByInterpretation.get('CLAIM_R211_INTERPRETATION_ONE') ?? [])]).toEqual(['R211_SCHOLARSHIP_ONE_REF']);
+    expect([...(datasetsByInterpretation.get('CLAIM_R211_INTERPRETATION_TWO') ?? [])]).toEqual(['R211_SCHOLARSHIP_TWO_REF']);
+
+    const persisted = await pool.query(
+      `SELECT claim_status_code FROM claim
+       WHERE claim_key IN ('CLAIM_R211_INTERPRETATION_ONE', 'CLAIM_R211_INTERPRETATION_TWO')`
+    );
+    expect(persisted.rows.every((row: { claim_status_code: string }) => row.claim_status_code === 'ACTIVE')).toBe(true);
+  });
+
+  it('keeps the derived row derived and backed by persisted derivation inputs', async () => {
+    const response = await request(app).post('/api/research').send({ question });
+    const derived = (response.body.results as MixedResult[]).find(
+      (result) => result.claim_key === 'CLAIM_R211_DERIVED_COMPOSITION'
+    );
+    expect(derived).toBeTruthy();
+    expect(derived?.claim_type_code).toBe('DERIVED_CLAIM');
+    expect(derived?.classification).toBe('DERIVED_FROM_PERSISTED_GRAPH');
+    expect(derived?.evidence_relation_type_code).toBeNull();
+
+    const derivationId = await getDerivationIdByClaimKey('CLAIM_R211_DERIVED_COMPOSITION');
+    const derivation = await pool.query('SELECT method, assumptions FROM derivation WHERE derivation_id = $1', [derivationId]);
+    expect(derivation.rows[0].method).toBeTruthy();
+    expect(derivation.rows[0].assumptions).toBeTruthy();
+    const inputs = await pool.query(
+      'SELECT input_claim_id, input_evidence_id FROM derivation_input WHERE derivation_id = $1',
+      [derivationId]
+    );
+    expect(inputs.rowCount).toBe(2);
+    expect(inputs.rows.some((row: { input_claim_id: string | null }) => row.input_claim_id !== null)).toBe(true);
+    expect(inputs.rows.some((row: { input_evidence_id: string | null }) => row.input_evidence_id !== null)).toBe(true);
+  });
+
+  it('restricts the mixed query by persisted provenance while preserving classifications', async () => {
+    const datasetIds = await datasetIdsByKey();
+    const alpha = datasetIds.R211_PRIMARY_ALPHA_REF;
+    const beta = datasetIds.R211_PRIMARY_BETA_REF;
+
+    const primaryScoped = await request(app).post('/api/research').send({ question, datasetIds: [alpha, beta] });
+    expect(primaryScoped.status).toBe(200);
+    const primaryResults = primaryScoped.body.results as MixedResult[];
+    expect(primaryResults.map((result) => result.claim_key).sort()).toEqual([
+      'CLAIM_R211_CONTRADICTED',
+      'CLAIM_R211_DERIVED_COMPOSITION',
+      'CLAIM_R211_DIRECT_SUPPORT',
+      'CLAIM_R211_QUALIFIED'
+    ]);
+    // Interpretive rows are provenanced through scholarship datasets only, so scope excludes them.
+    expect(primaryResults.some((result) => result.claim_type_code === 'INTERPRETIVE_CLAIM')).toBe(false);
+    expect(
+      primaryResults
+        .filter((result) => result.claim_type_code !== 'DERIVED_CLAIM')
+        .every((result) => [alpha, beta].includes(Number(result.dataset_id)))
+    ).toBe(true);
+    const scopedDerived = primaryResults.find((result) => result.claim_type_code === 'DERIVED_CLAIM');
+    expect(scopedDerived?.classification).toBe('DERIVED_FROM_PERSISTED_GRAPH');
+    expect(scopedDerived?.derivation_scope_status).toBe('FULLY_IN_SCOPE');
+    expect(Number(scopedDerived?.scoped_derivation_input_count)).toBe(2);
+    expect(Number(scopedDerived?.total_derivation_input_count)).toBe(2);
+
+    const alphaScoped = await request(app).post('/api/research').send({ question, datasetIds: [alpha] });
+    expect(alphaScoped.status).toBe(200);
+    expect((alphaScoped.body.results as MixedResult[]).map((result) => result.claim_key).sort()).toEqual([
+      'CLAIM_R211_DERIVED_COMPOSITION',
+      'CLAIM_R211_DIRECT_SUPPORT'
+    ]);
+    const alphaDerived = (alphaScoped.body.results as MixedResult[]).find(
+      (result) => result.claim_type_code === 'DERIVED_CLAIM'
+    );
+    expect(alphaDerived?.classification).toBe('DERIVED_FROM_PERSISTED_GRAPH');
+    expect(alphaDerived?.derivation_scope_status).toBe('PARTIALLY_IN_SCOPE');
+    expect(Number(alphaDerived?.scoped_derivation_input_count)).toBe(1);
+    expect(Number(alphaDerived?.total_derivation_input_count)).toBe(2);
+    expect(alphaDerived?.scoped_derivation_inputs?.every((input) => Number(input.dataset_id) === alpha)).toBe(true);
+
+    const versioned = await request(app).post('/api/v1/research').send({ question, datasetIds: [alpha, beta] });
+    expect(versioned.status).toBe(200);
+    expect(versioned.body).toEqual(primaryScoped.body);
+  });
+
+  it('repeats the full mixed response deterministically in documented order', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const responses = await Promise.all([0, 1, 2].map(() => request(app).post('/api/research').send({ question })));
+    const after = await snapshotPersistentTableCounts();
+    expect(after).toEqual(before);
+
+    const [first, ...rest] = responses;
+    for (const response of rest) expect(response.body).toEqual(first.body);
+    expect(first.body.bounded.order).toEqual(['claim_id', 'claim_evidence_id', 'dataset_id', 'source_key']);
+
+    const orderKey = (result: MixedResult & { claim_id: number | string; claim_evidence_id: number | string | null }): number[] => [
+      Number(result.claim_id),
+      result.claim_evidence_id === null ? Number.POSITIVE_INFINITY : Number(result.claim_evidence_id),
+      result.dataset_id === null ? Number.POSITIVE_INFINITY : Number(result.dataset_id)
+    ];
+    const results = first.body.results as (MixedResult & { claim_id: number | string; claim_evidence_id: number | string | null })[];
+    const sorted = [...results].sort((a, b) => {
+      const left = orderKey(a);
+      const right = orderKey(b);
+      for (let index = 0; index < left.length; index += 1) {
+        if (left[index] !== right[index]) return left[index] < right[index] ? -1 : 1;
+      }
+      return 0;
+    });
+    expect(results.map(orderKey)).toEqual(sorted.map(orderKey));
   });
 });
 
