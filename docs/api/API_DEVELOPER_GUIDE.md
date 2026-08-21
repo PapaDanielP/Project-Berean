@@ -249,6 +249,9 @@ Manual example (`GET /api/search?q=Nikola%20Tesla&limit=5`):
 #### V1 resource filter normalization
 
 `GET /api/v1/search/:resource` normalizes the plural route segment explicitly. No string truncation is used.
+When a resource is provided, the resource type is applied inside the search query before the effective
+result limit is applied. Filtered rows keep the same deterministic ordering as generic keyword search:
+`type`, then `key` (for one resource type, key order).
 
 | Route segment | Search result type |
 |---|---|
@@ -269,7 +272,7 @@ Controlled errors replace silently empty results:
 - `identity-mappings` is a supported persisted resource that keyword search does not index, so it returns `501 NOT_REPRESENTED` and points at `GET /api/v1/identity-mappings`;
 - a legitimate empty result set returns `200` with `classification:"NO_MATCH"` and an explicit statement that `NO_MATCH` is not a denial.
 
-Response example (`GET /api/v1/search/entities?q=adam&limit=100`):
+Response example (`GET /api/v1/search/entities?q=adam&limit=1`):
 
 ```json
 {
@@ -282,14 +285,10 @@ Response example (`GET /api/v1/search/entities?q=adam&limit=100`):
 }
 ```
 
-`limit` is applied by the search query **before** the resource filter is applied to the returned rows,
-so a small `limit` on a filtered search can report `NO_MATCH` while a matching persisted record exists
-further down the unfiltered result set (verified 2026-08-14: `?q=adam&limit=3` returns `NO_MATCH`,
-`?q=adam&limit=100` returns the `adam` entity). Use a high `limit` for filtered searches. This behavior
-is recorded as finding F-01 in
-[`../07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md`](../07-review/FINAL_PLATFORM_ARCHITECTURE_AUDIT.md);
-it does not change the documented meaning of `NO_MATCH`, which remains "no persisted record matched",
-never "false".
+Earlier audit evidence recorded a fixed defect where `limit` was applied before the V1 resource filter.
+That caveat is superseded: filtered search now searches within the requested persisted resource type first,
+then applies `limit`. `NO_MATCH` therefore keeps its documented meaning: no persisted record of the
+requested type matched, never "false".
 
 ### Entity / claim / proposition / event / source detail routes
 

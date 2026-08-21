@@ -35,7 +35,7 @@ Authoritative architecture references:
 | GET `/api/v1/capabilities` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/v1/schema` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/v1/registry/:registry` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (`registry/predicates`), `tests/app/openapi-coverage.test.ts` (`registry/capabilities` 307 redirect), manual 2026-08-13 |
-| GET `/api/v1/search/:resource?` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (every supported filter, unknown filter 404, unindexed 501, `NO_MATCH`) |
+| GET `/api/v1/search/:resource?` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (every supported filter, resource filter before limit, unknown filter 404, unindexed 501, `NO_MATCH`) |
 | POST `/api/v1/research` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` |
 | GET `/api/v1/research/capabilities` | none | sync | n/a | none | none | IMPLEMENTED | code-traced |
 | GET `/api/v1/provenance/claim/:id` | none | sync | n/a | none | none | IMPLEMENTED | `tests/app/app.test.ts` (missing claim returns 404) |

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { BereanRepository } from '../repository.js';
+import type { SearchType } from '../types.js';
 
 const resources = new Set([
   'entities', 'events', 'claims', 'evidence', 'sources', 'datasets',
@@ -11,7 +12,7 @@ const registries = new Set([
 
 // Search filters are normalized explicitly. Plural route segments never map to search
 // result types by string slicing, and unrepresented filters never return a silent empty list.
-const searchResourceTypes: Record<string, string> = {
+const searchResourceTypes: Record<string, SearchType> = {
   entities: 'entity',
   events: 'event',
   claims: 'claim',
@@ -111,15 +112,16 @@ export const registerV1Routes = (repository: BereanRepository): Router => {
         error(res, 404, 'NOT_FOUND', `Search resource filter was not found. Supported filters: ${Object.keys(searchResourceTypes).join(', ')}.`);
         return;
       }
-      const results = await repository.search(query, requestedLimit);
-      const filtered = resourceType ? results.filter((result) => result.type === resourceType) : results;
+      const results = resourceType
+        ? await repository.searchByType(query, resourceType, requestedLimit)
+        : await repository.search(query, requestedLimit);
       res.json({
         query,
         resource: resource ?? null,
         resource_type: resourceType,
-        results: filtered,
-        classification: filtered.length ? 'MATCHED' : 'NO_MATCH',
-        limitation: filtered.length
+        results,
+        classification: results.length ? 'MATCHED' : 'NO_MATCH',
+        limitation: results.length
           ? 'Matched records are lexical search hits, not established claims.'
           : 'NO_MATCH reports that no persisted record matched this term. It is not a denial of the searched subject.'
       });

@@ -244,7 +244,7 @@ No `409` ever commits a partial write: each mutation runs in a single transactio
 
 ## Search and provenance composition
 
-1. `GET /api/v1/search/{resource}?q=...` — normalized, filtered lookup. `NO_MATCH` means nothing persisted matched; it is not falsity.
+1. `GET /api/v1/search/{resource}?q=...` — normalized lookup that applies the resource filter before the result limit. `NO_MATCH` means nothing persisted matched; it is not falsity.
 2. `GET /api/v1/{resource}/{id}` — expanded detail for the matched record.
 3. `GET /api/v1/provenance/claim/{id}` — structured provenance with explicit gap reporting (`404` when the claim is not represented).
 4. `GET /api/v1/graph/entity/{id}` — bounded neighborhood projected from claim-asserted propositions; a projected edge is never a new claim.
