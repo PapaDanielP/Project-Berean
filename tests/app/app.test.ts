@@ -378,6 +378,27 @@ describe('read-only API', () => {
         await staleOutcome.exportArtifact!.discard();
         expect((await pool.query('SELECT 1 FROM export_artifact WHERE job_id = $1', [stale!.job_id])).rowCount).toBe(0);
 
+        await create(`export-post-write-check-${Date.now()}`);
+        const postWriteCheck = await worker.claimOne(actorId, 60, 3, ['EXPORT']);
+        const originalCancellationRequested = worker.cancellationRequested.bind(worker);
+        let cancellationChecks = 0;
+        worker.cancellationRequested = async (jobId, leaseToken, workerActorId) => {
+          cancellationChecks += 1;
+          if (cancellationChecks === 3) throw new Error('simulated cancellation check failure');
+          return originalCancellationRequested(jobId, leaseToken, workerActorId);
+        };
+        const postWriteOutcome = await run(postWriteCheck!, artifactDirectory);
+        worker.cancellationRequested = originalCancellationRequested;
+        expect(postWriteOutcome).toMatchObject({ status: 'FAILED', errorCode: 'EXPORT_EXECUTOR_FAILED' });
+        expect(await fs.readdir(artifactDirectory)).toEqual([]);
+        await worker.finalize(
+          Number(postWriteCheck!.job_id),
+          String(postWriteCheck!.lease_token),
+          actorId,
+          'FAILED',
+          postWriteOutcome.errorCode
+        );
+
         const existing = await pool.query(
           `SELECT a.job_id, j.requested_by_actor_id
            FROM export_artifact a JOIN asynchronous_job j ON j.job_id = a.job_id

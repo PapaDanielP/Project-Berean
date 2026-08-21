@@ -33,7 +33,8 @@ const exportRows = async (pool: Pool, corpusId: number): Promise<Record<string, 
             sv.event_key AS subject_event_key, p.object_kind_code,
             oe.entity_key AS object_entity_key, ov.event_key AS object_event_key,
             tv.value_type_code, tv.text_value, tv.numeric_value::text AS numeric_value,
-            tv.date_value::text AS date_value, tv.duration_value::text AS duration_value,
+            to_char(tv.date_value, 'YYYY-MM-DD') AS date_value,
+            to_char(tv.duration_value, 'YYYY-MM-DD"T"HH24:MI:SS.US') AS duration_value,
             tv.uncertainty_lower::text AS uncertainty_lower,
             tv.uncertainty_upper::text AS uncertainty_upper,
             ce.relation_type_code, e.evidence_key, e.evidence_type_code, e.observation,
@@ -149,14 +150,16 @@ export const executeExport = async (
   const rows = await exportRows(pool, run.corpusId);
   const bytes = canonicalBytes(run, rows);
   if (await isCancelled()) throw new ExportExecutorError('EXPORT_CANCELLED');
+  let artifact: PreparedExportArtifact | undefined;
   try {
-    const artifact = await writeExportArtifact(artifactDirectory, run.exportJobId, bytes);
+    artifact = await writeExportArtifact(artifactDirectory, run.exportJobId, bytes);
     if (await isCancelled()) {
       await artifact.discard();
       throw new ExportExecutorError('EXPORT_CANCELLED');
     }
     return artifact;
   } catch (error) {
+    await artifact?.discard();
     if (error instanceof ExportExecutorError) throw error;
     if (error instanceof ExportArtifactError) throw new ExportExecutorError(error.code);
     throw new ExportExecutorError('EXPORT_EXECUTOR_FAILED');

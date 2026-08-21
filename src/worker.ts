@@ -87,12 +87,24 @@ const run = async (): Promise<void> => {
           );
         }
       }
-    } catch {
-      await outcome.exportArtifact?.discard();
-      await repository.finalize(
-        jobId, leaseToken, actorId, 'FAILED',
-        'EXPORT_ARTIFACT_PERSIST_FAILED', 'Artifact metadata could not be persisted after the final write.'
-      );
+    } catch (error) {
+      if (!outcome.exportArtifact) throw error;
+      let published: boolean | undefined;
+      try {
+        published = await repository.exportArtifactPublished(
+          jobId,
+          outcome.exportArtifact.record.artifactKey
+        );
+      } catch {
+        // Preserve the file while a commit outcome cannot be established.
+      }
+      if (published === false) {
+        await outcome.exportArtifact.discard();
+        await repository.finalize(
+          jobId, leaseToken, actorId, 'FAILED',
+          'EXPORT_ARTIFACT_PERSIST_FAILED', 'Artifact metadata could not be persisted after the final write.'
+        );
+      }
     }
   }
 };

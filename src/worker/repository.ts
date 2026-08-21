@@ -184,6 +184,17 @@ export class WorkerRepository {
     };
   }
 
+  async exportArtifactPublished(jobId: number, artifactKey: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1
+       FROM export_artifact a
+       JOIN asynchronous_job j ON j.job_id = a.job_id
+       WHERE a.job_id = $1 AND a.artifact_key = $2::uuid AND j.status = 'COMPLETED'`,
+      [jobId, artifactKey]
+    );
+    return Boolean(result.rowCount);
+  }
+
   /**
    * Appends immutable validation results. The insert is guarded by the current
    * lease so a stale worker cannot append to a job it no longer owns.
