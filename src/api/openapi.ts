@@ -274,8 +274,14 @@ const document: Values = {
           question: { type: 'string' },
           interpretation: { type: 'string' },
           capability: { type: 'string', enum: ['ESTABLISHED', 'DERIVED', 'SCHOLARLY_CANDIDATE', 'UNRESOLVED', 'NOT_REPRESENTED', 'NO_MATCH'] },
-          plan: { type: 'object', description: 'Query plan: classification, resolved subject state, optional resolved event state for object-position participant questions, scope, candidate predicates, traversal shape (`SUBJECT_BOUND_REGISTERED_PREDICATE_MATCH`, `SUBJECT_BOUND_EVENT_PARTICIPATION`, or `EVENT_OBJECT_PARTICIPATION`), output constraints.' },
-          results: { type: 'array', items: { type: 'object' } },
+          plan: { type: 'object', description: 'Query plan: classification, resolved subject state, optional resolved event state for object-position participant questions, scope, derived-claim scope rule/status codes, candidate predicates, traversal shape (`SUBJECT_BOUND_REGISTERED_PREDICATE_MATCH`, `SUBJECT_BOUND_EVENT_PARTICIPATION`, or `EVENT_OBJECT_PARTICIPATION`), output constraints.' },
+          results: {
+            type: 'array',
+            items: {
+              type: 'object',
+              description: 'Bounded represented rows. Derived rows may include `derivation_scope_status` (`FULLY_IN_SCOPE` | `PARTIALLY_IN_SCOPE` | `UNSCOPED`), `scoped_derivation_input_count`, `total_derivation_input_count`, `scoped_derivation_inputs`, and `derivation_scope_limitation_code`.'
+            }
+          },
           bounded: object(
             {
               total_matched: { type: 'integer', minimum: 0 },

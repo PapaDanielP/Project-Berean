@@ -285,7 +285,72 @@ export class BereanRepository {
   ): Promise<Record<string, unknown>> {
     const scoped = datasetIds.length > 0;
     const { rows } = await this.pool.query(
-      `WITH event_bound AS (
+      `WITH derived_input_provenance AS (
+         SELECT di.derivation_id, di.derivation_input_id, di.input_claim_id, di.input_evidence_id,
+                pds.dataset_id, pds.dataset_key, pds.dataset_name, pds.source_key, pds.source_name
+         FROM derivation_input di
+         LEFT JOIN LATERAL (
+           SELECT DISTINCT d.dataset_id, d.dataset_key, d.name AS dataset_name, s.source_key, s.name AS source_name
+           FROM (
+             SELECT sr.dataset_id
+             FROM claim_evidence ce
+             JOIN evidence e ON e.evidence_id = ce.evidence_id
+             JOIN source_record sr ON sr.source_record_id = e.source_record_id
+             WHERE di.input_claim_id IS NOT NULL
+               AND ce.claim_id = di.input_claim_id
+             UNION
+             SELECT sr.dataset_id
+             FROM evidence e
+             JOIN source_record sr ON sr.source_record_id = e.source_record_id
+             WHERE di.input_evidence_id IS NOT NULL
+               AND e.evidence_id = di.input_evidence_id
+           ) AS input_datasets
+           JOIN dataset d ON d.dataset_id = input_datasets.dataset_id
+           JOIN source s ON s.source_id = d.source_id
+         ) AS pds ON true
+       ),
+       derived_scope AS (
+         SELECT c.claim_id,
+                COUNT(DISTINCT dip.derivation_input_id)::int AS total_derivation_input_count,
+                COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id IS NOT NULL)::int AS provenanced_derivation_input_count,
+                COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id = ANY($4::bigint[]))::int AS scoped_derivation_input_count,
+                CASE
+                 WHEN c.derivation_id IS NULL THEN 'UNSCOPED'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) = 0 THEN 'UNSCOPED'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id = ANY($4::bigint[])) = 0 THEN 'UNSCOPED'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id = ANY($4::bigint[]))
+                   = COUNT(DISTINCT dip.derivation_input_id) THEN 'FULLY_IN_SCOPE'
+                 ELSE 'PARTIALLY_IN_SCOPE'
+                END AS derivation_scope_status,
+                COALESCE(
+                 jsonb_agg(
+                   jsonb_build_object(
+                     'derivation_input_id', dip.derivation_input_id,
+                     'input_claim_id', dip.input_claim_id,
+                     'input_evidence_id', dip.input_evidence_id,
+                     'dataset_id', dip.dataset_id,
+                     'dataset_key', dip.dataset_key,
+                     'dataset_name', dip.dataset_name,
+                     'source_key', dip.source_key,
+                     'source_name', dip.source_name
+                   )
+                   ORDER BY dip.derivation_input_id, dip.dataset_id
+                 ) FILTER (WHERE dip.dataset_id = ANY($4::bigint[])),
+                 '[]'::jsonb
+                ) AS scoped_derivation_inputs,
+                CASE
+                 WHEN c.derivation_id IS NULL THEN 'DERIVED_CLAIM_MISSING_DERIVATION'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) = 0 THEN 'DERIVATION_INPUT_MISSING'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id IS NOT NULL) = 0
+                   THEN 'DERIVATION_INPUT_MISSING_PROVENANCE'
+                 ELSE NULL
+                END AS derivation_scope_limitation_code
+         FROM claim c
+         LEFT JOIN derived_input_provenance dip ON dip.derivation_id = c.derivation_id
+         WHERE c.claim_type_code = 'DERIVED_CLAIM'
+         GROUP BY c.claim_id, c.derivation_id
+       ),
+       event_bound AS (
          SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
                  c.proposition_id, cr.rendered_proposition, p.predicate,
                  ev.event_id, ev.event_key,
@@ -295,6 +360,9 @@ export class BereanRepository {
                  pr.event_participation_role_code AS participation_role_code,
                  ce.claim_evidence_id, ce.relation_type_code AS evidence_relation_type_code,
                  s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
+                , ds.total_derivation_input_count, ds.provenanced_derivation_input_count,
+                ds.scoped_derivation_input_count, ds.derivation_scope_status, ds.scoped_derivation_inputs,
+                ds.derivation_scope_limitation_code
           FROM claim c
           JOIN proposition p ON p.proposition_id = c.proposition_id
           JOIN predicate pr ON pr.predicate_code = p.predicate
@@ -306,10 +374,15 @@ export class BereanRepository {
           LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
           LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
           LEFT JOIN source s ON s.source_id = d.source_id
+          LEFT JOIN derived_scope ds ON ds.claim_id = c.claim_id
           WHERE pr.event_participation_role_code IS NOT NULL
             AND p.predicate = ANY($1)
             AND p.object_event_id = $2::bigint
-            AND (NOT $3::boolean OR d.dataset_id = ANY($4::bigint[]))
+            AND (
+              NOT $3::boolean
+              OR (c.claim_type_code <> 'DERIVED_CLAIM' AND d.dataset_id = ANY($4::bigint[]))
+              OR (c.claim_type_code = 'DERIVED_CLAIM' AND COALESCE(ds.scoped_derivation_input_count, 0) > 0)
+            )
        ),
        ranked AS (
          SELECT event_bound.*,
@@ -450,6 +523,10 @@ export class BereanRepository {
     const plan = {
       classification: requestedTruthAssertion ? 'TRUTH_ASSERTION' : relationshipTerms ? 'PARTICIPATION' : 'PERSISTED_LABEL_SEARCH',
       scope: { dataset_ids: datasetIds, retrieval_scope: 'BEREAN_ONLY' },
+      derived_scope_rule: datasetIds.length
+        ? 'INCLUDE_DERIVED_WHEN_ANY_DERIVATION_INPUT_HAS_SELECTED_DATASET_PROVENANCE'
+        : 'UNFILTERED_DERIVED_RESULTS',
+      derived_scope_status_codes: ['FULLY_IN_SCOPE', 'PARTIALLY_IN_SCOPE', 'UNSCOPED'],
       subject_resolution: subjectResolution,
       candidate_predicates: candidatePredicates,
       traversal_shape: relationshipTerms ? 'SUBJECT_BOUND_EVENT_PARTICIPATION' : 'SUBJECT_BOUND_REGISTERED_PREDICATE_MATCH',
@@ -548,11 +625,79 @@ export class BereanRepository {
     const resolvedEntityId = subjectResolution.subject_entity_id ? Number(subjectResolution.subject_entity_id) : null;
     const resolvedEventId = subjectResolution.subject_event_id ? Number(subjectResolution.subject_event_id) : null;
     const { rows } = await this.pool.query(
-      `WITH subject_bound AS (
+      `WITH derived_input_provenance AS (
+         SELECT di.derivation_id, di.derivation_input_id, di.input_claim_id, di.input_evidence_id,
+               pds.dataset_id, pds.dataset_key, pds.dataset_name, pds.source_key, pds.source_name
+         FROM derivation_input di
+         LEFT JOIN LATERAL (
+          SELECT DISTINCT d.dataset_id, d.dataset_key, d.name AS dataset_name, s.source_key, s.name AS source_name
+          FROM (
+            SELECT sr.dataset_id
+            FROM claim_evidence ce
+            JOIN evidence e ON e.evidence_id = ce.evidence_id
+            JOIN source_record sr ON sr.source_record_id = e.source_record_id
+            WHERE di.input_claim_id IS NOT NULL
+              AND ce.claim_id = di.input_claim_id
+            UNION
+            SELECT sr.dataset_id
+            FROM evidence e
+            JOIN source_record sr ON sr.source_record_id = e.source_record_id
+            WHERE di.input_evidence_id IS NOT NULL
+              AND e.evidence_id = di.input_evidence_id
+          ) AS input_datasets
+          JOIN dataset d ON d.dataset_id = input_datasets.dataset_id
+          JOIN source s ON s.source_id = d.source_id
+         ) AS pds ON true
+       ),
+       derived_scope AS (
+         SELECT c.claim_id,
+               COUNT(DISTINCT dip.derivation_input_id)::int AS total_derivation_input_count,
+               COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id IS NOT NULL)::int AS provenanced_derivation_input_count,
+               COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id = ANY($6::bigint[]))::int AS scoped_derivation_input_count,
+               CASE
+                 WHEN c.derivation_id IS NULL THEN 'UNSCOPED'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) = 0 THEN 'UNSCOPED'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id = ANY($6::bigint[])) = 0 THEN 'UNSCOPED'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id = ANY($6::bigint[]))
+                   = COUNT(DISTINCT dip.derivation_input_id) THEN 'FULLY_IN_SCOPE'
+                 ELSE 'PARTIALLY_IN_SCOPE'
+               END AS derivation_scope_status,
+               COALESCE(
+                 jsonb_agg(
+                   jsonb_build_object(
+                     'derivation_input_id', dip.derivation_input_id,
+                     'input_claim_id', dip.input_claim_id,
+                     'input_evidence_id', dip.input_evidence_id,
+                     'dataset_id', dip.dataset_id,
+                     'dataset_key', dip.dataset_key,
+                     'dataset_name', dip.dataset_name,
+                     'source_key', dip.source_key,
+                     'source_name', dip.source_name
+                   )
+                   ORDER BY dip.derivation_input_id, dip.dataset_id
+                 ) FILTER (WHERE dip.dataset_id = ANY($6::bigint[])),
+                 '[]'::jsonb
+               ) AS scoped_derivation_inputs,
+               CASE
+                 WHEN c.derivation_id IS NULL THEN 'DERIVED_CLAIM_MISSING_DERIVATION'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) = 0 THEN 'DERIVATION_INPUT_MISSING'
+                 WHEN COUNT(DISTINCT dip.derivation_input_id) FILTER (WHERE dip.dataset_id IS NOT NULL) = 0
+                   THEN 'DERIVATION_INPUT_MISSING_PROVENANCE'
+                 ELSE NULL
+               END AS derivation_scope_limitation_code
+         FROM claim c
+         LEFT JOIN derived_input_provenance dip ON dip.derivation_id = c.derivation_id
+         WHERE c.claim_type_code = 'DERIVED_CLAIM'
+         GROUP BY c.claim_id, c.derivation_id
+       ),
+       subject_bound AS (
          SELECT DISTINCT c.claim_id, c.claim_key, c.claim_type_code, c.claim_status_code, c.statement,
                  c.proposition_id, cr.rendered_proposition, p.predicate,
                  ce.claim_evidence_id, ce.relation_type_code AS evidence_relation_type_code,
-                 s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name
+                s.source_key, s.name AS source_name, d.dataset_id, d.dataset_key, d.name AS dataset_name,
+                ds.total_derivation_input_count, ds.provenanced_derivation_input_count,
+                ds.scoped_derivation_input_count, ds.derivation_scope_status, ds.scoped_derivation_inputs,
+                ds.derivation_scope_limitation_code
           FROM claim c
           JOIN proposition p ON p.proposition_id = c.proposition_id
           LEFT JOIN claim_rendering cr ON cr.claim_id = c.claim_id
@@ -561,12 +706,17 @@ export class BereanRepository {
           LEFT JOIN source_record sr ON sr.source_record_id = e.source_record_id
           LEFT JOIN dataset d ON d.dataset_id = sr.dataset_id
           LEFT JOIN source s ON s.source_id = d.source_id
+          LEFT JOIN derived_scope ds ON ds.claim_id = c.claim_id
           WHERE ($1::text[] = '{}'::text[] OR p.predicate = ANY($1))
             AND (
               ($2::text = 'ENTITY' AND p.subject_entity_id = $3::bigint)
               OR ($2::text = 'EVENT' AND p.subject_event_id = $4::bigint)
             )
-            AND (NOT $5::boolean OR d.dataset_id = ANY($6::bigint[]))
+            AND (
+              NOT $5::boolean
+              OR (c.claim_type_code <> 'DERIVED_CLAIM' AND d.dataset_id = ANY($6::bigint[]))
+              OR (c.claim_type_code = 'DERIVED_CLAIM' AND COALESCE(ds.scoped_derivation_input_count, 0) > 0)
+            )
        ),
        ranked AS (
          SELECT subject_bound.*,
