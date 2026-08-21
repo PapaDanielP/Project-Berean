@@ -274,7 +274,7 @@ const document: Values = {
           question: { type: 'string' },
           interpretation: { type: 'string' },
           capability: { type: 'string', enum: ['ESTABLISHED', 'DERIVED', 'SCHOLARLY_CANDIDATE', 'UNRESOLVED', 'NOT_REPRESENTED', 'NO_MATCH'] },
-          plan: { type: 'object', description: 'Query plan: classification, resolved subject state, scope, candidate predicates, traversal shape, output constraints.' },
+          plan: { type: 'object', description: 'Query plan: classification, resolved subject state, optional resolved event state for object-position participant questions, scope, candidate predicates, traversal shape (`SUBJECT_BOUND_REGISTERED_PREDICATE_MATCH`, `SUBJECT_BOUND_EVENT_PARTICIPATION`, or `EVENT_OBJECT_PARTICIPATION`), output constraints.' },
           results: { type: 'array', items: { type: 'object' } },
           bounded: object(
             {
@@ -650,7 +650,7 @@ const paths: Values = {
       tags: ['research'],
       operationId: 'runV1Research',
       summary: 'Run a transient, read-only research query',
-      description: 'Answers only from persisted rows and registered predicates. Truth or proof questions return capability NOT_REPRESENTED. Nothing is persisted and no credential is required.',
+      description: 'Answers only from persisted rows and registered predicates. Recognized reciprocal participant questions (for example "Who participated in <event>?") resolve exactly one represented event and return its claim-asserted participants; an ambiguous event returns capability UNRESOLVED. Truth or proof questions return capability NOT_REPRESENTED. Nothing is persisted and no credential is required.',
       requestBody: body('ResearchQuery'),
       responses: {
         '200': jsonResponse('Bounded research answer with plan and classification.', { $ref: '#/components/schemas/ResearchResponse' }),
@@ -1073,7 +1073,7 @@ paths['/api/research'] = {
     tags: ['compatibility'],
     operationId: 'runCompatibilityResearch',
     summary: 'Run a transient research query (compatibility route)',
-    description: 'Identical research engine to POST /api/v1/research, but errors use the legacy `{ "error": "message" }` envelope. Nothing is persisted.',
+    description: 'Identical research engine to POST /api/v1/research, including object-position event-participant questions, but errors use the legacy `{ "error": "message" }` envelope. Nothing is persisted.',
     requestBody: body('ResearchQuery'),
     responses: {
       '200': jsonResponse('Bounded research answer.', { $ref: '#/components/schemas/ResearchResponse' }),
