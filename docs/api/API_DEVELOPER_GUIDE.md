@@ -174,6 +174,12 @@ Actual research behaviors:
 - Participation questions use predicates whose registry row has `event_participation_role_code`.
 - Other questions match registered `predicate_code` or `predicate.description`.
 - Predicate matches that are not subject-relevant are excluded.
+- Direct claims keep dataset scoping through `claim -> claim_evidence -> evidence -> source_record -> dataset`.
+- Derived claims use derivation-input provenance scoping:
+  - under a dataset filter, a derived claim is returned only when at least one persisted derivation input is provenance-linked to a selected dataset;
+  - mixed derivations are not collapsed: derived rows expose `derivation_scope_status` (`FULLY_IN_SCOPE`, `PARTIALLY_IN_SCOPE`, `UNSCOPED`), `scoped_derivation_input_count`, `total_derivation_input_count`, and `scoped_derivation_inputs`;
+  - derived rows remain `DERIVED_FROM_PERSISTED_GRAPH` even when scoped and never become `DIRECTLY_SUPPORTED` by filtering;
+  - missing derivation, missing derivation inputs, or unprovenanced derivation inputs do not establish dataset scope and are surfaced with `derivation_scope_limitation_code` where present.
 - Results remain bounded to 50 rows and now expose:
   - `bounded.total_matched`
   - `bounded.returned`
@@ -181,6 +187,7 @@ Actual research behaviors:
   - deterministic `bounded.order`.
 - Scope is always `BEREAN_ONLY`; no external retrieval happens.
 - `NO_MATCH` means no persisted claim in the selected scope matched the registered predicate set.
+- Dataset scope is provenance visibility only; it is never truth validation or adjudication.
 
 Manual example (2026-08-13):
 
