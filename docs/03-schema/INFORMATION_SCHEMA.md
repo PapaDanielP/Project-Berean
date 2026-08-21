@@ -56,3 +56,11 @@ Competing propositions are represented as distinct Claims. They must not overwri
 Claim–Evidence relations include `SUPPORTS`, `CONTRADICTS`, and `QUALIFIES`. Proposition predicates are controlled by a deliberately small extensible registry that validates subject and object kinds. This is not a general ontology or inference engine.
 
 Every Proposition has exactly one Entity or Event subject and exactly one Entity, Event, or TypedValue object.
+
+## Operational export metadata
+
+`export_job` is a workflow request; `export_artifact` is immutable operational metadata for one
+successfully completed job. It records an opaque UUID, job/request linkage, content type, format
+version, byte length, SHA-256, safe relative locator, and generation timestamp. Neither table is
+authoritative knowledge, and export execution does not create or alter sources, evidence, claims,
+propositions, entities, predicates, or reconciliation state.

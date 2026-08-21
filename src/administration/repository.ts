@@ -547,4 +547,18 @@ export class AdministrationRepository {
     if (!query) throw new Error('UNSUPPORTED_ADMIN_RESOURCE');
     return (await this.pool.query(query, [Math.max(1, Math.min(limit, 100))])).rows;
   }
+
+  async getExportArtifact(artifactKey: string): Promise<Values | null> {
+    const result = await this.pool.query(
+      `SELECT a.artifact_key, a.job_id, a.export_job_id, x.corpus_id,
+              a.content_type, a.format_version, a.byte_length, a.sha256,
+              a.relative_locator, a.generated_at
+       FROM export_artifact a
+       JOIN export_job x ON x.export_job_id = a.export_job_id
+       JOIN asynchronous_job j ON j.job_id = a.job_id
+       WHERE a.artifact_key = $1::uuid AND j.status = 'COMPLETED'`,
+      [artifactKey]
+    );
+    return result.rowCount ? result.rows[0] : null;
+  }
 }

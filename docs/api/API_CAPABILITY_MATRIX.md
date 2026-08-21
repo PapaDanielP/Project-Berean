@@ -59,7 +59,8 @@ Authoritative architecture references:
 | POST `/api/v1/derivations` | bearer / `RESEARCHER` | sync | no | none | active authoritative derivation metadata only; no claim auto-created | IMPLEMENTED, REQUIRES_HUMAN_REVIEW | `tests/app/app.test.ts` |
 | POST `/api/v1/ingestion-jobs` | bearer / `CONTENT_EDITOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | IMPLEMENTED (queue persistence), REQUIRES_SYSTEM_WORKER (execution) | code-traced |
 | POST `/api/v1/validation-runs` | bearer / `REVIEWER` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | executed by the SYSTEM worker for `SCHEMA`, `PROVENANCE`, `READ_ONLY`, `NEGATIVE_SEMANTIC`; other requested types record `NOT_APPLICABLE` | IMPLEMENTED (queue persistence and validation execution) | `tests/app/app.test.ts` |
-| POST `/api/v1/export-jobs` | bearer / `ADMINISTRATOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | none until external worker acts | IMPLEMENTED (queue persistence), REQUIRES_SYSTEM_WORKER (execution) | code-traced |
+| POST `/api/v1/export-jobs` | bearer / `ADMINISTRATOR` | async queued | yes, per actor+job type+key+fingerprint | `Idempotency-Key` | bounded immutable local artifact metadata on successful worker completion | IMPLEMENTED (`JSONL`, no raw content) | `tests/app/app.test.ts` |
+| GET `/api/v1/export-artifacts/:artifactKey[/download]` | bearer / `ADMINISTRATOR` | sync read | no | opaque persisted UUID | none | IMPLEMENTED (configured-root-only, integrity checked) | `tests/app/app.test.ts` |
 | POST `/api/v1/jobs/:id/cancel` | bearer / `CONTENT_EDITOR` plus job-type/ownership checks | sync | no | job status gate | none (workflow only) | IMPLEMENTED | `tests/app/app.test.ts` (unknown job returns `404` without leakage), manual 2026-08-13 |
 | POST `/api/v1/jobs/:id/retry` | bearer / `CONTENT_EDITOR` plus job-type/ownership checks | sync | no | job status gate | none (workflow only) | IMPLEMENTED | manual 2026-08-13 |
 
@@ -102,8 +103,8 @@ The current code-traced (behavior-untested) set is enumerated under `IMPLEMENTED
 - `POST /api/v1/export-jobs`
 
 These routes persist queue state immediately. Execution happens in the separate `npm run worker`
-process, whose closed executor registry currently covers only `SYSTEM_NOOP` and `VALIDATION`.
-Ingestion, export, and discovery jobs stay `QUEUED` until their bounded executors exist.
+process, whose closed executor registry covers `SYSTEM_NOOP`, `VALIDATION`, and bounded `EXPORT`.
+Ingestion and discovery jobs stay `QUEUED` until their bounded executors exist.
 
 ## What should deliberately never become an automatic API capability
 
@@ -135,7 +136,7 @@ SQL/script-only, whether exposing more of it would be architecturally safe, and 
 | Validation | `validation_run`, `validation_result` (append-only) | `POST /api/v1/validation-runs`, `GET /api/v1/admin/validations`, `GET /api/v1/admin/validation-results` | Full validation runs via `scripts/validation/run-postgres-validation.sh` | Yes for queue and read; results must remain append-only | Yes | `REVIEWER` | Yes | `202`; `Idempotency-Key` | Interpretation is human |
 | Audit | `audit_event` (append-only) | `GET /api/v1/admin/audits` | — | Read-only forever; no write route may exist | Yes | `READER` | Is the audit | Sync | No |
 | Job control | `asynchronous_job` | `POST /api/v1/jobs/:id/cancel`, `/retry`, `GET /api/v1/admin/jobs` | Worker execution absent | Yes; already state-gated and ownership-checked | Yes | `CONTENT_EDITOR` plus ownership | Yes | Sync; `409 INVALID_JOB_STATE` | No |
-| Export | `export_job` | `POST /api/v1/export-jobs`, `GET /api/v1/admin/exports` | Artifact production is worker-only (absent) | Yes for queueing; artifact delivery needs licence-aware storage design | Yes | `ADMINISTRATOR` | Yes | `202`; `Idempotency-Key` | Licence review |
+| Export | `export_job`, immutable `export_artifact` | `POST /api/v1/export-jobs`, `GET /api/v1/admin/exports`, `GET /api/v1/export-artifacts/:artifactKey[/download]` | Artifact production is worker-only | Implemented only for bounded JSONL under configured local storage | Yes | `ADMINISTRATOR` | Yes | `202`; `Idempotency-Key` | Licence review |
 
 Capabilities deliberately **not** implemented after this review, with reasons:
 
@@ -145,6 +146,5 @@ Capabilities deliberately **not** implemented after this review, with reasons:
 | Claim retraction or supersession route | Requires a reviewed status-transition design that preserves the superseded claim and its provenance. Classification: **REQUIRES_HUMAN_REVIEW**. |
 | Registry (predicate, type) mutation | Registries are controlled vocabularies changed by reviewed migration. Classification: **INTENTIONALLY_NOT_REPRESENTED**. |
 | Single-resource `GET /api/v1/admin/:resource/:id` | No workflow need is demonstrated by tests or fixtures; list plus filter already serves review. Classification: **NOT_IMPLEMENTED**. |
-| `ingestion_result` production and ingestion/export/discovery job execution | Requires bounded executors beyond the shipped validation executor. Classification: **REQUIRES_SYSTEM_WORKER**. |
-| Export artifact download | Requires licence-aware artifact storage. Classification: **REQUIRES_SYSTEM_WORKER** and **REQUIRES_EXTERNAL_SOURCE_ACCESS**. |
+| `ingestion_result` production and ingestion/discovery job execution | Requires bounded executors beyond the shipped validation/export executors. Classification: **REQUIRES_SYSTEM_WORKER**. |
 | `source_identity` creation over HTTP | Identities must arrive with source provenance through ingestion. Classification: **REQUIRES_HUMAN_REVIEW**. |
