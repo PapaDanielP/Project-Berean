@@ -682,112 +682,150 @@ describe('read-only API', () => {
     const propositionId = await getPropositionIdByClaimKey('CLAIM_MT_ADAM_FATHER_SETH');
     const mtEvidenceId = await getEvidenceIdByKey('EV_MT_GEN_5_3');
 
-    await pool.query(
-      `WITH mt_only_derivation AS (
-         INSERT INTO derivation (method, assumptions)
-         VALUES ('R2-10 MT-only derived test method', 'R2-10 MT-only derived test assumptions')
-         RETURNING derivation_id
-       ),
-       mt_only_claim AS (
-         INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement, derivation_id)
-         SELECT 'R210_DERIVED_MT_ONLY_INPUT', $1, 'DERIVED_CLAIM', 'R2-10 test derived claim with MT-only derivation input.', derivation_id
-         FROM mt_only_derivation
-         RETURNING claim_id, derivation_id
-       ),
-       no_input_derivation AS (
-         INSERT INTO derivation (method, assumptions)
-         VALUES ('R2-10 no-input derived test method', 'R2-10 no-input derived test assumptions')
-         RETURNING derivation_id
-       ),
-       input_claim_without_provenance AS (
-         INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
-         VALUES ('R210_INPUT_NO_PROVENANCE', $1, 'DIRECT_SOURCE_CLAIM', 'R2-10 test input claim without provenance links.')
-         RETURNING claim_id
-       ),
-       no_provenance_derivation AS (
-         INSERT INTO derivation (method, assumptions)
-         VALUES ('R2-10 unprovenanced-input derived test method', 'R2-10 unprovenanced-input derived test assumptions')
-         RETURNING derivation_id
-       ),
-       no_provenance_claim AS (
-         INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement, derivation_id)
-         SELECT 'R210_DERIVED_UNPROVENANCED_INPUT', $1, 'DERIVED_CLAIM',
-                'R2-10 test derived claim with derivation input that has no provenance.',
-                derivation_id
-         FROM no_provenance_derivation
-       ),
-       no_input_claim AS (
-         INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement, derivation_id)
-         SELECT 'R210_DERIVED_NO_INPUTS', $1, 'DERIVED_CLAIM', 'R2-10 test derived claim whose derivation has no inputs.', derivation_id
-         FROM no_input_derivation
-       ),
-       no_derivation_claim AS (
-         INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
-         VALUES ('R210_DERIVED_NO_DERIVATION', $1, 'DERIVED_CLAIM', 'R2-10 test derived claim missing derivation link.')
-       ),
-       inserted_mt_input AS (
-         INSERT INTO derivation_input (derivation_id, input_evidence_id, notes)
-         SELECT mt_only_claim.derivation_id, $2, 'R2-10 MT-only supporting input.'
-         FROM mt_only_claim
-       ),
-       inserted_unprovenanced_input AS (
-         INSERT INTO derivation_input (derivation_id, input_claim_id, notes)
-         SELECT no_provenance_derivation.derivation_id, input_claim_without_provenance.claim_id, 'R2-10 unprovenanced input claim.'
-         FROM no_provenance_derivation, input_claim_without_provenance
-       )
-       SELECT 1`,
-      [propositionId, mtEvidenceId]
-    );
+    const cleanup = async (): Promise<void> => {
+      await pool.query(
+        `DELETE FROM derivation_input
+         WHERE derivation_id IN (
+           SELECT derivation_id
+           FROM claim
+           WHERE claim_key IN (
+             'R210_DERIVED_MT_ONLY_INPUT',
+             'R210_DERIVED_UNPROVENANCED_INPUT',
+             'R210_DERIVED_NO_INPUTS'
+           )
+         )
+            OR input_claim_id IN (SELECT claim_id FROM claim WHERE claim_key = 'R210_INPUT_NO_PROVENANCE')`
+      );
+      await pool.query(
+        `DELETE FROM claim
+         WHERE claim_key IN (
+           'R210_DERIVED_MT_ONLY_INPUT',
+           'R210_DERIVED_UNPROVENANCED_INPUT',
+           'R210_DERIVED_NO_INPUTS',
+           'R210_DERIVED_NO_DERIVATION',
+           'R210_INPUT_NO_PROVENANCE'
+         )`
+      );
+      await pool.query(
+        `DELETE FROM derivation
+         WHERE method IN (
+           'R2-10 MT-only derived test method',
+           'R2-10 no-input derived test method',
+           'R2-10 unprovenanced-input derived test method'
+         )`
+      );
+    };
 
-    const question = 'What fatherOf claim is represented for Adam?';
-    const scopedMt = await request(app).post('/api/research').send({ question, datasetIds: [mtDatasetId] });
-    expect(scopedMt.status).toBe(200);
+    try {
+      await pool.query(
+        `WITH mt_only_derivation AS (
+           INSERT INTO derivation (method, assumptions)
+           VALUES ('R2-10 MT-only derived test method', 'R2-10 MT-only derived test assumptions')
+           RETURNING derivation_id
+         ),
+         mt_only_claim AS (
+           INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement, derivation_id)
+           SELECT 'R210_DERIVED_MT_ONLY_INPUT', $1, 'DERIVED_CLAIM', 'R2-10 test derived claim with MT-only derivation input.', derivation_id
+           FROM mt_only_derivation
+           RETURNING claim_id, derivation_id
+         ),
+         no_input_derivation AS (
+           INSERT INTO derivation (method, assumptions)
+           VALUES ('R2-10 no-input derived test method', 'R2-10 no-input derived test assumptions')
+           RETURNING derivation_id
+         ),
+         input_claim_without_provenance AS (
+           INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
+           VALUES ('R210_INPUT_NO_PROVENANCE', $1, 'DIRECT_SOURCE_CLAIM', 'R2-10 test input claim without provenance links.')
+           RETURNING claim_id
+         ),
+         no_provenance_derivation AS (
+           INSERT INTO derivation (method, assumptions)
+           VALUES ('R2-10 unprovenanced-input derived test method', 'R2-10 unprovenanced-input derived test assumptions')
+           RETURNING derivation_id
+         ),
+         no_provenance_claim AS (
+           INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement, derivation_id)
+           SELECT 'R210_DERIVED_UNPROVENANCED_INPUT', $1, 'DERIVED_CLAIM',
+                  'R2-10 test derived claim with derivation input that has no provenance.',
+                  derivation_id
+           FROM no_provenance_derivation
+         ),
+         no_input_claim AS (
+           INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement, derivation_id)
+           SELECT 'R210_DERIVED_NO_INPUTS', $1, 'DERIVED_CLAIM', 'R2-10 test derived claim whose derivation has no inputs.', derivation_id
+           FROM no_input_derivation
+         ),
+         no_derivation_claim AS (
+           INSERT INTO claim (claim_key, proposition_id, claim_type_code, statement)
+           VALUES ('R210_DERIVED_NO_DERIVATION', $1, 'DERIVED_CLAIM', 'R2-10 test derived claim missing derivation link.')
+         ),
+         inserted_mt_input AS (
+           INSERT INTO derivation_input (derivation_id, input_evidence_id, notes)
+           SELECT mt_only_claim.derivation_id, $2, 'R2-10 MT-only supporting input.'
+           FROM mt_only_claim
+         ),
+         inserted_unprovenanced_input AS (
+           INSERT INTO derivation_input (derivation_id, input_claim_id, notes)
+           SELECT no_provenance_derivation.derivation_id, input_claim_without_provenance.claim_id, 'R2-10 unprovenanced input claim.'
+           FROM no_provenance_derivation, input_claim_without_provenance
+         )
+         SELECT 1`,
+        [propositionId, mtEvidenceId]
+      );
 
-    const mtOnly = scopedMt.body.results.find(
-      (result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_MT_ONLY_INPUT'
-    );
-    expect(mtOnly).toBeTruthy();
-    expect(mtOnly.derivation_scope_status).toBe('FULLY_IN_SCOPE');
-    expect(Number(mtOnly.scoped_derivation_input_count)).toBe(1);
-    expect(Number(mtOnly.total_derivation_input_count)).toBe(1);
-    expect(mtOnly.classification).toBe('DERIVED_FROM_PERSISTED_GRAPH');
+      const question = 'What fatherOf claim is represented for Adam?';
+      const scopedMt = await request(app).post('/api/research').send({ question, datasetIds: [mtDatasetId] });
+      expect(scopedMt.status).toBe(200);
 
-    const scopedLxx = await request(app).post('/api/research').send({ question, datasetIds: [lxxDatasetId] });
-    expect(scopedLxx.status).toBe(200);
-    expect(scopedLxx.body.results.some((result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_MT_ONLY_INPUT')).toBe(false);
-    expect(scopedLxx.body.results.some((result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_UNPROVENANCED_INPUT')).toBe(false);
-    expect(scopedLxx.body.results.some((result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_NO_INPUTS')).toBe(false);
-    expect(scopedLxx.body.results.some((result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_NO_DERIVATION')).toBe(false);
+      const mtOnly = scopedMt.body.results.find(
+        (result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_MT_ONLY_INPUT'
+      );
+      expect(mtOnly).toBeTruthy();
+      expect(mtOnly.derivation_scope_status).toBe('FULLY_IN_SCOPE');
+      expect(Number(mtOnly.scoped_derivation_input_count)).toBe(1);
+      expect(Number(mtOnly.total_derivation_input_count)).toBe(1);
+      expect(mtOnly.classification).toBe('DERIVED_FROM_PERSISTED_GRAPH');
 
-    const unfiltered = await request(app).post('/api/research').send({ question });
-    expect(unfiltered.status).toBe(200);
-    const unprovenanced = unfiltered.body.results.find(
-      (result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_UNPROVENANCED_INPUT'
-    );
-    expect(unprovenanced).toBeTruthy();
-    expect(unprovenanced.derivation_scope_status).toBe('UNSCOPED');
-    expect(unprovenanced.derivation_scope_limitation_code).toBe('DERIVATION_INPUT_MISSING_PROVENANCE');
-    expect(unprovenanced.classification).toBe('DERIVED_FROM_PERSISTED_GRAPH');
+      const scopedLxx = await request(app).post('/api/research').send({ question, datasetIds: [lxxDatasetId] });
+      expect(scopedLxx.status).toBe(200);
+      expect(scopedLxx.body.results.some((result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_MT_ONLY_INPUT')).toBe(false);
+      expect(scopedLxx.body.results.some((result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_UNPROVENANCED_INPUT')).toBe(false);
+      expect(scopedLxx.body.results.some((result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_NO_INPUTS')).toBe(false);
+      expect(scopedLxx.body.results.some((result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_NO_DERIVATION')).toBe(false);
 
-    const noInputs = unfiltered.body.results.find(
-      (result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_NO_INPUTS'
-    );
-    expect(noInputs).toBeTruthy();
-    expect(noInputs.derivation_scope_status).toBe('UNSCOPED');
-    expect(noInputs.derivation_scope_limitation_code).toBe('DERIVATION_INPUT_MISSING');
+      const unfiltered = await request(app).post('/api/research').send({ question });
+      expect(unfiltered.status).toBe(200);
+      const unprovenanced = unfiltered.body.results.find(
+        (result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_UNPROVENANCED_INPUT'
+      );
+      expect(unprovenanced).toBeTruthy();
+      expect(unprovenanced.derivation_scope_status).toBe('UNSCOPED');
+      expect(unprovenanced.derivation_scope_limitation_code).toBe('DERIVATION_INPUT_MISSING_PROVENANCE');
+      expect(unprovenanced.classification).toBe('DERIVED_FROM_PERSISTED_GRAPH');
 
-    const noDerivation = unfiltered.body.results.find(
-      (result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_NO_DERIVATION'
-    );
-    expect(noDerivation).toBeTruthy();
-    expect(noDerivation.derivation_scope_status).toBe('UNSCOPED');
-    expect(noDerivation.derivation_scope_limitation_code).toBe('DERIVED_CLAIM_MISSING_DERIVATION');
+      const noInputs = unfiltered.body.results.find(
+        (result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_NO_INPUTS'
+      );
+      expect(noInputs).toBeTruthy();
+      expect(noInputs.derivation_scope_status).toBe('UNSCOPED');
+      expect(noInputs.derivation_scope_limitation_code).toBe('DERIVATION_INPUT_MISSING');
 
-    expect(
-      scopedMt.body.results
-        .filter((result: { claim_type_code: string }) => result.claim_type_code === 'DIRECT_SOURCE_CLAIM')
-        .every((result: { dataset_id: number | string }) => Number(result.dataset_id) === mtDatasetId)
-    ).toBe(true);
+      const noDerivation = unfiltered.body.results.find(
+        (result: { claim_key: string }) => result.claim_key === 'R210_DERIVED_NO_DERIVATION'
+      );
+      expect(noDerivation).toBeTruthy();
+      expect(noDerivation.derivation_scope_status).toBe('UNSCOPED');
+      expect(noDerivation.derivation_scope_limitation_code).toBe('DERIVED_CLAIM_MISSING_DERIVATION');
+
+      expect(
+        scopedMt.body.results
+          .filter((result: { claim_type_code: string }) => result.claim_type_code === 'DIRECT_SOURCE_CLAIM')
+          .every((result: { dataset_id: number | string }) => Number(result.dataset_id) === mtDatasetId)
+      ).toBe(true);
+    } finally {
+      await cleanup();
+    }
   });
 
   it('returns UNRESOLVED without results when an event-participant question matches several events', async () => {
