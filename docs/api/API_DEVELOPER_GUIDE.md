@@ -87,7 +87,7 @@ All implemented administrative mutations run inside a PostgreSQL transaction in 
 
 ### Worker boundary
 
-`POST /api/v1/discovery-requests`, `/ingestion-jobs`, `/validation-runs`, and `/export-jobs` persist queue state, but this repository ships **no in-process durable worker**. Manual verification on 2026-08-13 showed queued validation jobs remaining `QUEUED` with zero `validation_result` rows until a separate worker acts.
+`POST /api/v1/discovery-requests`, `/ingestion-jobs`, `/validation-runs`, and `/export-jobs` persist queue state only; execution happens in the separate `npm run worker` process. That worker executes `VALIDATION` jobs through a read-only structural validation executor and appends immutable `validation_result` rows readable at `GET /api/v1/admin/validation-results`. Discovery, ingestion, and export jobs remain `QUEUED` because their executors are not implemented. A validation `PASS` is an operational reproducibility record, never a truth determination about history or a claim.
 
 ## Route inventory
 

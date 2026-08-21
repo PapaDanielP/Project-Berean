@@ -49,6 +49,57 @@ The fixture demonstrates shared evidence, multiple evidence for a claim, contrar
 
 `tests/validation/phase28-ingestion-validation.sql` runs after the Phase 28 automated Tier-1 ingestion step and checks that every ingested claim is a direct source claim with a complete provenance chain, that deferred and excluded candidates stayed outside the graph, that locator-only source storage held, that ingested source-identity mappings are `ACTIVE`, justified, and evidence-backed, and that ingestion produced no duplicate assertion. The ingestion step itself requires the Node toolchain and is skipped when dependencies are absent.
 
+## Worker-executed validation runs
+
+`POST /api/v1/validation-runs` queues a `VALIDATION` job. The separate SYSTEM worker process
+(`npm run worker`) claims the job under a lease token and executes the read-only structural
+validation executor in `src/worker/validation-executor.ts`. The executor issues parameterized
+PostgreSQL queries only: it never shells out to a script, never runs SQL taken from stored request
+data, and never writes to authoritative knowledge tables. Results are appended to the immutable
+`validation_result` table and are readable at `GET /api/v1/admin/validation-results`.
+
+A `PASS` is an operational reproducibility record about structure. It is never historical truth,
+scholarly adjudication, contradiction resolution, or claim validation in the epistemic sense.
+
+| Requested type | Behavior |
+|---|---|
+| `SCHEMA` | Confirms the baseline core/administration tables and the `claim_rendering` and `event_participation` views resolve in the current search path. |
+| `PROVENANCE` | Finds direct/interpretive claims with no cited `SOURCE_OBSERVATION` chain, and derived claims with no derivation or derivation input. Nothing is created or repaired. |
+| `READ_ONLY` | Compares a before/after content snapshot of the authoritative knowledge and registry tables across the execution window. Workflow, result, and audit tables are excluded because the worker appends to them. |
+| `NEGATIVE_SEMANTIC` | Structural boundary check that no forbidden predicate, undeclared job type, or unjustified active reconciliation is persisted. |
+| `REGISTRY`, `IDENTITY`, `CLAIM`, `EVIDENCE`, `DERIVATION`, `CORPUS`, `REPLAY` | Accepted by the API but not implemented by this executor; each records one `NOT_APPLICABLE` result, which is neither a pass nor a failure. |
+
+Stable result codes:
+
+| Code | Status | Meaning |
+|---|---|---|
+| `SCHEMA_BASELINE_PRESENT` | `PASS` | Every required table and structural view is present. |
+| `SCHEMA_MISSING_TABLE` / `SCHEMA_MISSING_VIEW` | `FAIL` | A required structure does not resolve. |
+| `SCHEMA_UNEXPECTED_RELATION_KIND` | `FAIL` | A required structure exists with the wrong relation kind. |
+| `PROVENANCE_CHAIN_STRUCTURALLY_COMPLETE` | `PASS` | No structural provenance violation was found. |
+| `PROVENANCE_CLAIM_MISSING_CITED_SOURCE_OBSERVATION` | `FAIL` | A direct/interpretive claim cites no `SOURCE_OBSERVATION`. |
+| `PROVENANCE_DERIVED_CLAIM_MISSING_DERIVATION` | `FAIL` | A derived claim records no derivation. |
+| `PROVENANCE_DERIVED_CLAIM_MISSING_DERIVATION_INPUT` | `FAIL` | A derived claim's derivation declares no input. |
+| `PROVENANCE_VIOLATIONS_TRUNCATED` / `PROVENANCE_DERIVED_VIOLATIONS_TRUNCATED` | `WARNING` | More violations exist than the bounded reporting limit reports. |
+| `READ_ONLY_KNOWLEDGE_TABLES_UNCHANGED` | `PASS` | No authoritative knowledge or registry table changed during execution. |
+| `READ_ONLY_KNOWLEDGE_TABLE_MUTATED` | `FAIL` | A knowledge table changed during execution. |
+| `READ_ONLY_SNAPSHOT_INCOMPLETE` | `FAIL` | A knowledge table could not be compared across the execution window. |
+| `NEGATIVE_SEMANTIC_FORBIDDEN_CAPABILITIES_ABSENT` | `PASS` | No forbidden automatic capability is represented. |
+| `NEGATIVE_SEMANTIC_FORBIDDEN_PREDICATE_REGISTERED` | `FAIL` | A registered predicate expresses automatic truth/proof/adjudication/inference semantics. |
+| `NEGATIVE_SEMANTIC_UNDECLARED_JOB_TYPE` | `FAIL` | Workflow state persists a job type outside the declared closed set. |
+| `NEGATIVE_SEMANTIC_UNJUSTIFIED_ACTIVE_IDENTITY_MAPPING` | `FAIL` | An active reconciliation records no justification. |
+| `VALIDATION_TYPE_NOT_IMPLEMENTED` | `NOT_APPLICABLE` | The requested type is accepted but unimplemented. |
+
+Job semantics:
+
+- cancellation is observed before each validation type and before finalization; a cancelled run
+  persists no further results, finalizes as `CANCELLED`, and leaves `validation_run.completed_at`
+  `NULL` because the run did not complete;
+- a completed run sets `validation_run.completed_at` in the same transaction that finalizes the job
+  as `COMPLETED` and appends the worker audit event;
+- an unexpected executor failure finalizes the job `FAILED` with a stable worker error code, and any
+  already-persisted results remain immutable.
+
 ## Related validation records
 
 - Current governance verification: [`../07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md`](../07-review/DOCUMENTATION_GOVERNANCE_AUDIT.md)

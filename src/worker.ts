@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { WorkerRepository, type JobType } from './worker/repository.js';
+import { EXECUTABLE_JOB_TYPES, EXECUTORS } from './worker/executors.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error('DATABASE_URL is required');
@@ -12,10 +13,11 @@ const positiveInteger = (name: string, fallback: number, maximum: number): numbe
   return value;
 };
 
-const enabledTypes = (process.env.BEREAN_SYSTEM_WORKER_ENABLED_TYPES ?? 'SYSTEM_NOOP')
+const enabledTypes = (process.env.BEREAN_SYSTEM_WORKER_ENABLED_TYPES ?? EXECUTABLE_JOB_TYPES.join(','))
   .split(',').map((value) => value.trim()).filter(Boolean);
-if (enabledTypes.some((type) => type !== 'SYSTEM_NOOP')) {
-  throw new Error('Only SYSTEM_NOOP is enabled in Phase A');
+const unsupported = enabledTypes.filter((type) => !(EXECUTABLE_JOB_TYPES as string[]).includes(type));
+if (unsupported.length) {
+  throw new Error(`Only ${EXECUTABLE_JOB_TYPES.join(', ')} job types have registered executors`);
 }
 
 const config = {
@@ -47,11 +49,27 @@ const run = async (): Promise<void> => {
     }
     const jobId = Number(job.job_id);
     const leaseToken = String(job.lease_token);
-    if (await repository.cancellationRequested(jobId, leaseToken, actorId)) {
-      await repository.finalize(jobId, leaseToken, actorId, 'CANCELLED', 'CANCELLED_BY_REQUEST', 'Cancellation was requested before no-op completion.');
-    } else {
-      await repository.finalize(jobId, leaseToken, actorId, 'COMPLETED');
+    const executor = EXECUTORS[job.job_type as JobType];
+    const heartbeat = setInterval(() => {
+      void repository.renewLease(jobId, leaseToken, actorId, config.leaseSeconds).catch(() => undefined);
+    }, config.heartbeatSeconds * 1000);
+    let outcome;
+    try {
+      outcome = await executor({ pool, repository, actorId, jobId, leaseToken, job });
+    } catch {
+      outcome = {
+        status: 'FAILED' as const,
+        errorCode: 'EXECUTOR_UNHANDLED_FAILURE',
+        errorMessage: 'The executor stopped with an unhandled failure.'
+      };
+    } finally {
+      clearInterval(heartbeat);
     }
+    await repository.finalize(
+      jobId, leaseToken, actorId, outcome.status,
+      outcome.errorCode ?? null, outcome.errorMessage ?? null,
+      { completeValidationRun: outcome.completeValidationRun === true }
+    );
   }
 };
 

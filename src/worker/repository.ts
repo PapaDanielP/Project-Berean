@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import type { ValidationResultInput } from './validation-executor.js';
 
-export type JobType = 'SYSTEM_NOOP';
+export type JobType = 'SYSTEM_NOOP' | 'VALIDATION';
 export type JobRow = Record<string, unknown>;
 
 export class WorkerRepository {
@@ -127,7 +128,70 @@ export class WorkerRepository {
     return Boolean(result.rowCount && result.rows[0].cancel_requested);
   }
 
-  async finalize(jobId: number, leaseToken: string, actorId: number, status: 'COMPLETED' | 'FAILED' | 'CANCELLED', errorCode: string | null = null, errorMessage: string | null = null): Promise<JobRow | null> {
+  /** Loads the validation run owned by a currently leased job. */
+  async loadValidationRun(jobId: number, leaseToken: string, actorId: number): Promise<{ validationRunId: number; validationTypes: string[] } | null> {
+    const result = await this.pool.query(
+      `SELECT v.validation_run_id, v.validation_types
+       FROM validation_run v
+       JOIN asynchronous_job j ON j.job_id = v.job_id
+       WHERE v.job_id = $1 AND j.lease_token = $2::uuid AND j.worker_actor_id = $3 AND j.status = 'RUNNING'`,
+      [jobId, leaseToken, actorId]
+    );
+    if (!result.rowCount) return null;
+    return {
+      validationRunId: Number(result.rows[0].validation_run_id),
+      validationTypes: (result.rows[0].validation_types as string[]).map(String)
+    };
+  }
+
+  /**
+   * Appends immutable validation results. The insert is guarded by the current
+   * lease so a stale worker cannot append to a job it no longer owns.
+   */
+  async appendValidationResults(
+    jobId: number,
+    leaseToken: string,
+    actorId: number,
+    validationRunId: number,
+    results: readonly ValidationResultInput[]
+  ): Promise<number> {
+    if (!results.length) return 0;
+    return this.transaction(async (client) => {
+      const owned = await client.query(
+        `SELECT 1 FROM asynchronous_job
+         WHERE job_id = $1 AND lease_token = $2::uuid AND worker_actor_id = $3 AND status = 'RUNNING'`,
+        [jobId, leaseToken, actorId]
+      );
+      if (!owned.rowCount) return 0;
+      const inserted = await client.query(
+        `INSERT INTO validation_result
+           (validation_run_id, validation_type, status, code, message, subject_type, subject_id)
+         SELECT $1, entry.validation_type, entry.status, entry.code, entry.message, entry.subject_type, entry.subject_id
+         FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::bigint[])
+           AS entry(validation_type, status, code, message, subject_type, subject_id)`,
+        [
+          validationRunId,
+          results.map((result) => result.validationType),
+          results.map((result) => result.status),
+          results.map((result) => result.code),
+          results.map((result) => result.message),
+          results.map((result) => result.subjectType ?? null),
+          results.map((result) => result.subjectId ?? null)
+        ]
+      );
+      return inserted.rowCount ?? 0;
+    });
+  }
+
+  async finalize(
+    jobId: number,
+    leaseToken: string,
+    actorId: number,
+    status: 'COMPLETED' | 'FAILED' | 'CANCELLED',
+    errorCode: string | null = null,
+    errorMessage: string | null = null,
+    options: { completeValidationRun?: boolean } = {}
+  ): Promise<JobRow | null> {
     return this.transaction(async (client) => {
       const result = await client.query(
         `UPDATE asynchronous_job
@@ -139,6 +203,12 @@ export class WorkerRepository {
         [jobId, leaseToken, actorId, status, errorCode, errorMessage]
       );
       if (!result.rowCount) return null;
+      if (options.completeValidationRun && status === 'COMPLETED') {
+        await client.query(
+          'UPDATE validation_run SET completed_at = CURRENT_TIMESTAMP WHERE job_id = $1 AND completed_at IS NULL',
+          [jobId]
+        );
+      }
       await this.audit(client, actorId, `JOB_${status}`, result.rows[0], `Finalized job as ${status}.`);
       return result.rows[0];
     });

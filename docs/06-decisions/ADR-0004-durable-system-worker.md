@@ -146,7 +146,7 @@ Retry is denied when `attempt_count` already reached configured maximum.
 The worker uses a closed executor registry keyed by `job_type`. Registry entries are compile-time/configured in code, not mutable at runtime.
 
 - `INGESTION` executor: performs bounded ingestion orchestration; must keep provenance and representation boundaries from ingestion pipeline behavior.
-- `VALIDATION` executor: runs bounded validation workflow and persists allowed validation artifacts/results only.
+- `VALIDATION` executor (implemented): runs a bounded, read-only structural validation workflow and persists immutable `validation_result` rows only. A result is an operational reproducibility record, never a truth determination.
 - `EXPORT` executor: runs bounded export workflow with policy checks.
 - `DISCOVERY` executor: **queue-only in R2** (no automatic external retrieval/candidate promotion) and may complete as `NOT_IMPLEMENTED`/deferred behavior while preserving audit.
 
@@ -215,8 +215,8 @@ Correlate logs/metrics with `job_id`, `correlation_id`, `job_type`, and `lease_t
 
 ### Rollout phases
 
-1. **Phase A**: schema migration + no-op worker skeleton + metrics.
-2. **Phase B**: enable claiming/lease/heartbeat and terminal finalization for one executor type.
+1. **Phase A** (implemented): schema migration + no-op worker skeleton + metrics.
+2. **Phase B** (implemented): enable claiming/lease/heartbeat and terminal finalization for one executor type — the read-only `VALIDATION` executor (`src/worker/validation-executor.ts`), documented in [`../05-validation/VALIDATION.md`](../05-validation/VALIDATION.md).
 3. **Phase C**: enable remaining executor types (except discovery execution), bounded retries, cooperative cancellation.
 4. **Phase D**: hardening (alerts, dashboards, runbooks), promote as default operational mode.
 

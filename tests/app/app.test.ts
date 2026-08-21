@@ -7,6 +7,15 @@ import { createHash } from 'node:crypto';
 import { createApp } from '../../src/app.js';
 import { AdministrationRepository } from '../../src/administration/repository.js';
 import { WorkerRepository } from '../../src/worker/repository.js';
+import { EXECUTORS } from '../../src/worker/executors.js';
+import {
+  KNOWLEDGE_TABLES,
+  checkNegativeSemantic,
+  checkProvenance,
+  checkSchema,
+  compareKnowledgeSnapshots,
+  snapshotKnowledgeTables
+} from '../../src/worker/validation-executor.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -227,7 +236,7 @@ describe('read-only API', () => {
     await expect(pool.query(`UPDATE audit_event SET detail = 'changed'`)).rejects.toThrow(/append-only/);
   });
 
-  it('leases, recovers, and finalizes only SYSTEM_NOOP foundation jobs safely', async () => {
+  it('leases, recovers, and finalizes worker foundation jobs safely', async () => {
     const workers = [new WorkerRepository(pool), new WorkerRepository(pool)];
     const actorId = await workers[0].resolveSystemActor('worker-foundation-test', 'Worker foundation test');
     const firstJobId = await insertFoundationJob(actorId, 'worker-foundation-first');
@@ -1689,5 +1698,213 @@ describe('V1 API contract', () => {
     expect(forbidden.status).toBe(401);
 
     expect(await snapshotPersistentTableCounts()).toEqual(before);
+  });
+});
+
+describe('SYSTEM worker validation executor', () => {
+  const claimValidationJob = async (
+    worker: WorkerRepository,
+    actorId: number,
+    jobId: number
+  ): Promise<{ leaseToken: string; job: Record<string, unknown> }> => {
+    // Earlier suites queue validation jobs that are never executed; release them so the
+    // worker reaches the job under test without changing their queued state.
+    const released: number[] = [];
+    let job = await worker.claimOne(actorId, 60, 3, ['VALIDATION']);
+    while (job && Number(job.job_id) !== jobId) {
+      released.push(Number(job.job_id));
+      job = await worker.claimOne(actorId, 60, 3, ['VALIDATION']);
+    }
+    for (const releasedJobId of released) {
+      await pool.query(
+        `UPDATE asynchronous_job
+         SET status = 'QUEUED', worker_actor_id = NULL, lease_token = NULL,
+             lease_expires_at = NULL, heartbeat_at = NULL, started_at = NULL
+         WHERE job_id = $1`,
+        [releasedJobId]
+      );
+    }
+    if (!job) throw new Error(`Expected to claim validation job ${jobId}`);
+    return { leaseToken: String(job.lease_token), job };
+  };
+
+  const queueValidationRun = async (key: string, validationTypes: string[]): Promise<number> => {
+    const response = await authorized('post', '/api/v1/validation-runs')
+      .set('Idempotency-Key', key)
+      .send({ validationTypes });
+    expect(response.status).toBe(202);
+    expect(response.body.status).toBe('QUEUED');
+    return Number(response.body.job_id);
+  };
+
+  it('executes a queued validation job end to end without mutating knowledge tables', async () => {
+    const before = await snapshotPersistentTableCounts();
+    const jobId = await queueValidationRun('validation-executor-complete', [
+      'SCHEMA', 'PROVENANCE', 'READ_ONLY', 'NEGATIVE_SEMANTIC', 'REGISTRY', 'REPLAY'
+    ]);
+    const worker = new WorkerRepository(pool);
+    const actorId = await worker.resolveSystemActor('validation-executor-test', 'Validation executor test');
+    const { leaseToken, job } = await claimValidationJob(worker, actorId, jobId);
+
+    const outcome = await EXECUTORS.VALIDATION({ pool, repository: worker, actorId, jobId, leaseToken, job });
+    expect(outcome).toMatchObject({ status: 'COMPLETED', completeValidationRun: true });
+    expect(await worker.finalize(jobId, leaseToken, actorId, outcome.status, null, null, { completeValidationRun: true }))
+      .toMatchObject({ status: 'COMPLETED' });
+
+    const run = await pool.query('SELECT validation_run_id, completed_at FROM validation_run WHERE job_id = $1', [jobId]);
+    expect(run.rows[0].completed_at).not.toBeNull();
+    const results = await pool.query(
+      'SELECT validation_type, status, code, message FROM validation_result WHERE validation_run_id = $1 ORDER BY validation_result_id',
+      [run.rows[0].validation_run_id]
+    );
+    const statusFor = (type: string) => results.rows.filter((row) => row.validation_type === type).map((row) => row.status);
+    expect(statusFor('SCHEMA')).toEqual(['PASS']);
+    expect(statusFor('PROVENANCE')).toEqual(['PASS']);
+    expect(statusFor('NEGATIVE_SEMANTIC')).toEqual(['PASS']);
+    expect(statusFor('READ_ONLY')).toEqual(['PASS']);
+    expect(statusFor('REGISTRY')).toEqual(['NOT_APPLICABLE']);
+    expect(statusFor('REPLAY')).toEqual(['NOT_APPLICABLE']);
+    expect(results.rows.every((row) => row.message.length <= 500)).toBe(true);
+    expect(results.rows.some((row) => /(TRUTH|PROVED|ADJUDICAT|HISTORICALLY_TRUE)/i.test(String(row.code)))).toBe(false);
+
+    await expect(pool.query('UPDATE validation_result SET status = $1 WHERE validation_run_id = $2', ['PASS', run.rows[0].validation_run_id]))
+      .rejects.toThrow(/immutable/);
+    await expect(pool.query('DELETE FROM validation_result WHERE validation_run_id = $1', [run.rows[0].validation_run_id]))
+      .rejects.toThrow(/immutable/);
+
+    const after = await snapshotPersistentTableCounts();
+    for (const table of KNOWLEDGE_TABLES) {
+      expect([table, after[table]]).toEqual([table, before[table]]);
+    }
+
+    const audits = await pool.query(
+      `SELECT action FROM audit_event WHERE resource_type = 'asynchronous_job' AND resource_id = $1 ORDER BY audit_event_id`,
+      [jobId]
+    );
+    expect(audits.rows.map((row) => row.action)).toEqual(expect.arrayContaining(['LEASE_CLAIMED', 'JOB_COMPLETED']));
+  });
+
+  it('exposes persisted validation results through the bounded administration read route', async () => {
+    const listed = await authorized('get', '/api/v1/admin/validation-results').query({ limit: 100 });
+    expect(listed.status).toBe(200);
+    expect(listed.body.results.length).toBeGreaterThan(0);
+    expect(listed.body.results[0]).toMatchObject({ validation_type: expect.any(String), status: expect.any(String), code: expect.any(String) });
+
+    const unknown = await authorized('get', '/api/v1/admin/validation-outcomes');
+    expect(unknown.status).toBe(404);
+  });
+
+  it('reports missing baseline structures instead of passing schema validation', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('CREATE SCHEMA IF NOT EXISTS validation_probe');
+      await client.query('SET search_path TO validation_probe');
+      const results = await checkSchema(client);
+      expect(results.every((result) => result.status === 'FAIL')).toBe(true);
+      expect(results.map((result) => result.code)).toEqual(expect.arrayContaining(['SCHEMA_MISSING_TABLE', 'SCHEMA_MISSING_VIEW']));
+      expect(results.some((result) => result.message.includes('claim_rendering'))).toBe(true);
+    } finally {
+      await client.query('RESET search_path');
+      await client.query('DROP SCHEMA IF EXISTS validation_probe CASCADE');
+      client.release();
+    }
+    expect((await checkSchema(pool)).map((result) => result.status)).toEqual(['PASS']);
+  });
+
+  it('detects provenance gaps for malformed direct and derived claims', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const proposition = await client.query('SELECT proposition_id FROM proposition ORDER BY proposition_id LIMIT 1');
+      const propositionId = Number(proposition.rows[0].proposition_id);
+      const uncited = await client.query(
+        `INSERT INTO claim (claim_key, proposition_id, claim_type_code)
+         VALUES ('validation-probe-uncited', $1, 'DIRECT_SOURCE_CLAIM') RETURNING claim_id`,
+        [propositionId]
+      );
+      const underived = await client.query(
+        `INSERT INTO claim (claim_key, proposition_id, claim_type_code)
+         VALUES ('validation-probe-underived', $1, 'DERIVED_CLAIM') RETURNING claim_id`,
+        [propositionId]
+      );
+      const results = await checkProvenance(client);
+      expect(results.every((result) => result.status === 'FAIL' || result.status === 'WARNING')).toBe(true);
+      expect(results).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: 'PROVENANCE_CLAIM_MISSING_CITED_SOURCE_OBSERVATION',
+          subjectType: 'claim',
+          subjectId: Number(uncited.rows[0].claim_id)
+        }),
+        expect.objectContaining({
+          code: 'PROVENANCE_DERIVED_CLAIM_MISSING_DERIVATION',
+          subjectType: 'claim',
+          subjectId: Number(underived.rows[0].claim_id)
+        })
+      ]));
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+    expect((await checkProvenance(pool)).map((result) => result.status)).toEqual(['PASS']);
+    expect((await pool.query(`SELECT 1 FROM claim WHERE claim_key LIKE 'validation-probe-%'`)).rowCount).toBe(0);
+  });
+
+  it('fails negative-semantic validation when a forbidden predicate is registered', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO predicate (predicate_code, description, subject_kind_code, object_kind_code)
+         VALUES ('provesTruthOf', 'Probe predicate that must never be registered', 'ENTITY', 'ENTITY')`
+      );
+      const results = await checkNegativeSemantic(client);
+      expect(results).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: 'FAIL', code: 'NEGATIVE_SEMANTIC_FORBIDDEN_PREDICATE_REGISTERED' })
+      ]));
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+    expect((await checkNegativeSemantic(pool)).map((result) => result.status)).toEqual(['PASS']);
+    expect((await pool.query(`SELECT 1 FROM predicate WHERE predicate_code = 'provesTruthOf'`)).rowCount).toBe(0);
+  });
+
+  it('detects an unexpected knowledge-table mutation through the read-only snapshot', async () => {
+    const before = await snapshotKnowledgeTables(pool);
+    expect(compareKnowledgeSnapshots(before, await snapshotKnowledgeTables(pool)).map((result) => result.status)).toEqual(['PASS']);
+
+    const mutated = { ...before, claim: { rowCount: before.claim.rowCount + 1, digest: 'probe' } };
+    const detected = compareKnowledgeSnapshots(before, mutated);
+    expect(detected).toEqual([expect.objectContaining({ status: 'FAIL', code: 'READ_ONLY_KNOWLEDGE_TABLE_MUTATED' })]);
+  });
+
+  it('cancels cooperatively and refuses stale-lease result writes', async () => {
+    const jobId = await queueValidationRun('validation-executor-cancel', ['SCHEMA', 'PROVENANCE']);
+    const worker = new WorkerRepository(pool);
+    const actorId = await worker.resolveSystemActor('validation-executor-test', 'Validation executor test');
+    const { leaseToken, job } = await claimValidationJob(worker, actorId, jobId);
+
+    const administration = new AdministrationRepository(pool);
+    expect(await administration.changeJob(jobId, 'cancel', {
+      key: 'test-administrator', displayName: 'Test Administrator', role: 'ADMINISTRATOR'
+    }, '00000000-0000-0000-0000-0000000000aa')).toMatchObject({ status: 'RUNNING', cancel_requested: true });
+
+    const outcome = await EXECUTORS.VALIDATION({ pool, repository: worker, actorId, jobId, leaseToken, job });
+    expect(outcome).toMatchObject({ status: 'CANCELLED', errorCode: 'CANCELLED_BY_REQUEST' });
+    expect(outcome.completeValidationRun).toBeUndefined();
+    expect(await worker.finalize(jobId, leaseToken, actorId, 'CANCELLED', outcome.errorCode ?? null, outcome.errorMessage ?? null))
+      .toMatchObject({ status: 'CANCELLED' });
+
+    const run = await pool.query('SELECT validation_run_id, completed_at FROM validation_run WHERE job_id = $1', [jobId]);
+    expect(run.rows[0].completed_at).toBeNull();
+    expect((await pool.query('SELECT 1 FROM validation_result WHERE validation_run_id = $1', [run.rows[0].validation_run_id])).rowCount)
+      .toBe(0);
+
+    expect(await worker.appendValidationResults(jobId, leaseToken, actorId, Number(run.rows[0].validation_run_id), [{
+      validationType: 'SCHEMA', status: 'PASS', code: 'STALE_LEASE_PROBE', message: 'Must not be persisted.'
+    }])).toBe(0);
+    expect(await worker.loadValidationRun(jobId, leaseToken, actorId)).toBeNull();
+    expect(await worker.finalize(jobId, leaseToken, actorId, 'COMPLETED')).toBeNull();
+    expect((await pool.query('SELECT 1 FROM validation_result WHERE code = $1', ['STALE_LEASE_PROBE'])).rowCount).toBe(0);
   });
 });
