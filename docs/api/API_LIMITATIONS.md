@@ -63,16 +63,20 @@ Implemented queue persistence exists for:
 - validation runs,
 - export jobs.
 
-But this repository does not ship a durable SYSTEM worker that:
+This repository ships a Phase A durable SYSTEM worker foundation that atomically leases, recovers, and cooperatively cancels only the internal `SYSTEM_NOOP` foundation job type. It does not execute:
 
 - dequeues those jobs,
 - performs long-running execution,
 - persists `validation_result` or `ingestion_result` rows,
-- marks jobs `RUNNING` / `COMPLETED` automatically.
+- marks validation, ingestion, export, or discovery jobs `RUNNING` / `COMPLETED` automatically.
 
 Manual verification on 2026-08-13 observed a queued validation job remaining `QUEUED` with zero `validation_result` rows.
 
-Classification: **PARTIALLY_IMPLEMENTED**, **REQUIRES_SYSTEM_WORKER**.
+Run `npm run worker` with `DATABASE_URL`; worker identity/configuration is bounded by
+`BEREAN_SYSTEM_WORKER_*` variables. It exposes no HTTP listener and does not retrieve URLs,
+read user-controlled paths, execute arbitrary SQL, mutate registries, or promote knowledge.
+
+Classification: **PARTIALLY_IMPLEMENTED**, **REQUIRES_JOB_EXECUTORS**.
 
 ## 6. OpenAPI coverage
 
@@ -140,7 +144,7 @@ Classification: **IMPLEMENTED** as a documented, tested divergence. Evidence: `t
 | Validation | PARTIAL | validation queueing and SQL validation are implemented; worker execution is external |
 | Operations | PARTIAL | job queue status/retry/cancel and audit are implemented; no in-process durable worker |
 | Security | IMPLEMENTED | bearer auth, ordered roles, parameterized SQL, bounded inputs, transaction+audit coupling |
-| Production readiness | PARTIAL | strong boundaries and validation exist; no shipped worker/external retrieval subsystem |
+| Production readiness | PARTIAL | safe Phase A worker foundation exists; production job executors and external retrieval remain unavailable |
 
 ## 9. What Berean APIs cannot currently do
 
@@ -148,7 +152,7 @@ Classification: **IMPLEMENTED** as a documented, tested divergence. Evidence: `t
 - infer contradiction, superiority, winner/loser, causation, or membership from co-participation;
 - auto-promote discovery candidates to evidence, evidence to claims, or derivations to claims;
 - auto-promote `PROPOSED` identity mappings to `ACTIVE`;
-- execute queued jobs end-to-end without an external SYSTEM worker;
+- execute validation, ingestion, export, or discovery jobs end-to-end;
 - perform arbitrary external URL retrieval, filesystem reads, SQL execution, or registry mutation.
 
 ## 10. What should deliberately remain non-automatic

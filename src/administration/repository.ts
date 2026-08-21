@@ -489,7 +489,7 @@ export class AdministrationRepository {
     return this.transaction(async (client) => {
       const actorId = await this.actorId(client, actor);
       const job = await client.query(
-        'SELECT job_type, requested_by_actor_id FROM asynchronous_job WHERE job_id = $1',
+        'SELECT job_type, requested_by_actor_id, status FROM asynchronous_job WHERE job_id = $1 FOR UPDATE',
         [jobId]
       );
       if (!job.rowCount) return null;
@@ -509,8 +509,15 @@ export class AdministrationRepository {
       const result = action === 'cancel'
         ? await client.query(
             `UPDATE asynchronous_job
-             SET status = 'CANCELLED', cancel_requested_at = CURRENT_TIMESTAMP,
-                 completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+             SET status = CASE WHEN status = 'RUNNING' THEN 'RUNNING' ELSE 'CANCELLED' END,
+                 cancel_requested = TRUE,
+                 cancel_requested_at = CURRENT_TIMESTAMP,
+                 completed_at = CASE WHEN status = 'RUNNING' THEN completed_at ELSE CURRENT_TIMESTAMP END,
+                 worker_actor_id = CASE WHEN status = 'RUNNING' THEN worker_actor_id ELSE NULL END,
+                 lease_token = CASE WHEN status = 'RUNNING' THEN lease_token ELSE NULL END,
+                 lease_expires_at = CASE WHEN status = 'RUNNING' THEN lease_expires_at ELSE NULL END,
+                 heartbeat_at = CASE WHEN status = 'RUNNING' THEN heartbeat_at ELSE NULL END,
+                 updated_at = CURRENT_TIMESTAMP
              WHERE job_id = $1 AND status IN ('QUEUED','RUNNING','WAITING_FOR_REVIEW')
              RETURNING *`,
             [jobId]
@@ -519,6 +526,10 @@ export class AdministrationRepository {
             `UPDATE asynchronous_job
              SET status = 'QUEUED', attempt_count = attempt_count + 1,
                  error_code = NULL, error_message = NULL, completed_at = NULL,
+                 cancel_requested = FALSE, cancel_requested_at = NULL,
+                 worker_actor_id = NULL, lease_token = NULL, lease_expires_at = NULL,
+                 heartbeat_at = NULL, started_at = NULL,
+                 progress_current = 0, progress_total = 0,
                  updated_at = CURRENT_TIMESTAMP
              WHERE job_id = $1 AND status IN ('FAILED','CANCELLED')
              RETURNING *`,
