@@ -63,20 +63,29 @@ Implemented queue persistence exists for:
 - validation runs,
 - export jobs.
 
-This repository ships a Phase A durable SYSTEM worker foundation that atomically leases, recovers, and cooperatively cancels only the internal `SYSTEM_NOOP` foundation job type. It does not execute:
+This repository ships a durable SYSTEM worker that atomically leases, heartbeats, recovers, and
+cooperatively cancels jobs. Its closed executor registry currently executes two job types:
 
-- dequeues those jobs,
-- performs long-running execution,
-- persists `validation_result` or `ingestion_result` rows,
-- marks validation, ingestion, export, or discovery jobs `RUNNING` / `COMPLETED` automatically.
+- the internal `SYSTEM_NOOP` foundation job type;
+- `VALIDATION` jobs, through the read-only structural validation executor
+  (`src/worker/validation-executor.ts`), which persists immutable `validation_result` rows for the
+  implemented `SCHEMA`, `PROVENANCE`, `READ_ONLY`, and `NEGATIVE_SEMANTIC` types and records
+  `NOT_APPLICABLE` for the accepted-but-unimplemented `REGISTRY`, `IDENTITY`, `CLAIM`, `EVIDENCE`,
+  `DERIVATION`, `CORPUS`, and `REPLAY` types.
 
-Manual verification on 2026-08-13 observed a queued validation job remaining `QUEUED` with zero `validation_result` rows.
+The worker still does not execute `INGESTION`, `EXPORT`, or `DISCOVERY` jobs; those remain
+queue-only and stay `QUEUED` until their bounded executors exist. No `ingestion_result` row and no
+export artefact is produced.
+
+A validation PASS is an operational reproducibility record about structure. It is never historical
+truth, scholarly adjudication, contradiction resolution, or claim validation in the epistemic sense.
+This is a bounded structural check suite, not a full validation engine.
 
 Run `npm run worker` with `DATABASE_URL`; worker identity/configuration is bounded by
 `BEREAN_SYSTEM_WORKER_*` variables. It exposes no HTTP listener and does not retrieve URLs,
 read user-controlled paths, execute arbitrary SQL, mutate registries, or promote knowledge.
 
-Classification: **PARTIALLY_IMPLEMENTED**, **REQUIRES_JOB_EXECUTORS**.
+Classification: **PARTIALLY_IMPLEMENTED** (validation executed), **REQUIRES_JOB_EXECUTORS** (ingestion, export, discovery).
 
 ## 6. OpenAPI coverage
 
@@ -141,10 +150,10 @@ Classification: **IMPLEMENTED** as a documented, tested divergence. Evidence: `t
 | Identity reconciliation | IMPLEMENTED + REQUIRES_HUMAN_REVIEW | `POST /api/v1/identity-mappings` + explicit review transition |
 | Scholarly review | PARTIAL | Scholarly observations and candidate review are represented; no truth adjudication API |
 | Derivation | IMPLEMENTED (structural) | derivation creation + eligibility check; no automatic claim promotion |
-| Validation | PARTIAL | validation queueing and SQL validation are implemented; worker execution is external |
-| Operations | PARTIAL | job queue status/retry/cancel and audit are implemented; no in-process durable worker |
+| Validation | PARTIAL | validation queueing, SQL validation, and SYSTEM worker execution of `SCHEMA`, `PROVENANCE`, `READ_ONLY`, and `NEGATIVE_SEMANTIC` are implemented; the remaining requested types record `NOT_APPLICABLE` |
+| Operations | PARTIAL | job queue status/retry/cancel, audit, and a durable worker executing validation jobs are implemented; ingestion, export, and discovery executors are absent |
 | Security | IMPLEMENTED | bearer auth, ordered roles, parameterized SQL, bounded inputs, transaction+audit coupling |
-| Production readiness | PARTIAL | safe Phase A worker foundation exists; production job executors and external retrieval remain unavailable |
+| Production readiness | PARTIAL | a durable worker with a read-only validation executor exists; ingestion/export/discovery executors and external retrieval remain unavailable |
 
 ## 9. What Berean APIs cannot currently do
 

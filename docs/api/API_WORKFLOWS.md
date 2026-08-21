@@ -13,7 +13,8 @@ Cross-reference the architectural workflow decision in [`../01-architecture/KNOW
 3. **Evidence ≠ claim.** Evidence creation never creates a claim automatically.
 4. **Claim ≠ truth.** Claim persistence records an assertion with provenance, not truth.
 5. **PROPOSED ≠ ACTIVE.** Identity mappings require an explicit review route.
-6. **Queued job ≠ completed job.** Job routes persist queue state only; a SYSTEM worker is separate.
+6. **Queued job ≠ completed job.** Job routes persist queue state only; the SYSTEM worker is a separate process, and only validation jobs currently execute.
+7. **Validation PASS ≠ truth.** A validation result is a structural reproducibility record, never historical truth or adjudication.
 
 ## Recipe 1: bounded research over what already exists
 
@@ -209,7 +210,7 @@ What is **not** implemented as an automatic chain:
 - corpus → topic → source registration is not auto-triggered;
 - candidate review does not auto-create source records, evidence, claims, or mappings;
 - derivation eligibility does not auto-create a derived claim;
-- queued validation/export/ingestion work does not auto-complete without a worker.
+- queued export/ingestion work does not auto-complete, and queued validation work completes only when the separate SYSTEM worker process is running.
 
 ## Asynchronous semantics
 
@@ -217,13 +218,13 @@ What is **not** implemented as an automatic chain:
 |---|---|---|---|
 | `POST /api/v1/discovery-requests` | `202` | `discovery_request` + `asynchronous_job` (`QUEUED`) | Candidate production |
 | `POST /api/v1/ingestion-jobs` | `202` | `asynchronous_job` (`QUEUED`) | Ingestion execution and `ingestion_result` rows |
-| `POST /api/v1/validation-runs` | `202` | `validation_run` + `asynchronous_job` (`QUEUED`) | Validation execution and append-only `validation_result` rows |
+| `POST /api/v1/validation-runs` | `202` | `validation_run` + `asynchronous_job` (`QUEUED`) | Execution by the SYSTEM worker's read-only validation executor, append-only `validation_result` rows, and `validation_run.completed_at` |
 | `POST /api/v1/export-jobs` | `202` | `export_job` + `asynchronous_job` (`QUEUED`) | Export artifact production |
 
 Rules:
 
 1. `202` means *the queue state is durably persisted*, never *the work is done*.
-2. Poll `GET /api/v1/admin/jobs` for status; Phase A's `npm run worker` only executes the internal `SYSTEM_NOOP` foundation type. Validation, ingestion, export, and discovery jobs legitimately remain `QUEUED` until their bounded executors are implemented.
+2. Poll `GET /api/v1/admin/jobs` for status and `GET /api/v1/admin/validation-results` for persisted validation results. `npm run worker` executes the internal `SYSTEM_NOOP` foundation type and `VALIDATION` jobs. Ingestion, export, and discovery jobs legitimately remain `QUEUED` until their bounded executors are implemented.
 3. Every queueing route requires `Idempotency-Key`. Replaying the same key with the same request fingerprint returns the original job; replaying it with a different fingerprint returns `409 IDEMPOTENCY_CONFLICT` and writes nothing.
 4. `POST /api/v1/jobs/:id/cancel` and `/retry` change workflow state only and return `409 INVALID_JOB_STATE` when the transition is not allowed.
 

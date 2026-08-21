@@ -17,7 +17,9 @@ const SEARCH_RESOURCES = [
 
 const REGISTRIES = ['predicates', 'entity-types', 'event-types', 'claim-types', 'evidence-types', 'mapping-statuses'];
 
-const ADMIN_RESOURCES = ['corpora', 'topics', 'discoveries', 'candidates', 'jobs', 'validations', 'audits', 'exports'];
+const ADMIN_RESOURCES = [
+  'corpora', 'topics', 'discoveries', 'candidates', 'jobs', 'validations', 'validation-results', 'audits', 'exports'
+];
 
 const CANDIDATE_TYPES = [
   'PERSON', 'ORGANIZATION', 'PLACE', 'EVENT', 'DOCUMENT', 'TECHNOLOGY',
@@ -970,14 +972,14 @@ const paths: Values = {
     post: writeOperation({
       operationId: 'createValidationRun',
       summary: 'Queue an immutable validation run',
-      description: 'Persists a queued validation run. Validation results are append-only and require an external SYSTEM worker.',
+      description: 'Persists a queued validation run. The SYSTEM worker executes the implemented SCHEMA, PROVENANCE, READ_ONLY, and NEGATIVE_SEMANTIC types and appends immutable results readable through GET /api/v1/admin/validation-results; other requested types are recorded NOT_APPLICABLE.',
       role: 'REVIEWER',
       schema: 'ValidationRunCreate',
       status: 202,
       statusDescription: 'The queued validation run and job.',
       parameters: [idempotencyHeader],
       errors: ['400', '401', '403', '409', '422', '500', '503'],
-      mutation: 'Inserts `validation_run` and `asynchronous_job` rows.',
+      mutation: 'Inserts `validation_run` and `asynchronous_job` rows. The SYSTEM worker later appends immutable `validation_result` rows and sets `validation_run.completed_at`.',
       audit: true,
       epistemic: 'A validation result is a reproducibility record, not a claim and not a truth determination.'
     })

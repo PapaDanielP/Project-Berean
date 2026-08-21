@@ -10,6 +10,7 @@ const administrationListQueries: Record<string, string> = {
   candidates: 'SELECT * FROM discovery_candidate ORDER BY discovery_candidate_id DESC LIMIT $1',
   jobs: 'SELECT * FROM asynchronous_job ORDER BY job_id DESC LIMIT $1',
   validations: 'SELECT * FROM validation_run ORDER BY validation_run_id DESC LIMIT $1',
+  'validation-results': 'SELECT * FROM validation_result ORDER BY validation_result_id DESC LIMIT $1',
   audits: 'SELECT * FROM audit_event ORDER BY audit_event_id DESC LIMIT $1',
   exports: 'SELECT * FROM export_job ORDER BY export_job_id DESC LIMIT $1'
 };

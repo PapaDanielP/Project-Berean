@@ -74,5 +74,5 @@ bash scripts/validation/run-postgres-validation.sh
 ## Current limitations
 
 - Berean is pre-beta and does not adjudicate truth, prove propositions, infer contradictions, or treat absence as falsehood.
-- Discovery, ingestion, validation, and export job APIs persist queue state; execution beyond queued workflow records requires scripts or a system worker as documented.
+- Discovery, ingestion, validation, and export job APIs persist queue state. The separate `npm run worker` process executes validation jobs into immutable structural validation results; discovery, ingestion, and export execution still requires scripts as documented.
 - Source acquisition, external research, fixture authoring, registry/schema changes, and historical phase interpretation remain reviewed developer or human workflows, not automatic API capabilities.
