@@ -207,9 +207,8 @@ Explorer/API integration audit, and none is a runtime, schema, or API-contract d
 scope requires fixing. In particular:
 
 - F-03 (graph edge content previously untested) is now closed by the F-EXP-01 regression test above.
-- F-01 (resource-filtered search applies `limit` before the filter) is a `src/api/v1.ts` defect not
-  reachable from the Explorer (which uses the unfiltered compatibility route); it remains open and is
-  tracked there, not duplicated here.
+- F-01 (resource-filtered search applied `limit` before the filter) was not reachable from the Explorer
+  (which uses the unfiltered compatibility route) and was superseded by R2-13 on 2026-08-21.
 - F-06 through F-12 remain MINOR GAP / TEST COVERAGE GAP items with no epistemic-safety impact; they
   are listed as remaining issues in `EXPLORER_TEST_REPORT.md` §5 rather than fixed here, per the
   smallest-change-set instruction for this audit.

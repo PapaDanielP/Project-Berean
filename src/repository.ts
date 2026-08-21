@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import type { ExplainProvenanceInput, ExploreTimelineInput, GraphEdge, GraphNode, SearchResult } from './types.js';
+import type { ExplainProvenanceInput, ExploreTimelineInput, GraphEdge, GraphNode, SearchResult, SearchType } from './types.js';
 
 const boundedLimit = (value: number | undefined, fallback: number, max: number): number => {
   if (!value || Number.isNaN(value)) return fallback;
@@ -477,6 +477,66 @@ export class BereanRepository {
       LIMIT $2
       `,
       [term, safeLimit]
+    );
+
+    return rows;
+  }
+
+  async searchByType(q: string, type: SearchType, limit?: number): Promise<SearchResult[]> {
+    const safeLimit = boundedLimit(limit, 20, 50);
+    const term = `%${q}%`;
+    const { rows } = await this.pool.query(
+      `
+      WITH search_results AS (
+        SELECT 'entity'::text AS type, entity_id AS id, entity_key AS key,
+               canonical_name AS label, entity_type_code AS detail
+        FROM entity
+        WHERE entity_key ILIKE $1 OR canonical_name ILIKE $1
+        UNION ALL
+        SELECT 'event', event_id, event_key, event_key, event_type_code
+        FROM event
+        WHERE event_key ILIKE $1 OR COALESCE(description, '') ILIKE $1
+        UNION ALL
+        SELECT 'claim', claim_id, claim_key, claim_key, claim_type_code
+        FROM claim
+        WHERE claim_key ILIKE $1 OR COALESCE(statement, '') ILIKE $1
+        UNION ALL
+        SELECT 'proposition', proposition_id, proposition_id::text,
+               predicate || ' proposition', predicate
+        FROM proposition
+        WHERE predicate ILIKE $1
+        UNION ALL
+        SELECT 'evidence', evidence_id, evidence_key, evidence_key, evidence_type_code
+        FROM evidence
+        WHERE evidence_key ILIKE $1 OR COALESCE(observation, '') ILIKE $1
+        UNION ALL
+        SELECT 'source', source_id, source_key, name, source_type_code
+        FROM source
+        WHERE source_key ILIKE $1 OR name ILIKE $1
+        UNION ALL
+        SELECT 'dataset', dataset_id, dataset_key, name, edition_label
+        FROM dataset
+        WHERE dataset_key ILIKE $1 OR name ILIKE $1 OR COALESCE(version, '') ILIKE $1
+        UNION ALL
+        SELECT 'source_record', source_record_id, source_record_key, source_location, source_location
+        FROM source_record
+        WHERE source_record_key ILIKE $1 OR COALESCE(source_location, '') ILIKE $1
+        UNION ALL
+        SELECT 'citation', citation_id, citation_key, locator, locator
+        FROM citation
+        WHERE citation_key ILIKE $1 OR locator ILIKE $1
+        UNION ALL
+        SELECT 'source_identity', source_identity_id, source_identity_key, display_name, display_name
+        FROM source_identity
+        WHERE source_identity_key ILIKE $1 OR display_name ILIKE $1
+      )
+      SELECT type, id, key, label, detail
+      FROM search_results
+      WHERE type = $3
+      ORDER BY type, key
+      LIMIT $2
+      `,
+      [term, safeLimit, type]
     );
 
     return rows;

@@ -507,6 +507,9 @@ risk · schema/API/Explorer/documentation/testing impact · recommended next pha
 ### F-01 — Resource-filtered search applies `limit` before the filter
 - **Area:** API read surface (`src/api/v1.ts` `router.get('/search/:resource?')`).
 - **Classification:** SIGNIFICANT GAP / IMPLEMENTATION BUG.
+- **Resolution note (2026-08-21 / R2-13):** superseded by a repository-level typed search path used
+  by V1 resource-filtered keyword search. The resource filter is now applied before `limit`, with
+  regression coverage for `GET /api/v1/search/entities?q=adam&limit=1` and deterministic key ordering.
 - **Evidence:** `GET /api/v1/search/entities?q=Tesla&limit=5` → `classification: "NO_MATCH"`, 0
   results; the same query with `limit=25` or `limit=100` → `MATCHED`, entity `phase37r_nikola_tesla`.
   Root cause: `repository.search(query, requestedLimit)` returns the *unfiltered* top-N, and
@@ -555,6 +558,8 @@ risk · schema/API/Explorer/documentation/testing impact · recommended next pha
 
 ### F-04 — Non-reproducible search example in the developer guide
 - **Area:** `docs/api/API_DEVELOPER_GUIDE.md`. **Classification:** DOCUMENTATION DRIFT.
+- **Resolution note (2026-08-21 / R2-13):** the developer guide now documents the corrected
+  filter-before-limit behavior and uses a reproducible `limit=1` filtered-search example.
 - **Evidence:** the documented example `GET /api/v1/search/entities?q=adam&limit=3` now returns
   `NO_MATCH` against the full corpus (consequence of F-01); the same call with `limit=100` returns the
   documented `adam` entity.
@@ -732,7 +737,7 @@ violation keep this below `SIGNIFICANT GAPS`.
 
 ## 26. Next steps (recommended, not implemented here)
 
-1. Fix F-01 (filter before limit) and add the `NO_MATCH` regression test.
+1. F-01 is superseded by R2-13 (filter before limit plus regression coverage); keep monitoring V1 search coverage as the corpus grows.
 2. Fix F-02 (numeric comparison in the entity graph) and add the graph-content test (F-03).
 3. Add the thin Explorer↔API contract assertions described in §20 (F-13).
 4. Close the enumerated behavior-test gaps for the writing routes (F-11).

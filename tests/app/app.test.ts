@@ -1579,6 +1579,49 @@ describe('V1 API contract', () => {
     }
   });
 
+  it('applies a V1 resource search filter before limiting results', async () => {
+    const generic = await request(app).get('/api/search').query({ q: 'adam', limit: 1 });
+    expect(generic.status).toBe(200);
+    expect(generic.body.results).toHaveLength(1);
+    expect(generic.body.results[0].type).not.toBe('entity');
+
+    const unfilteredV1 = await request(app).get('/api/v1/search').query({ q: 'adam', limit: 1 });
+    expect(unfilteredV1.status).toBe(200);
+    expect(unfilteredV1.body.results).toEqual(generic.body.results);
+
+    const filtered = await request(app).get('/api/v1/search/entities').query({ q: 'adam', limit: 1 });
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.classification).toBe('MATCHED');
+    expect(filtered.body.results).toHaveLength(1);
+    expect(filtered.body.results[0]).toMatchObject({ type: 'entity', key: 'adam', label: 'Adam' });
+    expect(filtered.body.limitation).toBe('Matched records are lexical search hits, not established claims.');
+  });
+
+  it('applies V1 resource-specific limits after filtering with deterministic ordering', async () => {
+    const expected = await pool.query(
+      `SELECT entity_key AS key
+       FROM entity
+       WHERE entity_key ILIKE '%a%' OR canonical_name ILIKE '%a%'
+       ORDER BY entity_key
+       LIMIT 3`
+    );
+    expect(expected.rowCount).toBe(3);
+
+    const limitOne = await request(app).get('/api/v1/search/entities').query({ q: 'a', limit: 1 });
+    expect(limitOne.status).toBe(200);
+    expect(limitOne.body.results.map((result: { key: string }) => result.key)).toEqual([
+      expected.rows[0].key
+    ]);
+
+    const limitThree = await request(app).get('/api/v1/search/entities').query({ q: 'a', limit: 3 });
+    expect(limitThree.status).toBe(200);
+    expect(limitThree.body.results).toHaveLength(3);
+    expect(limitThree.body.results.every((result: { type: string }) => result.type === 'entity')).toBe(true);
+    expect(limitThree.body.results.map((result: { key: string }) => result.key)).toEqual(
+      expected.rows.map((row: { key: string }) => row.key)
+    );
+  });
+
   it('returns a controlled error for unknown and unindexed search filters', async () => {
     const before = await snapshotPersistentTableCounts();
 

@@ -95,8 +95,8 @@ and the commands passed after the repository dependencies were installed with `n
 **Remaining test-coverage gaps** (unchanged from the predecessor audit, not closed in this pass, and
 listed here rather than hidden): 12 documented routes have no behavior-level test (F-11 in
 `FINAL_PLATFORM_ARCHITECTURE_AUDIT.md`); `src/public/app.js` is outside `npm run lint` and
-`npm run typecheck` (F-12); the resource-filtered-search `limit`-before-filter defect (F-01) has no
-regression test yet because it is outside this audit's scope (not Explorer-reachable).
+`npm run typecheck` (F-12); the resource-filtered-search `limit`-before-filter defect (F-01) was outside
+this audit's scope (not Explorer-reachable) and was later superseded by R2-13 regression coverage.
 
 ## 6. Browser / application-level testing
 
