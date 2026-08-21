@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
 import { createHash } from 'node:crypto';
 import { createApp } from '../../src/app.js';
+import { AdministrationRepository } from '../../src/administration/repository.js';
+import { WorkerRepository } from '../../src/worker/repository.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -25,6 +27,17 @@ const secureApp = createApp(databaseUrl, [{
 const authorization = `${['Bear', 'er'].join('')} ${administratorToken}`;
 const authorized = (method: 'get' | 'post' | 'patch', route: string) =>
   request(secureApp)[method](route).set('Authorization', authorization);
+
+const insertFoundationJob = async (actorId: number, key: string): Promise<number> => {
+  const result = await pool.query(
+    `INSERT INTO asynchronous_job
+       (job_type, idempotency_key, request_fingerprint, requested_by_actor_id, correlation_id)
+     VALUES ('SYSTEM_NOOP', $1, $2, $3, gen_random_uuid())
+     RETURNING job_id`,
+    [key, createHash('sha256').update(key).digest('hex'), actorId]
+  );
+  return Number(result.rows[0].job_id);
+};
 
 const runSqlFile = async (relativePath: string): Promise<void> => {
   const sql = await fs.readFile(path.join(repoRoot, relativePath), 'utf8');
@@ -212,6 +225,77 @@ describe('read-only API', () => {
     expect(conflict.body.error.code).toBe('IDEMPOTENCY_CONFLICT');
 
     await expect(pool.query(`UPDATE audit_event SET detail = 'changed'`)).rejects.toThrow(/append-only/);
+  });
+
+  it('leases, recovers, and finalizes only SYSTEM_NOOP foundation jobs safely', async () => {
+    const workers = [new WorkerRepository(pool), new WorkerRepository(pool)];
+    const actorId = await workers[0].resolveSystemActor('worker-foundation-test', 'Worker foundation test');
+    const firstJobId = await insertFoundationJob(actorId, 'worker-foundation-first');
+    const secondJobId = await insertFoundationJob(actorId, 'worker-foundation-second');
+
+    const [first, second] = await Promise.all([
+      workers[0].claimOne(actorId, 60, 3, ['SYSTEM_NOOP']),
+      workers[1].claimOne(actorId, 60, 3, ['SYSTEM_NOOP'])
+    ]);
+    expect([Number(first?.job_id), Number(second?.job_id)].sort((a, b) => a - b)).toEqual([firstJobId, secondJobId]);
+    expect(Number(first?.job_id)).toBe(firstJobId);
+    expect(await workers[0].renewLease(firstJobId, String(first?.lease_token), actorId, 60)).toBe(true);
+    expect(await workers[0].renewLease(firstJobId, '00000000-0000-0000-0000-000000000000', actorId, 60)).toBe(false);
+
+    await pool.query(
+      `UPDATE asynchronous_job SET lease_expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second'
+       WHERE job_id = $1`,
+      [secondJobId]
+    );
+    expect(await workers[0].recoverExpired(actorId, 3, ['SYSTEM_NOOP'])).toBe(1);
+    const recovered = await pool.query('SELECT status, worker_actor_id, lease_token FROM asynchronous_job WHERE job_id = $1', [secondJobId]);
+    expect(recovered.rows[0]).toMatchObject({ status: 'QUEUED', worker_actor_id: null, lease_token: null });
+
+    const reclaimed = await workers[1].claimOne(actorId, 60, 3, ['SYSTEM_NOOP']);
+    expect(Number(reclaimed?.job_id)).toBe(secondJobId);
+    expect(await workers[0].finalize(secondJobId, String(second?.lease_token), actorId, 'COMPLETED')).toBeNull();
+    expect(await workers[1].finalize(secondJobId, String(reclaimed?.lease_token), actorId, 'COMPLETED')).toMatchObject({ status: 'COMPLETED' });
+
+    const exhaustedJobId = await insertFoundationJob(actorId, 'worker-foundation-exhausted');
+    const exhausted = await workers[0].claimOne(actorId, 60, 3, ['SYSTEM_NOOP']);
+    expect(Number(exhausted?.job_id)).toBe(exhaustedJobId);
+    await pool.query(
+      `UPDATE asynchronous_job SET attempt_count = 3, lease_expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second'
+       WHERE job_id = $1`,
+      [exhaustedJobId]
+    );
+    await workers[0].recoverExpired(actorId, 3, ['SYSTEM_NOOP']);
+    expect((await pool.query('SELECT status, error_code FROM asynchronous_job WHERE job_id = $1', [exhaustedJobId])).rows[0])
+      .toMatchObject({ status: 'FAILED', error_code: 'LEASE_EXPIRED_MAX_ATTEMPTS' });
+
+    const administration = new AdministrationRepository(pool);
+    const queuedJobId = await insertFoundationJob(actorId, 'worker-foundation-cancel-queued');
+    const admin = { key: 'worker-admin-test', displayName: 'Worker Admin Test', role: 'ADMINISTRATOR' as const };
+    expect(await administration.changeJob(queuedJobId, 'cancel', admin, '00000000-0000-0000-0000-000000000001'))
+      .toMatchObject({ status: 'CANCELLED', cancel_requested: true, worker_actor_id: null });
+    const runningJobId = await insertFoundationJob(actorId, 'worker-foundation-cancel-running');
+    const running = await workers[0].claimOne(actorId, 60, 3, ['SYSTEM_NOOP']);
+    expect(Number(running?.job_id)).toBe(runningJobId);
+    expect(await administration.changeJob(runningJobId, 'cancel', admin, '00000000-0000-0000-0000-000000000002'))
+      .toMatchObject({ status: 'RUNNING', cancel_requested: true });
+    expect(await workers[0].cancellationRequested(runningJobId, String(running?.lease_token), actorId)).toBe(true);
+    expect(await workers[0].finalize(runningJobId, String(running?.lease_token), actorId, 'CANCELLED', 'CANCELLED_BY_REQUEST'))
+      .toMatchObject({ status: 'CANCELLED' });
+    expect(await administration.changeJob(runningJobId, 'retry', admin, '00000000-0000-0000-0000-000000000003'))
+      .toMatchObject({ status: 'QUEUED', cancel_requested: false, worker_actor_id: null, lease_token: null, progress_current: 0 });
+    expect(await administration.changeJob(runningJobId, 'retry', admin, '00000000-0000-0000-0000-000000000004')).toBeNull();
+
+    const audits = await pool.query(
+      `SELECT action FROM audit_event WHERE resource_type = 'asynchronous_job'
+       AND resource_id = ANY($1::bigint[])`,
+      [[firstJobId, secondJobId, exhaustedJobId, queuedJobId, runningJobId]]
+    );
+    expect(audits.rows.map((row) => row.action)).toEqual(expect.arrayContaining([
+      'LEASE_CLAIMED', 'LEASE_RECOVERED', 'LEASE_FAILED', 'JOB_COMPLETED', 'JOB_CANCELLED'
+    ]));
+
+    const workerSource = await fs.readFile(path.join(repoRoot, 'src/worker.ts'), 'utf8');
+    expect(workerSource).not.toMatch(/express|\.listen\(|fetch\(|https?:\/\/|node:fs|readFile|child_process/i);
   });
 
   it('enforces bearer authentication and server-side roles', async () => {

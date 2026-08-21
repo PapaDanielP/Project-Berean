@@ -49,7 +49,7 @@ CREATE TABLE research_topic (
 
 CREATE TABLE asynchronous_job (
     job_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    job_type TEXT NOT NULL CHECK (job_type IN ('DISCOVERY', 'INGESTION', 'VALIDATION', 'EXPORT')),
+    job_type TEXT NOT NULL CHECK (job_type IN ('DISCOVERY', 'INGESTION', 'VALIDATION', 'EXPORT', 'SYSTEM_NOOP')),
     status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN
         ('QUEUED', 'RUNNING', 'WAITING_FOR_REVIEW', 'COMPLETED', 'FAILED', 'CANCELLED')),
     idempotency_key TEXT NOT NULL,
@@ -62,6 +62,11 @@ CREATE TABLE asynchronous_job (
     error_code TEXT,
     error_message TEXT,
     cancel_requested_at TIMESTAMPTZ,
+    worker_actor_id BIGINT REFERENCES workflow_actor(actor_id),
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    heartbeat_at TIMESTAMPTZ,
+    cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -215,4 +220,7 @@ CREATE INDEX ix_research_topic_corpus ON research_topic(corpus_id);
 CREATE INDEX ix_discovery_request_corpus ON discovery_request(corpus_id);
 CREATE INDEX ix_discovery_candidate_request ON discovery_candidate(discovery_request_id);
 CREATE INDEX ix_async_job_status ON asynchronous_job(status, created_at);
+CREATE INDEX ix_async_job_claimable
+    ON asynchronous_job(status, created_at, job_id)
+    WHERE status = 'QUEUED' AND cancel_requested = FALSE;
 CREATE INDEX ix_audit_resource ON audit_event(resource_type, resource_id, occurred_at);

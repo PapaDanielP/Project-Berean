@@ -223,7 +223,7 @@ What is **not** implemented as an automatic chain:
 Rules:
 
 1. `202` means *the queue state is durably persisted*, never *the work is done*.
-2. Poll `GET /api/v1/admin/jobs` for status; a job may legitimately remain `QUEUED` forever in this repository, which ships no worker.
+2. Poll `GET /api/v1/admin/jobs` for status; Phase A's `npm run worker` only executes the internal `SYSTEM_NOOP` foundation type. Validation, ingestion, export, and discovery jobs legitimately remain `QUEUED` until their bounded executors are implemented.
 3. Every queueing route requires `Idempotency-Key`. Replaying the same key with the same request fingerprint returns the original job; replaying it with a different fingerprint returns `409 IDEMPOTENCY_CONFLICT` and writes nothing.
 4. `POST /api/v1/jobs/:id/cancel` and `/retry` change workflow state only and return `409 INVALID_JOB_STATE` when the transition is not allowed.
 
